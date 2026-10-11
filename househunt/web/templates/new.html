@@ -47,7 +47,7 @@
     <legend>Viewings</legend>
     <div class="fields">
     <label class="full">Your name <span class="hint">The caller introduces itself as your AI assistant</span>
-      <input name="renter_name" maxlength="80" placeholder="First name" value="{{ settings.renter_name if settings.renter_name != 'my client' else '' }}"></label>
+      <input name="renter_name" maxlength="80" placeholder="First name" value=""></label>
     <label class="full">When you're free <span class="hint">The agent asks about these times; you'll confirm the appointment separately</span>
       <input name="tour_availability" placeholder="weekdays after 6pm, Saturday morning" value="{{ c.tour_availability | join(', ') if c else '' }}"></label>
     </div>

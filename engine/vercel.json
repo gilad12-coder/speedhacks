@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastapi",
+  "functions": {
+    "main.py": { "maxDuration": 800 }
+  },
+  "crons": [{ "path": "/agent/tick", "schedule": "* * * * *" }]
+}

@@ -17,7 +17,6 @@ def caller(tmp_path, monkeypatch):
     monkeypatch.setenv('OPENAI_API_KEY', 'test-not-a-real-key')
     monkeypatch.setenv('DIAL_API_KEY', 'test-not-a-real-key')
     monkeypatch.setenv('DIAL_FROM_NUMBER', '+12025550000')
-    monkeypatch.setenv('DIAL_ALLOWED_NUMBERS', '+12025552222')
     monkeypatch.delenv('APP_PASSWORD', raising=False)
     import househunt.config
     importlib.reload(househunt.config)

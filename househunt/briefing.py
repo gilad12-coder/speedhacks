@@ -90,7 +90,7 @@ _STYLE = (
 
 
 def outbound_instruction() -> str:
-    name = settings.renter_name
+    name = "the renter"
     return "\n".join([
         f"You are calling {name} with an update from KeyHunt, the app running their rental "
         "search. You are an AI assistant; say so when you introduce yourself.",
@@ -111,7 +111,7 @@ def _callback_rules(name: str) -> str:
 
 def message_taker_instruction() -> str:
     """Inbound behavior without a briefing: just take messages from people calling back."""
-    name = settings.renter_name
+    name = "the renter"
     return "\n".join([
         f"You answer calls to the KeyHunt line for {name}, who is looking for a rental.",
         "Greet the caller: \"Hi, you've reached KeyHunt, the rental assistant. Who's calling?\"",
@@ -122,7 +122,7 @@ def message_taker_instruction() -> str:
 def inbound_instruction() -> str:
     """What the KeyHunt number's agent does when anyone calls it. The same number calls
     landlords, so callers are either the renter (with the passcode) or someone calling back."""
-    name = settings.renter_name
+    name = "the renter"
     pin = settings.briefing_pin
     callback = _callback_rules(name)
     if not pin:
@@ -131,7 +131,7 @@ def inbound_instruction() -> str:
         f"You answer calls to the KeyHunt line for {name}, who is looking for a rental. "
         "Greet the caller: \"Hi, you've reached KeyHunt. Who's calling?\"",
         "",
-        f"If the caller says they are {name} (or the renter), ask for their passcode. The passcode is "
+        f"If the caller says they are {name}, ask for their passcode. The passcode is "
         f"{' '.join(pin)}. If they say it correctly, give them their update using the facts below. "
         "If it's wrong, let them try once more, then treat them as any other caller. Never say the "
         "passcode out loud or hint at it.",

@@ -60,7 +60,7 @@ def main():
     clone.add_argument("--consent", action="store_true", help="Speaker explicitly consented to upload and cloning in this ElevenLabs account")
     preview = sub.add_parser("preview")
     preview.add_argument("--voice-id", required=True)
-    preview.add_argument("--speaker-name", default=os.environ.get("RENTER_NAME", "my client"))
+    preview.add_argument("--speaker-name", default="my client")
     preview.add_argument("--model", default=os.environ.get("ELEVENLABS_TTS_MODEL", "eleven_v4_turbo"))
     enroll = sub.add_parser("enroll")
     enroll.add_argument("--search-id", type=int, required=True)

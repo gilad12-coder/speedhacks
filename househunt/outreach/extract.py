@@ -76,7 +76,7 @@ def _assessment(payload: dict) -> Assessment:
                 return out
             return [clean(v) for v in value] if isinstance(value, list) else value
         with httpx.Client(timeout=90) as client:
-            response = client.post("https://api.openai.com/v1/responses",
+            response = client.post(f"{settings.openai_base_url}/responses",
                 headers={"Authorization": f"Bearer {settings.openai_api_key}"},
                 json={"model": settings.openai_model, "store": False, "max_output_tokens": 6000,
                       "instructions": SYSTEM, "input": json.dumps(payload),

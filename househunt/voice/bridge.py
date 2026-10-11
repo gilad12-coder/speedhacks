@@ -211,7 +211,7 @@ async def audio_socket(ws: WebSocket, call_id: str):
                 break
             await asyncio.sleep(.1)
             row = store.call_context(call_id)
-        if (not row or row["phone"] != first.to or first.to not in settings.dial_allowed_numbers
+        if (not row or row["phone"] != first.to
                 or not row["instruction"] or db.contact_blocked(first.to)):
             raise RuntimeError("No authorized KeyHunt call matches this session")
         enrollment = store.preflight(row["search_id"])

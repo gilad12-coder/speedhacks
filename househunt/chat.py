@@ -72,9 +72,6 @@ GENERAL_TOOL = {
 }
 
 # Fallbacks route around a refused request; only these models accept the "default" form.
-FALLBACK_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"}
-
-
 # --- context -----------------------------------------------------------------
 
 def _criteria_line(c) -> str:
@@ -212,7 +209,7 @@ def _respond(chat_id: int, user_text: str) -> Iterator[dict]:
     client = llm.client()
     tools = [PLACE_TOOL if chat["listing_key"] else GENERAL_TOOL]
     extra = ({"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
-             if settings.claude_model in FALLBACK_MODELS else {})
+             if settings.claude_model in llm.FALLBACK_MODELS else {})
     try:
         for _ in range(6):  # a few tool round-trips at most
             messages = [{"role": r["role"], "content": json.loads(r["content"])}
