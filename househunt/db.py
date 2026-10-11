@@ -210,7 +210,7 @@ class _Postgres:
 def conn():
     url = postgres_url()
     if url:
-        c = psycopg.connect(url, row_factory=_row_factory, connect_timeout=10)
+        c = psycopg.connect(url, row_factory=_row_factory, connect_timeout=10, prepare_threshold=None)  # Neon pooler (PgBouncer) cannot keep prepared statements
         try:
             c.execute(f'SET LOCAL search_path TO "{_schema_name()}"')
             yield _Postgres(c)
