@@ -38,8 +38,8 @@ def source_listings(criteria: SearchCriteria) -> tuple[list[Listing], list[str]]
             found = src.search(criteria)
             log.info("%s: %d listings", src.name, len(found))
             raw.extend(found)
-        except NotImplementedError:
-            errors.append(f"{src.name}: not implemented yet (skipped)")
+        except NotImplementedError:  # no live scraper for this site (see README)
+            log.info("%s: skipped, no live source", src.name)
         except (httpx.HTTPError, RuntimeError) as e:
             errors.append(f"{src.name}: {e}")
     return raw, errors

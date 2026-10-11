@@ -102,11 +102,17 @@
     .stat { padding: 8px 10px; } .stat b { font-size: 18px; } .stat span { font-size: 11px; }
   }
   .add-contact { width: 100%; }
+  .get-contact { width: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 10px 12px; border: 1px dashed var(--accent); border-radius: 10px; }
+  .get-contact > .small { flex: 1 1 100%; }
+  .get-contact form { display: flex; gap: 8px; flex: 1 1 260px; }
+  .get-contact form input { flex: 1; min-width: 0; }
   .add-contact summary { display: inline-flex; list-style: none; }
   .add-contact summary::-webkit-details-marker { display: none; }
   .add-contact form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
   .add-contact form p { grid-column: 1 / -1; margin: 0; }
   .add-listing { margin: 0 0 16px; }
+  .fb-links { margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
   .add-listing summary { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: inherit; font-size: 14px; }
   .add-listing form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 12px; }
   .add-listing .wide { grid-column: 1 / -1; }
@@ -162,6 +168,13 @@
 <script type="application/json" id="center">{{ center | tojson }}</script>
 </div>
 
+<div class="fb-links small muted">{{ icon("external", 13) }} Find more on Zillow
+  <span title="Open it, click Save search, and choose instant email alerts; new listings then show up in your searches via Gmail">(save the search for instant alerts)</span>:
+  {% for label, href in zillow_links(criteria) %}<a href="{{ href }}" target="_blank" rel="noopener">{{ label }}</a>{{ " · " if not loop.last }}{% endfor %}
+</div>
+<div class="fb-links small muted">{{ icon("external", 13) }} Find more on Facebook:
+  {% for label, href in facebook_links(criteria) %}<a href="{{ href }}" target="_blank" rel="noopener">{{ label }}</a>{{ " · " if not loop.last }}{% endfor %}
+</div>
 <details class="card add-listing" data-id="add-listing">
   <summary>{{ icon("plus", 16) }}<b>Add a listing you found</b>
     <span class="muted small">Zillow, Facebook Marketplace, Craigslist, anywhere. Paste the link and the contact if you have it.</span></summary>
@@ -223,12 +236,23 @@
             <button type="submit" class="{{ 'secondary' if call }}" title="{{ l.contact.phone }}">{{ icon("phone", 14) }}{{ "Call again" if call else "Call" }}</button>
           </form>
         {% endif %}
-        {% if l.status.value != "filtered" or l.contact %}
-          {% set missing = not (l.contact and l.contact.phone and l.contact.email) %}
-          <details class="add-contact" data-id="c-{{ l.key }}">
-            <summary class="btn secondary">{{ icon("plus", 14) }}{{ "Add contact" if not l.contact else ("Add phone/email" if missing else "Edit contact") }}</summary>
+        {% if not (l.contact and l.contact.phone) and l.status.value in ("candidate", "contacted", "not_viable") %}
+          {# Sites hide contacts from bots; the renter reveals it in their own browser and pastes it. #}
+          <div class="get-contact">
+            <div class="small"><b>Get the number to call.</b>
+              {% if l.contact_hint == "show_contact" %}Open the post and click <b>show contact info</b> in the description.
+              {% elif l.source.value == "craigslist" %}Open the post, click <b>reply</b>, and copy the phone or email it shows.
+              {% else %}Open the listing and copy the agent's phone or email.{% endif %}</div>
+            <a class="btn" href="{{ l.url }}" target="_blank" rel="noopener">{{ icon("external", 14) }}Reveal on {{ l.source.value | capitalize }}</a>
             <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/contact">
-              <p class="small muted">{% if l.source.value == "craigslist" %}On the listing, click <b>reply</b> or <b>show contact info</b>, then paste it here.{% else %}Copy the agent's details from the listing page.{% endif %}</p>
+              <input name="pasted" required placeholder="Paste the phone or email here">
+              <button type="submit" class="secondary">Save</button>
+            </form>
+          </div>
+        {% elif l.status.value != "filtered" or l.contact %}
+          <details class="add-contact" data-id="c-{{ l.key }}">
+            <summary class="btn secondary">{{ icon("plus", 14) }}{{ "Add contact" if not l.contact else "Edit contact" }}</summary>
+            <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/contact">
               <input name="phone" type="tel" placeholder="Phone, e.g. (415) 555-0199" value="{{ l.contact.phone if l.contact and l.contact.phone else '' }}">
               <input name="email" type="email" placeholder="Email" value="{{ l.contact.email if l.contact and l.contact.email else '' }}">
               <input name="name" placeholder="Name (optional)" value="{{ l.contact.name if l.contact and l.contact.name else '' }}">

@@ -466,17 +466,24 @@ def add_listing(search_id: int, url: str = Form(...), title: str = Form(""),
 
 @app.post("/searches/{search_id}/listings/{key}/contact")
 def add_contact(search_id: int, key: str, phone: str = Form(""), email: str = Form(""),
-                name: str = Form("")):
+                name: str = Form(""), pasted: str = Form("")):
     from househunt.manual import InvalidInput, set_contact
 
     listing = db.get_listing(search_id, key)
     if not listing:
         raise HTTPException(404)
     try:
-        set_contact(listing, phone, email, name)
+        set_contact(listing, phone, email, name, pasted=pasted)
     except InvalidInput as e:
         raise HTTPException(400, str(e))
     if listing.status == ListingStatus.FILTERED_OUT:
         listing.notes.append("contact added by you")
     db.upsert_listing(search_id, listing)
     return RedirectResponse(f"/searches/{search_id}#{key}", 303)
+
+
+# Pre-filled Facebook searches for the search page (see househunt/facebook.py).
+from househunt import facebook as _facebook  # noqa: E402
+
+templates.env.globals["facebook_links"] = _facebook.links
+templates.env.globals["zillow_links"] = _facebook.zillow_links

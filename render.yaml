@@ -32,3 +32,5 @@ services:
         sync: false
       - key: PUBLIC_BASE_URL
         sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false

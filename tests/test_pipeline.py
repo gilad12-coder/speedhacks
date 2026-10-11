@@ -274,3 +274,143 @@ def test_add_contact_and_listing_by_hand():
 
         assert client.post(f"/searches/{sid}/listings", data={"url": "not a link"},
                            follow_redirects=False).status_code == 400
+
+
+def test_neighborhood_matching():
+    from househunt.collect import mentions_neighborhood
+    from househunt.models import Listing, Source
+
+    def l(**kw):
+        return Listing(source=Source.CRAIGSLIST, source_id="x", url="u", title=kw.pop("title", ""), **kw)
+
+    assert mentions_neighborhood(l(neighborhood="mission district"), ["Mission"])
+    assert mentions_neighborhood(l(neighborhood="San Francisco, CA",
+                                   description="Sunny flat in the heart of the Mission"), ["mission"])
+    assert not mentions_neighborhood(l(address="1045 Mission St", neighborhood="SOMA"), ["Mission"])
+    assert mentions_neighborhood(l(title="Noe Valley 1BR"), ["Mission", "Noe Valley"])
+    assert not mentions_neighborhood(l(title="Oakland loft"), ["Mission"])
+
+
+def test_craigslist_site_and_query():
+    from househunt.sources.craigslist import neighborhood_query, site_for
+
+    assert site_for("San Francisco") == ("sfbay", "sfc")
+    assert site_for("Portland") == ("portland", None)
+    assert neighborhood_query(["Mission", "Noe Valley"]) == 'mission|"noe valley"'
+    assert neighborhood_query([]) is None
+
+
+FB_EMAIL = """
+<table><tr><td>
+  <a href="https://www.facebook.com/groups/sfhousing/posts/987654321/?ref=notif">
+    Jane posted in SF Housing</a>
+  <div>Room available in 2BR in the Mission, $1,650/mo, utilities included. Available Nov 1.
+    Text 415-555-0142.</div>
+</td></tr><tr><td>
+  <a href="https://www.facebook.com/groups/sfhousing/posts/111/">Selling my couch, great condition!</a>
+</td></tr></table>
+"""
+
+
+def test_parse_facebook_group_email():
+    from househunt.collect import normalize
+    from househunt.sources.email_alerts import parse_alert
+
+    out = parse_alert(FB_EMAIL, "Facebook <notification@facebookmail.com>")
+    assert [l.source_id for l in out] == ["987654321"]  # the couch isn't housing
+    post = normalize(out[0])
+    assert post.price == 1650 and post.beds == 2
+    assert post.url == "https://www.facebook.com/groups/sfhousing/posts/987654321/"
+    assert post.contact.phone == "+14155550142"
+
+
+def test_facebook_links():
+    from househunt.facebook import links
+    from househunt.models import SearchCriteria
+
+    out = dict(links(SearchCriteria(city="San Francisco", max_price=3500, neighborhoods=["Mission"])))
+    assert out["Marketplace rentals"] == \
+        "https://www.facebook.com/marketplace/sanfrancisco/propertyrentals?maxPrice=3500"
+    assert "query=Mission+apartment" in out["Marketplace: Mission"]
+    assert out["Groups: San Francisco housing"].endswith("q=San%20Francisco%20housing")
+
+
+def test_zillow_links():
+    import json
+    from urllib.parse import parse_qs, urlparse
+
+    from househunt.facebook import zillow_links
+    from househunt.models import SearchCriteria
+
+    [(label, url)] = zillow_links(SearchCriteria(city="San Francisco", max_price=3500,
+                                                 min_beds=1, neighborhoods=["Mission"]))
+    assert label == "Zillow: Mission, San Francisco"
+    assert urlparse(url).path == "/homes/for_rent/Mission-San-Francisco_rb/"
+    state = json.loads(parse_qs(urlparse(url).query)["searchQueryState"][0])
+    assert state["filterState"]["fr"] == {"value": True}           # rentals only
+    assert state["filterState"]["mp"] == {"max": 3500}
+    assert state["filterState"]["beds"] == {"min": 1}
+    assert len(zillow_links(SearchCriteria(city="Oakland", max_price=3000))) == 1
+
+
+def test_paste_contact_from_listing():
+    from fastapi.testclient import TestClient
+    from househunt import db
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        r = client.post("/searches", data={"city": "sf", "max_price": 3000, "min_beds": 1})
+        sid = int(r.url.path.rsplit("/", 1)[-1])
+        page = client.get(f"/searches/{sid}").text
+        assert "Get the number to call" in page and "Reveal on Facebook" in page
+
+        client.post(f"/searches/{sid}/listings/facebook:fb-42/contact",
+                    data={"pasted": "show contact info\n(510) 513-6710 ask for Jo"})
+        fb = db.get_listing(sid, "facebook:fb-42")
+        assert fb.contact.phone == "+15105136710"
+        assert "Get the number to call" not in client.get(f"/searches/{sid}").text.split(
+            'id="facebook:fb-42"')[1].split("</article>")[0]
+
+        bad = client.post(f"/searches/{sid}/listings/facebook:fb-42/contact",
+                          data={"pasted": "no contact here"}, follow_redirects=False)
+        assert bad.status_code == 400
+
+
+def test_firecrawl_fills_pasted_listing(monkeypatch):
+    import httpx
+    from househunt import firecrawl
+    from househunt.manual import listing_from_url
+    from househunt.models import SearchCriteria, Source
+
+    sent = []
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        sent.append(json)
+        return httpx.Response(200, request=httpx.Request("POST", url), json={"data": {"json": {
+            "title": "Bright 1BR at The Valencia", "monthly_rent": 3100, "bedrooms": 1,
+            "bathrooms": 1, "address": "1 Valencia St, San Francisco, CA",
+            "summary": "Top floor, in-unit laundry.", "available_date": "Nov 1",
+            "contact_phone": "(415) 555-0177", "contact_email": "leasing@valencia.example"}}})
+
+    monkeypatch.setattr(firecrawl, "configured", lambda: True)
+    monkeypatch.setattr(firecrawl.httpx, "post", fake_post)
+
+    c = SearchCriteria(city="San Francisco", max_price=3500, min_beds=1)
+    l = listing_from_url("https://valenciaapts.example/units/4b", c)
+    assert l.source == Source.OTHER
+    assert (l.title, l.price, l.beds, l.address) == (
+        "Bright 1BR at The Valencia", 3100, 1, "1 Valencia St, San Francisco, CA")
+    assert l.contact.phone == "+14155550177" and l.contact.email == "leasing@valencia.example"
+    assert "Available: Nov 1" in l.description
+    # Only basic proxies, no scripted clicks.
+    assert sent[0]["proxy"] == "basic" and "actions" not in sent[0]
+
+    # What the renter typed wins over the extraction.
+    l2 = listing_from_url("https://valenciaapts.example/units/4b", c, price=2900, phone="4155550100")
+    assert l2.price == 2900 and l2.contact.phone == "+14155550100"
+
+    # Zillow / Facebook are never sent to Firecrawl.
+    sent.clear()
+    listing_from_url("https://www.zillow.com/homedetails/x/1_zpid/", c)
+    listing_from_url("https://www.facebook.com/marketplace/item/9/", c)
+    assert sent == []

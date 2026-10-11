@@ -30,6 +30,7 @@ class Settings:
     google_client_id: str | None
     google_client_secret: str | None
     public_base_url: str | None      # e.g. https://househunt.onrender.com (for OAuth redirect)
+    firecrawl_api_key: str | None    # optional: parse pasted links from unsupported sites
 
 
 def load() -> Settings:
@@ -50,6 +51,7 @@ def load() -> Settings:
         google_client_id=env("GOOGLE_CLIENT_ID"),
         google_client_secret=env("GOOGLE_CLIENT_SECRET"),
         public_base_url=env("PUBLIC_BASE_URL"),
+        firecrawl_api_key=env("FIRECRAWL_API_KEY"),
     )
 
 

@@ -24,7 +24,8 @@ SITES = [
     ("zillow.com", Source.ZILLOW, re.compile(r"(\d+)_zpid")),
     ("trulia.com", Source.ZILLOW, re.compile(r"/(\d+)")),
     ("hotpads.com", Source.ZILLOW, re.compile(r"/([\w-]+)/?$")),
-    ("facebook.com", Source.FACEBOOK, re.compile(r"/marketplace/item/(\d+)")),
+    ("facebook.com", Source.FACEBOOK,
+     re.compile(r"/(?:marketplace/item|groups/[\w.]+/(?:posts|permalink))/(\d+)")),
     ("craigslist.org", Source.CRAIGSLIST, re.compile(r"/([\w]+?)(?:\.html)?/?$")),
     ("redfin.com", Source.REDFIN, re.compile(r"/(?:home|apartment)/(\d+)")),
     ("apartments.com", Source.APARTMENTS, re.compile(r"/(\w+)/?$")),
@@ -60,8 +61,26 @@ def normalize_email(raw: str) -> str | None:
     return raw
 
 
-def set_contact(listing: Listing, phone: str = "", email: str = "", name: str = "") -> Listing:
-    """Apply what the renter typed. Blank fields leave existing values alone."""
+def parse_pasted(text: str) -> tuple[str, str]:
+    """Pull a phone and/or email out of whatever the renter copied from the listing."""
+    from househunt.collect import extract_phone
+
+    text = text or ""
+    email = EMAIL_RE.search(text)
+    phone = extract_phone(text) or ""
+    if not phone and (m := re.search(r"\+\d[\d\s().-]{7,}", text)):
+        phone = m.group(0)
+    return phone, email.group(0) if email else ""
+
+
+def set_contact(listing: Listing, phone: str = "", email: str = "", name: str = "",
+                pasted: str = "") -> Listing:
+    """Apply what the renter typed or pasted. Blank fields leave existing values alone."""
+    if pasted.strip():
+        p_phone, p_email = parse_pasted(pasted)
+        if not (p_phone or p_email):
+            raise InvalidInput("Couldn't find a phone number or email in what you pasted")
+        phone, email = phone or p_phone, email or p_email
     phone_n, email_n = normalize_phone(phone), normalize_email(email)
     if not (phone_n or email_n or name.strip()):
         raise InvalidInput("Enter a phone number or email")
@@ -101,6 +120,8 @@ def listing_from_url(url: str, criteria: SearchCriteria, *, title: str = "",
     # Craigslist pages are public; fill in whatever the renter left blank.
     if source == Source.CRAIGSLIST:
         _fill_from_craigslist(listing)
+    else:
+        _fill_from_firecrawl(listing)
 
     if phone or email or contact_name:
         set_contact(listing, phone, email, contact_name)
@@ -146,3 +167,37 @@ def _fill_from_craigslist(listing: Listing) -> None:
         for junk in body.select(".print-information"):
             junk.decompose()
         listing.description = body.get_text(" ", strip=True)
+
+
+def _fill_from_firecrawl(listing: Listing) -> None:
+    """Fill blanks from Firecrawl's extraction (no-op unless FIRECRAWL_API_KEY is set)."""
+    from househunt import firecrawl
+
+    data = firecrawl.extract_listing(listing.url)
+    if not data:
+        return
+
+    def num(key, cast):
+        try:
+            return cast(data[key]) if data.get(key) not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+
+    listing.title = listing.title or (data.get("title") or "").strip()
+    listing.price = listing.price if listing.price is not None else num("monthly_rent", int)
+    listing.beds = listing.beds if listing.beds is not None else num("bedrooms", lambda v: int(float(v)))
+    listing.baths = listing.baths if listing.baths is not None else num("bathrooms", float)
+    listing.sqft = listing.sqft if listing.sqft is not None else num("sqft", int)
+    listing.address = listing.address or (data.get("address") or "").strip() or None
+    listing.neighborhood = listing.neighborhood or (data.get("neighborhood") or "").strip() or None
+    if not listing.description:
+        extra = f" Available: {data['available_date']}." if data.get("available_date") else ""
+        listing.description = ((data.get("summary") or "") + extra).strip()
+    if not (listing.contact and (listing.contact.phone or listing.contact.email)):
+        try:
+            if data.get("contact_phone") or data.get("contact_email"):
+                set_contact(listing, data.get("contact_phone") or "",
+                            data.get("contact_email") or "", data.get("contact_name") or "")
+        except InvalidInput:
+            pass  # extraction returned something that isn't a usable number/email
+    listing.notes.append("details read by Firecrawl")
