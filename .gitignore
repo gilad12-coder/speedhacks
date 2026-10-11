@@ -5,5 +5,3 @@ __pycache__/
 .idea/
 .DS_Store
 
-# Private meeting transcripts
-notes/
