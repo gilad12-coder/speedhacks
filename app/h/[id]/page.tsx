@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { CalendarCheck, CalendarX, CircleAlert, Users } from "lucide-react";
 import { confirmHouseholdBrief, startSearch } from "@/app/actions";
-import { mainAppUrl } from "@/lib/agent-worker";
+import Link from "next/link";
 import { ProfileMenu } from "@/components/profile-menu";
 import { Button, Wordmark } from "@/components/shell";
 import { buildSearchBrief } from "@/lib/brief";
@@ -65,7 +65,6 @@ export default async function HouseholdPage({
   // The household page comes after the interview; until it's done (and while answers can still change), send them back to it.
   if (!interview.done && !searchRequestedAt) redirect(`/h/${id}/interview`);
   const run = searchRequestedAt ? await getAgentRun(id) : null;
-  const keyhuntUrl = searchRequestedAt ? mainAppUrl(id) : null;
   const list = run ? shortlist(run) : [];
   const [booked, proposed] = await Promise.all([
     getBookedTours(id),
@@ -151,11 +150,9 @@ export default async function HouseholdPage({
                       : "Finding listings that fit your brief. Calls start once there are places to check. This page updates on its own."
                     : `Every place Keyhunt found, and what happened to it.`}
                 </p>
-                {keyhuntUrl && (
-                  <a href={keyhuntUrl} className="shrink-0 text-sm font-semibold text-green-ink underline decoration-line-strong underline-offset-4 hover:text-green">
-                    Open in KeyHunt →
-                  </a>
-                )}
+                <Link href={`/h/${id}/search`} className="shrink-0 text-sm font-semibold text-green-ink underline decoration-line-strong underline-offset-4 hover:text-green">
+                  Open your search →
+                </Link>
               </div>
               {run && <Pipeline run={run} />}
               {run?.progress?.length ? <details className="mt-4 text-sm text-ink-2"><summary>{run.progress.at(-1)}</summary><ol className="mt-2 space-y-1">{run.progress.map((step,i) => <li key={i}>{step}</li>)}</ol></details> : null}
