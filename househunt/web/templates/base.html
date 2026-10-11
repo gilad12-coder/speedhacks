@@ -1,0 +1,164 @@
+{%- from "_icons.html" import icon -%}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}KeyHunt{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  {% block head %}{% endblock %}
+  <style>
+    :root {
+      --bg:#f6f5f1; --surface:#ffffff; --sunken:#efeee9; --fg:#1d1d1b; --muted:#6b6b66; --faint:#9b9b94;
+      --line:#e4e2db; --accent:#2f6f4e; --accent-soft:#e3efe8; --on-accent:#ffffff;
+      --warn:#a4462b; --warn-soft:#f6e6e0;
+      --amber:#8a5f0f; --amber-soft:#f6edda; --blue:#2d5f8f; --blue-soft:#e2ebf4;
+      --side:#1f2a24; --side-fg:#d9e2dc; --side-muted:#8fa297; --side-hover:#2a3830; --side-active:#34463b;
+      --shadow:0 1px 2px rgba(20,20,15,.05), 0 2px 8px rgba(20,20,15,.04);
+      --radius:12px;
+    }
+    @media (prefers-color-scheme: dark) { :root {
+      --bg:#121311; --surface:#1b1c1a; --sunken:#161715; --fg:#ececea; --muted:#a2a29c; --faint:#74746e;
+      --line:#2c2d2a; --accent:#6fbf93; --accent-soft:#1d3127; --on-accent:#0f1a14;
+      --warn:#e48a6c; --warn-soft:#3a221b;
+      --amber:#e0b25a; --amber-soft:#352a16; --blue:#82b0db; --blue-soft:#1b2a38;
+      --side:#0d0f0e; --side-fg:#d4dbd6; --side-muted:#7d8a82; --side-hover:#18201b; --side-active:#22302a;
+      --shadow:0 1px 2px rgba(0,0,0,.3);
+    } }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg);
+      font:14.5px/1.5 Inter, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+    .icon { flex: none; }
+
+    /* --- shell ------------------------------------------------------------ */
+    .shell { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100vh; }
+    .sidebar { background: var(--side); color: var(--side-fg); position: sticky; top: 0; height: 100vh;
+      display: flex; flex-direction: column; padding: 18px 12px; gap: 2px; overflow-y: auto; }
+    .brand { display:flex; align-items:center; gap:10px; padding: 4px 10px 20px; color: #fff; font-weight: 700;
+      font-size: 17px; letter-spacing: -.01em; }
+    .brand:hover { text-decoration: none; }
+    .brand .logo { width: 30px; height: 30px; border-radius: 8px; background: #6fbf93; color:#0f1a14;
+      display:grid; place-items:center; }
+    .sidebar a.nav { display:flex; align-items:center; gap: 10px; padding: 8px 10px; border-radius: 8px;
+      color: var(--side-fg); font-weight: 500; }
+    .sidebar a.nav:hover, .sidebar a.recent:hover { background: var(--side-hover); text-decoration: none; }
+    .sidebar a.nav.active, .sidebar a.recent.active { background: var(--side-active); color: #fff; }
+    .sidebar .section { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--side-muted); padding: 20px 10px 6px; }
+    .sidebar a.recent { display:flex; align-items:center; justify-content: space-between; gap: 8px;
+      padding: 6px 10px; border-radius: 8px; color: var(--side-fg); font-size: 13.5px; }
+    .sidebar a.recent span:first-child { overflow:hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dot { width: 7px; height: 7px; border-radius: 99px; background: var(--side-muted); flex: none; }
+    .dot.sourcing, .dot.calling, .dot.pending { background: #e0b25a; animation: pulse 1.6s ease-in-out infinite; }
+    .dot.done { background: #6fbf93; } .dot.error { background: #e48a6c; }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(224,178,90,.25); } }
+    .sidebar .foot { margin-top: auto; padding: 14px 10px 4px; font-size: 12px; color: var(--side-muted);
+      border-top: 1px solid var(--side-hover); display:grid; gap: 4px; }
+    .sidebar .foot strong { color: var(--side-fg); font-weight: 500; }
+
+    .topbar { display: none; }
+    .page { max-width: 1180px; margin: 0 auto; padding: 32px 36px 64px; }
+    .page.wide { max-width: 1480px; }
+
+    @media (max-width: 860px) {
+      .shell { grid-template-columns: minmax(0, 1fr); }
+      .sidebar { position: fixed; inset: 0 auto 0 0; width: 260px; z-index: 1000; transform: translateX(-100%);
+        transition: transform .2s ease; }
+      body.nav-open .sidebar { transform: none; box-shadow: 0 0 0 100vmax rgba(0,0,0,.35); }
+      .topbar { display:flex; align-items:center; gap: 10px; padding: 10px 16px; background: var(--side);
+        color: #fff; position: sticky; top: 0; z-index: 900; }
+      .topbar button { background: none; border: 0; color: inherit; padding: 4px; }
+      .topbar a { color: #fff; font-weight: 700; }
+      .page { padding: 20px 16px 48px; }
+    }
+
+    /* --- shared components ------------------------------------------------- */
+    h1 { font-size: 24px; letter-spacing: -.02em; margin: 0; line-height: 1.25; }
+    h2 { font-size: 15.5px; margin: 28px 0 10px; letter-spacing: -.01em; }
+    /* Pages that open with an h2 (connections, email, alerts) get the page-title size. */
+    main.page > h2:first-child { font-size: 24px; letter-spacing: -.02em; margin: 0 0 14px; }
+    .page-head { display:flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+      flex-wrap: wrap; margin-bottom: 22px; }
+    .page-head p { margin: 4px 0 0; }
+    .muted { color: var(--muted); } .warn { color: var(--warn); } .small { font-size: 13px; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 18px; margin: 12px 0; box-shadow: var(--shadow); }
+    .card h3 { margin: 0 0 6px; font-size: 15.5px; display:flex; gap:8px; align-items:center; }
+    .card ol, .card ul { margin: 8px 0; padding-left: 20px; } .card li { margin: 4px 0; }
+    .flash { padding: 10px 14px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+    .flash.error { background: var(--warn-soft); color: var(--warn); }
+    .pill { display:inline-flex; align-items:center; gap: 5px; padding: 2px 9px; border-radius: 99px;
+      font-size: 12px; font-weight: 500; background: var(--sunken); color: var(--muted); white-space: nowrap; }
+    .pill.viable, .pill.tour_scheduled, .pill.done, .pill.ended { background: var(--accent-soft); color: var(--accent); }
+    .pill.candidate { background: var(--blue-soft); color: var(--blue); }
+    .pill.contacted, .pill.calling, .pill.sourcing, .pill.pending, .pill.queued, .pill.in_progress { background: var(--amber-soft); color: var(--amber); }
+    .pill.not_viable, .pill.error, .pill.failed { background: var(--warn-soft); color: var(--warn); }
+    .pill.filtered { color: var(--faint); }
+    button, .btn { font: inherit; font-weight: 500; font-size: 13.5px; display:inline-flex; align-items:center; gap:6px;
+      padding: 7px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent);
+      color: var(--on-accent); cursor: pointer; line-height: 1.3; }
+    button:hover, .btn:hover { filter: brightness(1.08); text-decoration: none; }
+    button.secondary, .btn.secondary { background: var(--surface); color: var(--fg); border-color: var(--line); }
+    button.secondary:hover, .btn.secondary:hover { background: var(--sunken); filter: none; }
+    label { display:flex; flex-direction:column; font-size: 13px; font-weight: 500; color: var(--fg); gap: 6px; }
+    label .hint { font-weight: 400; color: var(--muted); font-size: 12px; }
+    input, textarea, select { font: inherit; font-weight: 400; padding: 9px 11px; border:1px solid var(--line);
+      border-radius:8px; background: var(--surface); color: var(--fg); }
+    input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+    pre { white-space: pre-wrap; font-size: 12.5px; background: var(--sunken); padding: 12px; border-radius: 8px; }
+    code { font-size: 12.5px; background: var(--sunken); padding: 1px 5px; border-radius: 5px; }
+    .wrap { overflow-x: auto; }
+    table { width:100%; border-collapse: collapse; background: var(--surface); }
+    th, td { text-align:left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    .empty { text-align: center; padding: 56px 16px; color: var(--muted); }
+    .empty .icon { color: var(--faint); }
+    .empty p { margin: 8px 0 16px; }
+  </style>
+  {% block style %}{% endblock %}
+</head>
+<body>
+{% set path = request.url.path %}
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="/"><span class="logo">{{ icon("key", 18) }}</span>KeyHunt</a>
+    {% for href, label, ic in nav_items() %}
+      {% set active = path == href or (href == "/" and path.startswith("/searches/") and path != "/searches/new") %}
+      <a class="nav {{ 'active' if active }}" href="{{ href }}">{{ icon(ic) }}{{ label }}</a>
+    {% endfor %}
+    {% set recent = recent_searches() %}
+    {% if recent %}
+      <div class="section">Recent</div>
+      {% for id, city, status in recent %}
+        <a class="recent {{ 'active' if path == '/searches/' ~ id }}" href="/searches/{{ id }}" title="{{ status }}">
+          <span>{{ city }} <span style="opacity:.5">#{{ id }}</span></span><span class="dot {{ status }}"></span></a>
+      {% endfor %}
+    {% endif %}
+    <div class="foot">
+      <div>Calls: <strong>{{ settings.call_mode.value.replace("_", " ") }}</strong></div>
+      <div>Listings: <strong>{{ "mock data" if settings.mock_sources else "live" }}</strong></div>
+    </div>
+  </aside>
+  <div>
+    <div class="topbar">
+      <button type="button" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')">{{ icon("menu", 22) }}</button>
+      <a href="/">KeyHunt</a>
+    </div>
+    <main class="page {% block page_class %}{% endblock %}">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+<script>
+  document.addEventListener("click", e => {
+    if (document.body.classList.contains("nav-open") && !e.target.closest("#sidebar, .topbar button"))
+      document.body.classList.remove("nav-open");
+  });
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

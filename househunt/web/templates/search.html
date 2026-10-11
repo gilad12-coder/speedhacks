@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ criteria.city }} · KeyHunt{% endblock %}
+{% block page_class %}wide{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+{% endblock %}
+{% block style %}
+<style>
+  .crumb { font-size: 13px; color: var(--muted); display:inline-flex; gap: 6px; margin-bottom: 6px; }
+  .chips { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip { font-size: 12.5px; padding: 3px 10px; border-radius: 99px; background: var(--surface);
+    border: 1px solid var(--line); color: var(--muted); }
+  .chip b { color: var(--fg); font-weight: 500; }
+
+  .steps { display:flex; align-items:center; gap: 10px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .step { display:flex; align-items:center; gap: 7px; }
+  .step i { width: 20px; height: 20px; border-radius: 99px; border: 2px solid var(--line); display:grid;
+    place-items:center; font-style: normal; font-size: 11px; font-weight: 600; }
+  .step.done i { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .step.now { color: var(--fg); font-weight: 500; }
+  .step.now i { border-color: var(--amber); animation: pulse 1.6s ease-in-out infinite; }
+  .step.err i { border-color: var(--warn); background: var(--warn); color: #fff; }
+  .steps .bar { width: 28px; height: 2px; background: var(--line); }
+
+  .stats { display:grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .stat b { display:block; font-size: 22px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .stat.good b { color: var(--accent); }
+
+  .split { display:grid; grid-template-columns: minmax(380px, 1fr) minmax(0, 1.15fr); gap: 20px; align-items: start; }
+  .mapbox { position: sticky; top: 20px; height: calc(100vh - 40px); min-height: 420px; border-radius: var(--radius);
+    overflow: hidden; border: 1px solid var(--line); background: var(--sunken); }
+  #map { position:absolute; inset: 0; }
+  .map-empty[hidden] { display: none; }
+  .map-empty { position:absolute; inset: 0; display:grid; place-items:center; text-align:center; color: var(--muted);
+    font-size: 13px; padding: 24px; z-index: 500; pointer-events: none; }
+
+  .listing { margin: 0 0 12px; padding: 16px 18px; scroll-margin-top: 20px; transition: border-color .15s, box-shadow .15s; }
+  .listing.hot { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .listing .row1 { display:flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .listing .price { font-size: 19px; font-weight: 600; letter-spacing: -.02em; }
+  .listing .facts { color: var(--muted); font-size: 13px; margin-left: 8px; }
+  .listing .title { font-weight: 500; color: var(--fg); display:inline-flex; gap: 6px; align-items:center; margin-top: 2px; }
+  .listing .title .icon { color: var(--faint); }
+  .listing .where { font-size: 13px; color: var(--muted); display:flex; gap: 5px; align-items:center; margin-top: 2px; }
+  .src { text-transform: capitalize; }
+  .tour { display:flex; align-items:center; gap: 8px; margin-top: 12px; padding: 9px 12px; border-radius: 8px;
+    background: var(--accent-soft); color: var(--accent); font-size: 13.5px; }
+  .tour a { margin-left: auto; font-weight: 500; }
+  .outcome { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--line); background: var(--sunken);
+    border-radius: 0 8px 8px 0; font-size: 13.5px; }
+  .outcome.good { border-color: var(--accent); } .outcome.bad { border-color: var(--warn); }
+  .outcome .tradeoffs { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  .notes { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  .listing .actions { display:flex; align-items:center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .listing .actions form { margin: 0; }
+  .listing .actions .err { color: var(--warn); font-size: 12px; flex-basis: 100%; }
+  .listing details { flex-basis: 100%; }
+  .ruled-out { margin-top: 20px; }
+  .ruled-out > summary { font-size: 13.5px; font-weight: 500; padding: 6px 0; }
+  .ruled-out .listing { opacity: .75; }
+
+  /* map pins */
+  .pin { transform: translate(-50%, -100%); display:inline-block; padding: 3px 8px; border-radius: 99px;
+    background: var(--surface); color: var(--fg); border: 1.5px solid var(--muted); font: 600 12px/1.3 Inter, system-ui, sans-serif;
+    white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.18); position: relative; transition: transform .12s; }
+  .pin::after { content:""; position:absolute; left: 50%; bottom: -5px; width: 8px; height: 8px; background: inherit;
+    border-right: inherit; border-bottom: inherit; transform: translateX(-50%) rotate(45deg); }
+  .pin.candidate { border-color: var(--blue); }
+  .pin.contacted { border-color: var(--amber); }
+  .pin.viable, .pin.tour_scheduled { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .pin.filtered, .pin.not_viable { opacity: .55; border-color: var(--line); color: var(--muted); font-weight: 500; }
+  .pin.hot { transform: translate(-50%, -100%) scale(1.15); border-color: var(--fg); opacity: 1; z-index: 10; }
+  .leaflet-marker-icon.pin-wrap { background: none; border: 0; }
+  .leaflet-marker-icon.pin-wrap.hot { z-index: 9999 !important; }
+  /* Mute the OSM basemap so the price pins stand out; invert it for dark mode. */
+  .leaflet-tile-pane { filter: saturate(.35) contrast(.92) brightness(1.04); }
+  @media (prefers-color-scheme: dark) {
+    .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) saturate(.3) brightness(.85) contrast(.9); }
+  }
+  .leaflet-container { font-family: Inter, system-ui, sans-serif; background: var(--sunken); }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--surface); color: var(--fg); }
+  .leaflet-popup-content { margin: 10px 12px; font-size: 13px; }
+  .legend { position:absolute; left: 10px; bottom: 10px; z-index: 600; background: var(--surface); border-radius: 8px;
+    padding: 6px 10px; font-size: 12px; display:flex; gap: 10px; box-shadow: var(--shadow); border: 1px solid var(--line); }
+  .legend span { display:flex; align-items:center; gap: 5px; color: var(--muted); }
+  .legend i { width: 10px; height: 10px; border-radius: 99px; border: 2px solid; }
+
+  @media (max-width: 1100px) {
+    .split { grid-template-columns: minmax(0, 1fr); }
+    .mapbox { position: relative; top: 0; height: 340px; min-height: 0; order: -1; }
+  }
+  @media (max-width: 640px) {
+    .steps .bar { display: none; }
+    .stats { gap: 6px; }
+    .stat { padding: 8px 10px; } .stat b { font-size: 18px; } .stat span { font-size: 11px; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+{% set step_names = ["Find listings", "Call contacts", "Results"] %}
+{% set step_of = {"pending": 0, "sourcing": 0, "calling": 1, "done": 3, "error": -1} %}
+{% set cur = step_of.get(search.status, 0) %}
+{% set good = counts.viable + counts.tour_scheduled %}
+{% set called = calls | length %}
+{% set active = listings | rejectattr("status.value", "in", ["filtered", "not_viable"]) | list %}
+{% set ruled = listings | selectattr("status.value", "in", ["filtered", "not_viable"]) | list %}
+
+<div id="live" {% if refresh %}data-refresh="1"{% endif %}>
+<div class="page-head">
+  <div>
+    <a class="crumb" href="/">Searches</a>
+    <h1>{{ criteria.city }}</h1>
+    <div class="chips">
+      <span class="chip"><b>${{ "{:,}".format(criteria.min_price) }}–${{ "{:,}".format(criteria.max_price) }}</b>/mo</span>
+      <span class="chip"><b>{{ criteria.min_beds }}+</b> bd · <b>{{ criteria.min_baths | round(1) | replace(".0", "") }}+</b> ba</span>
+      {% for n in criteria.neighborhoods %}<span class="chip">{{ n }}</span>{% endfor %}
+      {% for m in criteria.must_haves %}<span class="chip">✓ {{ m }}</span>{% endfor %}
+      {% if criteria.move_in_by %}<span class="chip">Move in by <b>{{ criteria.move_in_by }}</b></span>{% endif %}
+    </div>
+  </div>
+  <div class="steps" aria-label="Progress">
+    {% for name in step_names %}
+      {% if not loop.first %}<span class="bar"></span>{% endif %}
+      {% if search.status == "error" and loop.first %}
+        <span class="step err"><i>!</i>Error</span>
+      {% else %}
+        <span class="step {{ 'done' if loop.index0 < cur else ('now' if loop.index0 == cur else '') }}">
+          <i>{{ "✓" if loop.index0 < cur else loop.index }}</i>{{ name }}</span>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+{% if search.error %}<div class="flash error small">{{ search.error }}</div>{% endif %}
+
+<div class="stats">
+  <div class="stat"><b>{{ listings | length }}</b><span>found</span></div>
+  <div class="stat"><b>{{ active | length }}</b><span>match</span></div>
+  <div class="stat"><b>{{ called }}</b><span>called</span></div>
+  <div class="stat good"><b>{{ good }}</b><span>viable</span></div>
+  <div class="stat good"><b>{{ counts.tour_scheduled }}</b><span>viewings</span></div>
+</div>
+
+<script type="application/json" id="pins">{{ pins | tojson }}</script>
+<script type="application/json" id="center">{{ center | tojson }}</script>
+</div>
+
+<div class="split">
+  <div id="listings">
+    {% macro listing_card(l) %}
+    {% set call = calls.get(l.key) %}{% set o = outcomes.get(l.key) %}{% set tour = tours.get(l.key) %}{% set email = emails.get(l.key) %}
+    <article class="card listing" data-key="{{ l.key }}">
+      <div class="row1">
+        <div>
+          <span class="price">{% if l.price %}${{ "{:,}".format(l.price) }}{% else %}—{% endif %}</span>
+          <span class="facts">{{ l.beds if l.beds is not none else "?" }} bd · {{ l.baths if l.baths is not none else "?" }} ba{% if l.sqft %} · {{ "{:,}".format(l.sqft) }} ft²{% endif %}</span>
+        </div>
+        <span class="pill {{ l.status.value }}">{{ l.status.value.replace("_", " ") }}</span>
+      </div>
+      <a class="title" href="{{ l.url }}" target="_blank" rel="noopener">{{ l.title }} {{ icon("external", 13) }}</a>
+      <div class="where">
+        <span class="src">{{ l.source.value }}</span>
+        {% if l.address or l.neighborhood %}· {{ l.address or l.neighborhood }}{% endif %}
+        {% if l.address and l.neighborhood %} · {{ l.neighborhood }}{% endif %}
+      </div>
+      {% if tour %}
+        <div class="tour">{{ icon("calendar", 16) }} Viewing <strong>{{ tour.start.replace("T", " ")[:16] }}</strong>
+          <a href="/tours/{{ tour.id }}.ics">Add to calendar</a></div>
+      {% endif %}
+      {% if o %}
+        <div class="outcome {{ 'good' if o.viable else 'bad' }}">{{ o.summary }}
+          {% if o.tradeoffs %}<div class="tradeoffs">Tradeoffs: {{ o.tradeoffs | join("; ") }}</div>{% endif %}
+        </div>
+      {% endif %}
+      {% set notes = l.notes | reject("equalto", o.summary if o else None) | select | list %}
+      {% if notes %}<div class="notes">{% for n in notes %}<div>{{ n }}</div>{% endfor %}</div>{% endif %}
+      {% set can_call = l.contact and l.contact.phone and l.status.value in ("candidate", "contacted", "not_viable") and not (call and call.status in ("queued", "in_progress")) %}
+      {% set app = tracked.get(l.key) %}
+      {% if call or can_call or app or email or l.status.value != "filtered" %}
+      <div class="actions">
+        {% if can_call %}
+          <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/call">
+            <button type="submit" class="{{ 'secondary' if call }}" title="{{ l.contact.phone }}">{{ icon("phone", 14) }}{{ "Call again" if call else "Call" }}</button>
+          </form>
+        {% elif not (l.contact and l.contact.phone) and l.status.value == "candidate" %}
+          <span class="muted small">No phone number in listing</span>
+        {% endif %}
+        {% if email and email.status == "sent" %}
+          <a class="pill viable" href="/emails/{{ email.id }}">{{ icon("mail", 12) }}Email sent</a>
+        {% elif email %}
+          <a class="btn secondary" href="/emails/{{ email.id }}">{{ icon("mail", 14) }}Review email draft</a>
+        {% elif l.status.value != "filtered" %}
+          <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/email">
+            <button type="submit" class="secondary" title="Claude drafts it; nothing sends until you approve">{{ icon("mail", 14) }}Draft email</button>
+          </form>
+        {% endif %}
+        {% if app %}
+          <a class="pill viable" href="/applications#app-{{ app.id }}">{{ icon("bookmark", 12) }}{{ stages(app.stage).label }}</a>
+        {% elif l.status.value != "filtered" %}
+          <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/track">
+            <button type="submit" class="secondary" title="Add to your applications board">{{ icon("bookmark", 14) }}Track</button>
+          </form>
+        {% endif %}
+        {% if call %}<span class="pill {{ call.status }}">{{ icon("phone", 12) }}{{ call.status.replace("_", " ") }}</span>{% endif %}
+        {% if call and call.error %}<div class="err">{{ call.error }}</div>{% endif %}
+        {% if call and call.transcript %}<details data-id="t-{{ l.key }}"><summary>Call transcript</summary><pre>{{ call.transcript }}</pre></details>{% endif %}
+      </div>
+      {% endif %}
+    </article>
+    {% endmacro %}
+
+    {% for l in active %}{{ listing_card(l) }}
+    {% else %}
+      <div class="card empty">
+        {% if refresh %}<p>Looking for listings…</p>{% else %}<p>No listings matched this search.</p>{% endif %}
+      </div>
+    {% endfor %}
+    {% if ruled %}
+      <details class="ruled-out" data-id="ruled-out">
+        <summary>{{ ruled | length }} ruled out (over budget, missing must-haves, or not available)</summary>
+        {% for l in ruled %}{{ listing_card(l) }}{% endfor %}
+      </details>
+    {% endif %}
+  </div>
+
+  <div class="mapbox">
+    <div id="map"></div>
+    <div class="map-empty" id="map-empty" hidden>{{ icon("pin", 28) }}<br>Listings will appear here once they're located.</div>
+    <div class="legend">
+      <span><i style="border-color: var(--blue)"></i>To call</span>
+      <span><i style="border-color: var(--amber)"></i>Called</span>
+      <span><i style="border-color: var(--accent); background: var(--accent)"></i>Viable</span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const map = L.map("map", { zoomControl: true, scrollWheelZoom: true });
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map);
+
+  const markers = new Map();   // listing key -> marker
+  let fitted = false;
+  const money = p => p == null ? "?" : p >= 1000 ? `$${(p / 1000).toFixed(p % 1000 ? 1 : 0)}k` : `$${p}`;
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
+  const card = key => document.querySelector(`.listing[data-key="${CSS.escape(key)}"]`);
+
+  function pinIcon(p, hot) {
+    return L.divIcon({ className: "pin-wrap" + (hot ? " hot" : ""), iconSize: null,
+      html: `<div class="pin ${p.status}${hot ? " hot" : ""}">${money(p.price)}</div>` });
+  }
+
+  function highlight(key, on) {
+    const m = markers.get(key);
+    if (m) { m.setIcon(pinIcon(m.pin, on)); m.setZIndexOffset(on ? 1000 : 0); }
+    card(key)?.classList.toggle("hot", on);
+  }
+
+  function render() {
+    const pins = JSON.parse(document.getElementById("pins").textContent);
+    const center = JSON.parse(document.getElementById("center").textContent);
+    const seen = new Set();
+    for (const p of pins) {
+      seen.add(p.key);
+      let m = markers.get(p.key);
+      if (!m) {
+        m = L.marker([p.lat, p.lng]).addTo(map);
+        m.on("mouseover", () => highlight(p.key, true));
+        m.on("mouseout", () => highlight(p.key, false));
+        m.on("click", () => {
+          const el = card(p.key);
+          const ruled = el?.closest("details.ruled-out");
+          if (ruled) ruled.open = true;
+          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+        markers.set(p.key, m);
+      }
+      m.pin = p;
+      m.setLatLng([p.lat, p.lng]).setIcon(pinIcon(p, false));
+      m.bindTooltip(`<b>${esc(p.title)}</b><br>${esc(money(p.price))}/mo · ${p.beds ?? "?"} bd · ${p.baths ?? "?"} ba`,
+                    { direction: "top", offset: [0, -28] });
+    }
+    for (const [k, m] of markers) if (!seen.has(k)) { m.remove(); markers.delete(k); }
+
+    document.getElementById("map-empty").hidden = pins.length > 0;
+    if (!fitted && pins.length) {
+      map.fitBounds(L.latLngBounds(pins.map(p => [p.lat, p.lng])).pad(0.25), { maxZoom: 15 });
+      fitted = true;
+    } else if (!fitted) {
+      center ? map.setView(center, 12) : map.setView([39.5, -98.35], 4);
+    }
+  }
+
+  function wireCards() {
+    document.querySelectorAll(".listing").forEach(el => {
+      el.addEventListener("mouseenter", () => highlight(el.dataset.key, true));
+      el.addEventListener("mouseleave", () => highlight(el.dataset.key, false));
+    });
+  }
+
+  render();
+  wireCards();
+
+  // Live updates: re-fetch this page while the search is running and swap in the new
+  // header, listings and pins, keeping the map and any open transcripts as they are.
+  async function poll() {
+    if (!document.getElementById("live").dataset.refresh) return;
+    try {
+      const res = await fetch(location.href, { headers: { "Accept": "text/html" } });
+      const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+      const open = new Set([...document.querySelectorAll("details[open][data-id]")].map(d => d.dataset.id));
+      for (const id of ["live", "listings", "sidebar"]) {
+        const fresh = doc.getElementById(id);
+        if (fresh) document.getElementById(id).replaceWith(fresh);
+      }
+      document.querySelectorAll("details[data-id]").forEach(d => { if (open.has(d.dataset.id)) d.open = true; });
+      render();
+      wireCards();
+    } catch (e) { console.warn("refresh failed", e); }
+    setTimeout(poll, 3000);
+  }
+  setTimeout(poll, 3000);
+})();
+</script>
+{% endblock %}

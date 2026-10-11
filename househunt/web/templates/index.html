@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Searches · KeyHunt{% endblock %}
+{% block style %}
+<style>
+  .grid-cards { display:grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+  a.search-card { display:flex; flex-direction:column; gap: 12px; color: inherit; margin: 0;
+    transition: border-color .15s, transform .15s; }
+  a.search-card:hover { text-decoration: none; border-color: var(--accent); transform: translateY(-1px); }
+  .search-card .top { display:flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .search-card .city { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+  .search-card .crit { font-size: 13px; color: var(--muted); }
+  .search-card .nums { display:grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    border-top: 1px solid var(--line); padding-top: 12px; }
+  .search-card .nums b { display:block; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .search-card .nums span { font-size: 12px; color: var(--muted); }
+  .search-card .when { font-size: 12px; color: var(--faint); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Searches</h1>
+    <p class="muted">Each search sources listings, calls the promising ones, and books viewings.</p>
+  </div>
+  <a class="btn" href="/searches/new">{{ icon("plus", 16) }}New search</a>
+</div>
+
+{% if searches %}
+<div class="grid-cards">
+  {% for row, c, n in searches %}
+  {% set found = n.values() | sum %}
+  {% set good = n.get("viable", 0) + n.get("tour_scheduled", 0) %}
+  <a class="card search-card" href="/searches/{{ row.id }}">
+    <div class="top">
+      <div>
+        <div class="city">{{ c.city }}</div>
+        <div class="crit">${{ "{:,}".format(c.min_price) }}–${{ "{:,}".format(c.max_price) }} · {{ c.min_beds }}+ bd{% if c.neighborhoods %} · {{ c.neighborhoods | join(", ") }}{% endif %}</div>
+      </div>
+      <span class="pill {{ row.status }}">{{ row.status }}</span>
+    </div>
+    <div class="nums">
+      <div><b>{{ found }}</b><span>found</span></div>
+      <div><b>{{ good }}</b><span>viable</span></div>
+      <div><b>{{ n.get("tour_scheduled", 0) }}</b><span>viewings</span></div>
+    </div>
+    <div class="when">#{{ row.id }} · started {{ row.created_at[:16].replace("T", " ") }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty">
+  {{ icon("home", 36) }}
+  <p>No searches yet. Tell KeyHunt what you're looking for and it takes it from there.</p>
+  <a class="btn" href="/searches/new">{{ icon("plus", 16) }}Start your first search</a>
+</div>
+{% endif %}
+{% endblock %}

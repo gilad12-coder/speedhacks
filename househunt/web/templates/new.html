@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}New search · KeyHunt{% endblock %}
+{% block style %}
+<style>
+  .form-card { max-width: 760px; padding: 0; }
+  .form-card fieldset { border: 0; margin: 0; padding: 22px 24px; border-bottom: 1px solid var(--line); }
+  .form-card legend { float: left; width: 100%; padding: 0; margin-bottom: 14px; font-weight: 600; font-size: 14px; }
+  .form-card .fields { clear: both; display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .form-card .fields.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 640px) { .form-card .fields, .form-card .fields.three { grid-template-columns: minmax(0, 1fr); } }
+  .form-card .full { grid-column: 1 / -1; }
+  .form-card .actions { padding: 18px 24px; display:flex; justify-content: space-between; align-items: center;
+    gap: 12px; flex-wrap: wrap; background: var(--sunken); border-radius: 0 0 var(--radius) var(--radius); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>New search</h1>
+    <p class="muted">KeyHunt finds listings, calls the contacts with an AI voice agent, and books viewings in your free times.</p>
+  </div>
+</div>
+
+<form class="card form-card" method="post" action="/searches">
+  <fieldset>
+    <legend>Where and how much</legend>
+    <div class="fields">
+    <label>City <input name="city" required placeholder="San Francisco" autofocus></label>
+    <label>Neighborhoods <span class="hint">Optional, comma separated</span>
+      <input name="neighborhoods" placeholder="Mission, Noe Valley"></label>
+    <label>Min rent ($/mo) <input name="min_price" type="number" min="0" step="50" value="0"></label>
+    <label>Max rent ($/mo) <input name="max_price" type="number" min="0" step="50" required placeholder="3500"></label>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>The place</legend>
+    <div class="fields three">
+    <label>Bedrooms (min) <input name="min_beds" type="number" min="0" value="1"></label>
+    <label>Bathrooms (min) <input name="min_baths" type="number" min="0" step="0.5" value="1"></label>
+    <label>Move in by <input name="move_in_by" type="date"></label>
+    <label class="full">Must-haves <span class="hint">The agent asks about each one on the call</span>
+      <input name="must_haves" placeholder="in-unit laundry, cats OK, parking"></label>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Viewings</legend>
+    <div class="fields">
+    <label class="full">When you're free <span class="hint">The agent offers these times when booking a viewing</span>
+      <input name="tour_availability" placeholder="weekdays after 6pm, Saturday morning"></label>
+    </div>
+  </fieldset>
+  <div class="actions">
+    <span class="muted small">Calls: <strong>{{ settings.call_mode.value.replace("_", " ") }}</strong>{% if settings.call_mode.value == "approve" %} · you'll approve each call{% elif settings.call_mode.value == "auto" %} · top {{ settings.max_auto_calls }} called automatically{% endif %}</span>
+    <button type="submit">Start search {{ icon("arrow", 16) }}</button>
+  </div>
+</form>
+{% endblock %}

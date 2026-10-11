@@ -1,0 +1,34 @@
+# Render blueprint: New > Blueprint > point at this repo.
+services:
+  - type: web
+    name: househunt
+    runtime: docker
+    plan: starter            # persistent disks need a paid plan
+    healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: CALL_MODE
+        value: approve
+      - key: MOCK_SOURCES
+        value: "0"
+      - key: DIAL_API_KEY
+        sync: false
+      - key: DIAL_FROM_NUMBER
+        sync: false
+      - key: NOTIFY_NUMBER
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APP_PASSWORD
+        generateValue: true
+      - key: RENTER_NAME
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
