@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -18,6 +19,9 @@ class MustHaveCheck(BaseModel):
 
 
 class CallSummary(BaseModel):
+    voicemail: bool = False
+    voicemail_left: bool = False
+    callback_requested: bool = False
     reached_person: bool
     available: bool | None
     monthly_rent: int | None
@@ -55,7 +59,13 @@ Extract actual monthly rent only when stated, never copy advertised rent. Do not
 Extract deposit, lease term and application instructions as details only with evidence.
 Tour offers need a specific date, start, end or explicit duration, and timezone offset. Resolve relative dates against started_at in the property timezone. Never invent a duration, timezone or past date. An offer is not a confirmed booking.
 Set confirmed_tour only when the agent explicitly requested/accepted a specific appointment and the CONTACT subsequently said it is booked, confirmed, scheduled or reserved. Cite both turns and the contact's date/time evidence. 'You could come', 'an option', 'I'll check', unanswered requests, conditional appointments and general availability are NOT bookings. Include the exact start, end, timezone offset and meeting address. Flag any required payment or application. Never turn a hypothetical or an earlier/cancelled appointment into a booking. If no mutual final confirmation, confirmed_tour=null.
-Detect voicemail and reached_person separately. A greeting that says the owner is unavailable and asks the caller to leave a message is voicemail, even if it starts with 'Hey there'. Cite an explicit opt-out in do_not_call. If unsupported, leave null or empty; never invent quotes or timestamps."""
+Detect voicemail and reached_person separately. A greeting that says the owner is unavailable and asks the caller to leave a message is voicemail, even if it starts with 'Hey there'. voicemail_message needs the AGENT's actual complete message spoken AFTER the greeting, including callback number; never cite an instruction or intent to leave a message. callback_request needs the CONTACT's explicit request to call back later because they cannot talk now; an offer to call us back is not such a request. Cite an explicit opt-out in do_not_call. If unsupported, leave null or empty; never invent quotes or timestamps."""
+
+
+def unanswered(message: str) -> CallSummary:
+    return CallSummary(reached_person=False, available=None, monthly_rent=None, deposit=None,
+        lease_terms=None, move_in_ok=None, must_haves=[], offered_times=[], do_not_call=False,
+        viable=False, tradeoffs=[], summary=message)
 
 
 def has_credentials() -> bool:
@@ -120,6 +130,7 @@ def extract(transcript: str, listing: Listing, criteria: SearchCriteria,
     if started.tzinfo is None:
         started = started.replace(tzinfo=ZoneInfo(settings.call_timezone))
     assessment = _assessment({"started_at": started.isoformat(), "timezone": settings.call_timezone,
+        "callback_number": raw.get('callback_number'),
         "listing": {"address": listing.address, "advertised_rent": listing.price, "beds": listing.beds, "baths": listing.baths, "url": listing.url, "title": listing.title},
         "booking_authorization": raw.get("booking_context", {}),
         "requirements": requirements(criteria, listing), "transcript": [{"turn_index": i, **t} for i, t in enumerate(turns)]})
@@ -132,11 +143,28 @@ def extract(transcript: str, listing: Listing, criteria: SearchCriteria,
                "ruled_out": "The call confirmed a mismatch with the search requirements.",
                "unconfirmed": "Some requirements remain unconfirmed; review the call evidence."}[status]
     booked = result["confirmed_tour"]
+    def cited(ref, speaker):
+        return bool(ref and 0 <= ref.turn_index < len(turns) and turns[ref.turn_index]['speaker'] == speaker and ref.quote in turns[ref.turn_index]['text'])
+    message = assessment.voicemail_message
+    def spoken_digits(text):
+        for word, digit in {'zero':'0', 'oh':'0', 'one':'1', 'two':'2', 'three':'3', 'four':'4', 'five':'5', 'six':'6', 'seven':'7', 'eight':'8', 'nine':'9'}.items():
+            text = re.sub(r'\b' + word + r'\b', digit, text, flags=re.I)
+        return re.sub(r'\D', '', text)
+    number = spoken_digits(raw.get('callback_number') or '')[-10:]
+    left = bool(assessment.voicemail and cited(message, 'agent') and message.turn_index > 0
+        and len(number) == 10 and number in spoken_digits(message.quote)
+        and re.search(r'call.{0,30}back|reach.{0,30}at', message.quote, re.I)
+        and any(t['speaker'] == 'contact' for t in turns[:message.turn_index]))
+    callback = assessment.callback_request
+    retry = bool(cited(callback, 'contact') and re.search(r'call.{0,35}(back|later|tomorrow)|try.{0,20}(again|later)', callback.quote, re.I) and not result['do_not_call'])
+    if assessment.voicemail:
+        summary = 'Voicemail message left; waiting for a callback.' if left else 'Voicemail reached; message delivery unconfirmed.'
     if booked:
         summary = "Listing details verified. The contact confirmed a tour booking."
     elif result["listing_verified"] is True and status != "verified":
         summary = "Listing details verified; some renter eligibility or requirements remain unconfirmed."
     return CallSummary(reached_person=assessment.reached_person and not assessment.voicemail,
+        voicemail=assessment.voicemail, voicemail_left=left, callback_requested=retry,
         available=passed("available"), monthly_rent=result["monthly_rent"], deposit=details.get("deposit"),
         lease_terms=details.get("lease_terms"), move_in_ok=passed("move_in"),
         must_haves=[MustHaveCheck(item=m, ok=passed(f"must:{i}")) for i, m in enumerate(criteria.must_haves)],

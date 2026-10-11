@@ -20,7 +20,17 @@ services:
       - key: RUN_PLATFORM_WORKER
         value: "1"
       - key: CALL_MODE
-        value: approve
+        value: auto
+      - key: RUN_OUTREACH_WORKER
+        value: "1"
+      - key: DIAL_CALL_VERIFIED_CONTACTS
+        value: "1"
+      - key: INBOUND_CALLBACKS
+        value: "1"
+      - key: MAX_AUTO_CALLS
+        value: "15"
+      - key: SCREEN_TOP_N
+        value: "10"
       - key: MOCK_SOURCES
         value: "0"
       - key: DIAL_API_KEY

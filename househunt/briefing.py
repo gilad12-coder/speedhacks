@@ -22,7 +22,7 @@ def _when(iso: str) -> str:
 
 def facts() -> str:
     """Plain facts about the search right now, written to be read aloud."""
-    now = datetime.now()
+    now = datetime.now().astimezone()
     lines = [f"Status as of {now:%A %B %-d, %-I:%M %p}."]
 
     searches = db.list_searches()
@@ -50,6 +50,8 @@ def facts() -> str:
     for t in db.all_tours():
         try:
             start = datetime.fromisoformat(t["start"])
+            if start.tzinfo is None:
+                start = start.astimezone()
         except ValueError:
             continue
         if now <= start <= now + timedelta(days=7):

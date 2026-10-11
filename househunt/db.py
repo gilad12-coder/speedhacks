@@ -13,6 +13,18 @@ from househunt.config import settings
 from househunt.models import Listing, SearchCriteria
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS outreach_jobs (
+    search_id INTEGER NOT NULL,
+    listing_key TEXT NOT NULL,
+    state TEXT NOT NULL,
+    scheduled_at TEXT,
+    reason TEXT NOT NULL,
+    hours TEXT NOT NULL DEFAULT '{}',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_call_id INTEGER,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(search_id, listing_key)
+);
 CREATE TABLE IF NOT EXISTS household_jobs (
     household_id TEXT PRIMARY KEY,
     search_id INTEGER NOT NULL UNIQUE,
@@ -173,7 +185,7 @@ def init() -> None:
     with conn() as c:
         c.executescript(SCHEMA)
         columns = {r[1] for r in c.execute("PRAGMA table_info(calls)")}
-        for name, kind in {"raw": "TEXT", "attempt_key": "TEXT", "phone": "TEXT", "mode": "TEXT", "instruction": "TEXT", "booking_context": "TEXT"}.items():
+        for name, kind in {"raw": "TEXT", "attempt_key": "TEXT", "phone": "TEXT", "mode": "TEXT", "instruction": "TEXT", "booking_context": "TEXT", "direction": "TEXT DEFAULT 'outbound'", "search_context": "TEXT"}.items():
             if name not in columns:
                 c.execute(f"ALTER TABLE calls ADD COLUMN {name} {kind}")
         columns = {r[1] for r in c.execute("PRAGMA table_info(tours)")}
@@ -292,11 +304,17 @@ def create_call(search_id: int, listing_key: str) -> int:
         return cur.lastrowid
 
 
-def claim_call(search_id: int, listing_key: str, phone: str, mode: str) -> sqlite3.Row | None:
+def claim_call(search_id: int, listing_key: str, phone: str, mode: str, follow_up_after: int | None = None) -> sqlite3.Row | None:
     """Reserve once across concurrent button clicks; retries retain the provider key."""
     with conn() as c:
         c.execute("BEGIN IMMEDIATE")
         existing = c.execute("SELECT * FROM calls WHERE search_id=? AND listing_key=? ORDER BY id DESC LIMIT 1", (search_id, listing_key)).fetchone()
+        if existing and follow_up_after == existing["id"] and existing["status"] == "ended":
+            outcome = json.loads(existing["outcome"] or "{}")
+            attempts = c.execute("SELECT COUNT(*) FROM calls WHERE search_id=? AND listing_key=? AND direction='outbound'", (search_id, listing_key)).fetchone()[0]
+            if (outcome.get("reached_person") and not outcome.get("callback_requested")) or outcome.get("do_not_call") or attempts >= settings.max_contact_attempts:
+                return None
+            existing = None  # A terminal unanswered call gets a new bounded attempt.
         if existing:
             if existing["phone"] != phone:
                 return None
@@ -322,11 +340,13 @@ def block_contact(phone: str) -> None:
 
 def contact_called_today(phone: str, except_id: int) -> bool:
     with conn() as c:
-        count = c.execute("SELECT COUNT(*) FROM calls WHERE phone=? AND id<>? AND mode='live' AND substr(created_at,1,10)=?", (phone, except_id, now()[:10])).fetchone()[0]
+        count = c.execute("SELECT COUNT(*) FROM calls WHERE phone=? AND id<>? AND mode='live' AND direction='outbound' AND dial_call_id IS NOT NULL AND substr(created_at,1,10)=?", (phone, except_id, now()[:10])).fetchone()[0]
         return count >= settings.max_calls_per_number_per_day
 
 
 def update_call(call_id: int, **fields) -> None:
+    if "search_context" in fields and not isinstance(fields["search_context"], str):
+        fields["search_context"] = json.dumps(fields["search_context"])
     if "booking_context" in fields and not isinstance(fields["booking_context"], str):
         fields["booking_context"] = json.dumps(fields["booking_context"])
     if "raw" in fields and not isinstance(fields["raw"], str):

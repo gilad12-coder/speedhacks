@@ -96,11 +96,20 @@ def workspace(household_id: str):
     apps = db.applications_for_search(search_id)
     listings = [_card(l, calls.get(l.key), emails.get(l.key), tours.get(l.key), apps.get(l.key))
                 for l in db.list_listings(search_id)]
+    from househunt.outreach.scheduler import jobs
+    outreach = {j['listing_key']:j for j in jobs(search_id)}
+    for listing in listings:
+        job = outreach.get(listing['id'])
+        listing['outreach'] = {'state':job['state'], 'scheduledAt':job['scheduled_at'], 'reason':job['reason'],
+            'hoursSource':job['hours'].get('source'), 'hoursQuote':job['hours'].get('quote'),
+            'timezone':job['hours'].get('timezone'), 'attempts':job['attempts']} if job else None
     return {
         "search": {"id": search_id, "status": row["status"], "error": row["error"],
                    "criteria": dataclasses.asdict(criteria)},
         "listings": listings,
         "callingEnabled": settings.call_mode.value != "dry_run" and not settings.mock_sources,
+        "autonomousCalling": settings.call_mode.value == 'auto' and settings.outreach_worker and not settings.mock_sources,
+        "callbackReady": settings.callback_enabled and bool(db.get_state('inbound_synced_at')),
     }
 
 

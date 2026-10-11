@@ -56,8 +56,11 @@ async def lifespan(_: FastAPI):
     from househunt import platform
     platform.start_background_worker()
     stop = phone.start_background()   # keeps the call-in briefing fresh, when switched on
+    from househunt.outreach import scheduler
+    outreach_stop = scheduler.start_background()
     yield
     stop.set()
+    outreach_stop.set()
 
 
 app = FastAPI(title="KeyHunt", lifespan=lifespan, dependencies=[Depends(require_auth)])
@@ -232,6 +235,13 @@ def show_search(request: Request, search_id: int):
              "status": l.status.value, "beds": l.beds, "baths": l.baths}
             for l in listings if l.lat is not None and l.lng is not None]
     counts = {s.value: 0 for s in ListingStatus}
+    from househunt.outreach.scheduler import jobs
+    outreach = {j['listing_key']:j for j in jobs(search_id)}
+    from zoneinfo import ZoneInfo
+    for job in outreach.values():
+        if job['scheduled_at']:
+            job['display_at'] = datetime.fromisoformat(job['scheduled_at']).astimezone(ZoneInfo(job['hours'].get('timezone', settings.call_timezone))).strftime('%a %b %d, %-I:%M %p %Z')
+    in_flight = in_flight or any(j['state'] in ('checking_hours','scheduled','calling') for j in outreach.values())
     for l in listings:
         counts[l.status.value] += 1
     return templates.TemplateResponse(request, "search.html", {
@@ -240,6 +250,7 @@ def show_search(request: Request, search_id: int):
         "settings": settings, "pins": pins, "center": geo.cached(criteria.city),
         "counts": counts, "tracked": tracked, "stages": AppStage,
         "research_events": db.search_events(search_id),
+        "outreach": outreach,
         "place_notes": place_notes, "chats": chats,
     })
 
@@ -254,7 +265,7 @@ def call_listing(background: BackgroundTasks, search_id: int, key: str, next: st
     existing = db.calls_for_search(search_id).get(key)
     if existing and existing["status"] not in ("attention", "failed"):
         raise HTTPException(409, "Call already exists; no replacement call was started")
-    background.add_task(pipeline.call_listing, search_id, key)
+    background.add_task(pipeline.request_call, search_id, key)
     # Only same-site paths, so the form can't bounce anyone to another site.
     back = next if next.startswith("/") and not next.startswith("//") else f"/searches/{search_id}"
     return RedirectResponse(back, status_code=303)
@@ -291,7 +302,8 @@ def household_call(background: BackgroundTasks, household_id: str, key: str):
     listing = db.get_listing(search_id, key)
     if not listing or not listing.contact or not listing.contact.phone:
         raise HTTPException(400, 'A listing contact phone is required')
-    if not settings.mock_sources and settings.call_mode.value != 'dry_run' and listing.contact.phone not in settings.dial_allowed_numbers:
+    from househunt.outreach.scheduler import permitted
+    if not settings.mock_sources and settings.call_mode.value != 'dry_run' and not permitted(listing, settings):
         raise HTTPException(400, 'This contact has not been enabled for calling by the operator')
     call_listing(background, search_id, key)
     return {'ok':True}

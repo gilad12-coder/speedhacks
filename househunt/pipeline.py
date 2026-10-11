@@ -8,7 +8,7 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from dataclasses import replace
+from dataclasses import asdict, replace
 
 import httpx
 
@@ -139,9 +139,14 @@ def _run_search(search_id: int, on_update=lambda: None) -> None:
         callable_ = [l for l in listings
                      if l.status == ListingStatus.CANDIDATE and l.contact and l.contact.phone]
         if settings.call_mode == CallMode.AUTO and not settings.mock_sources:
-            from househunt.research.engine import auto_call_eligible
-            callable_ = [l for l in callable_ if auto_call_eligible(l)]
-        if settings.call_mode in (CallMode.AUTO, CallMode.DRY_RUN):
+            from househunt.outreach.scheduler import enqueue
+            candidates = [l for l in listings if l.status == ListingStatus.CANDIDATE]
+            for listing in candidates[:settings.max_auto_calls]:
+                enqueue(search_id, listing.key)
+                publish()
+            if len(candidates) > settings.max_auto_calls:
+                db.search_event(search_id, f'Automatic call limit: {settings.max_auto_calls}. Additional listings need a manual call request.')
+        elif settings.call_mode in (CallMode.AUTO, CallMode.DRY_RUN):
             db.set_search_status(search_id, "calling")
             futures = [_call_pool.submit(call_listing, search_id, l.key)
                        for l in callable_[: settings.max_auto_calls]]
@@ -244,7 +249,23 @@ def call_listing(search_id: int, key: str) -> None:
         _call_listing(search_id, key)
 
 
-def _call_listing(search_id: int, key: str) -> None:
+def request_call(search_id: int, key: str) -> None:
+    """All UI requests use the same durable office-hours queue as autonomous searches."""
+    if settings.call_mode == CallMode.DRY_RUN or settings.mock_sources:
+        return call_listing(search_id, key)
+    existing = db.calls_for_search(search_id).get(key)
+    if existing and existing['status'] in ('attention', 'failed') and existing['dial_call_id']:
+        if existing['direction'] == 'inbound':
+            from househunt.outreach.callbacks import process
+            process(json.loads(existing['raw']))
+            return
+        return call_listing(search_id, key)  # Processing saved evidence never makes a new call.
+    from househunt.outreach.scheduler import enqueue, run_due
+    enqueue(search_id, key)
+    run_due(search_id, key)
+
+
+def _call_listing(search_id: int, key: str, follow_up_after: int | None = None) -> None:
     found = db.get_search(search_id)
     listing = db.get_listing(search_id, key)
     if not found or not listing or not listing.contact or not listing.contact.phone:
@@ -253,10 +274,14 @@ def _call_listing(search_id: int, key: str) -> None:
         return
     criteria, _ = found
     dry_run = settings.call_mode == CallMode.DRY_RUN or settings.mock_sources
-    row = db.claim_call(search_id, key, listing.contact.phone, "dry_run" if dry_run else "live")
+    row = db.claim_call(search_id, key, listing.contact.phone, "dry_run" if dry_run else "live", follow_up_after)
     if row is None:
         return
     call_id = row["id"]
+    if row['search_context']:
+        snapshot = json.loads(row['search_context'])
+        listing = Listing.from_dict(snapshot['listing'])
+        criteria = SearchCriteria(**snapshot['criteria'])
     booking_context = json.loads(row["booking_context"]) if row["booking_context"] else {"enabled": False, "windows": []}
     try:
         if not dry_run and not has_credentials():
@@ -277,8 +302,9 @@ def _call_listing(search_id: int, key: str) -> None:
                     phone = listing.contact.phone
                     if not re.fullmatch(r"\+1[2-9]\d{9}", phone) or re.fullmatch(r"\+1\d{3}55501\d{2}", phone):
                         raise RuntimeError("A real US E.164 contact number is required")
-                    if phone not in settings.dial_allowed_numbers:
-                        raise RuntimeError("Contact is not in DIAL_ALLOWED_NUMBERS")
+                    from househunt.outreach.scheduler import permitted
+                    if not permitted(listing, settings):
+                        raise RuntimeError("Contact is not approved or independently corroborated for automatic calling")
                     if db.contact_blocked(phone):
                         raise RuntimeError("Contact requested no further calls")
                     if db.contact_called_today(phone, call_id):
@@ -287,10 +313,14 @@ def _call_listing(search_id: int, key: str) -> None:
                 # A retry with a saved provider call never changes its original authorization.
                 if not row["instruction"]:
                     booking_context = booking.prepare(search_id, key, criteria) if not dry_run else {"enabled": False, "windows": []}
+                    if not dry_run and settings.callback_enabled:
+                        from househunt import phone as callback_phone
+                        callback_phone.ensure_callbacks()
                 call_criteria = replace(criteria, renter_name=voice_profile["speaker_name"]) if voice_profile else criteria
                 instruction = row["instruction"] or build_instruction(listing, call_criteria, settings.renter_name,
                     db.place_notes(search_id,key), booking_context=booking_context)
-                db.update_call(call_id, instruction=instruction, booking_context=booking_context)
+                db.update_call(call_id, instruction=instruction, booking_context=booking_context,
+                    search_context={'criteria': asdict(call_criteria), 'listing': listing.to_dict()})
                 placed = dial.place_call(listing.contact.phone, instruction,
                     max_seconds=settings.call_max_seconds, idempotency_key=row["attempt_key"])
                 provider_id = placed.id
@@ -301,11 +331,17 @@ def _call_listing(search_id: int, key: str) -> None:
         transcript = ended.transcript or "\n".join(f'{t.get("speaker", "unknown")}: {t.get("text", "")}' for t in ended.raw.get("transcriptTurns") or [])
         # Save evidence BEFORE model work, so extraction failures never lose the call.
         ended.raw["booking_context"] = booking_context
+        ended.raw.setdefault('callback_number', db.get_state('phone_number') or settings.dial_from_number)
         db.update_call(call_id, raw=ended.raw, transcript=transcript, status="extracting")
         contact_text = " ".join(t.get("text", "") for t in ended.raw.get("transcriptTurns") or [] if t.get("speaker") in ("user", "contact"))
         if re.search(r"\b(do not|don't|stop) call(ing)?|remove (me|my number)|never call", contact_text, re.I):
             db.block_contact(listing.contact.phone)
         if not transcript:
+            if re.search(r'no.?answer|busy|unanswered', ended.label + ' ' + str(ended.termination), re.I):
+                from househunt.outreach.extract import unanswered
+                summary = unanswered('No answer; listing details remain unconfirmed.')
+                db.update_call(call_id, status='ended', outcome=summary.model_dump(), error=None)
+                return
             raise RuntimeError(f"No transcript available ({ended.label}); inspect the saved call")
         started_at = datetime.fromisoformat(ended.raw["createdAt"]) if ended.raw.get("createdAt") else datetime.fromisoformat(row["created_at"])
         summary = extract(transcript, listing, criteria, call_date=started_at, raw=ended.raw, dry_run=dry_run)
@@ -325,6 +361,8 @@ def _call_listing(search_id: int, key: str) -> None:
 
 
 def apply_outcome(search_id: int, listing: Listing, s: CallSummary, call_id: int | None = None) -> None:
+    # Don't overwrite edits made to the listing while the call was in flight.
+    listing = db.get_listing(search_id, listing.key) or listing
     if s.summary not in listing.notes:
         listing.notes.append(s.summary)
     listing.status = (ListingStatus.VIABLE if s.viable else

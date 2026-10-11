@@ -91,8 +91,8 @@ def test_call_hears_wishes_and_exports_quoted_answers(platform):
         'mustHaves':['Pets allowed'],'niceToHaves':['In-unit laundry'],'wishes':['A quiet street'],
         'commute':{'destination':'Office','modes':['transit'],'maxMinutes':30}})
     text = build_instruction(Listing(source=Source.OTHER,source_id='1',url='https://e.com',title='Rental'),c,'Dana')
-    must, prefs = text.index('Pets allowed'), text.index('preferences')
-    assert must < prefs < text.index('In-unit laundry') and text.index('A quiet street') > prefs and 'Office' in text
+    assert all(value in text for value in ('Pets allowed', 'In-unit laundry', 'A quiet street', 'Office'))
+    assert 'They never rule a place out' in text and 'search_brief' in text
     outcome = {'confirmed_facts':[{'key':'must:0','passed':True,'summary':'Cats are fine','evidence':[{'callId':'dial-x','t':12.5,'quote':'cats are fine'}]}]}
     rows = {r['key']:r for r in p.call_answers(c,outcome,'7')}
     assert rows['must:0'] == {'key':'must:0','group':'matches','label':'Pets allowed','passed':True,'summary':'Cats are fine',

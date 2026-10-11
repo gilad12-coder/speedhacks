@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AgentRun, Call, CallAnswer, Listing } from "@/lib/types";
 import { CHECK_LABELS, CHECK_ORDER, checksFor, formatClock, primaryCall } from "@/lib/view";
 import { ScreeningDetails } from "./screening";
+import { OutreachStatus } from "@/components/outreach-status";
 
 export function PlacePanel({
   listing,
@@ -69,6 +70,7 @@ export function PlacePanel({
         </div>
 
         <div className="flex-1 overflow-y-auto">
+        <div className="px-7"><OutreachStatus job={run.outreach?.find(j => j.listingId === listing.id)} /></div>
         {listing.research && (
           <section aria-labelledby="screening-title" className="border-b border-line px-7 py-5">
             <h3 id="screening-title" className="mb-3 text-sm font-semibold text-ink">Checked online</h3>
