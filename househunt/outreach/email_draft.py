@@ -53,8 +53,8 @@ def draft_email(listing: Listing, criteria: SearchCriteria, renter_name: str) ->
             messages=[{"role": "user", "content": prompt}],
             output_format=EmailDraft,
             output_config={"effort": "low"},
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
+            **({"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
+               if settings.claude_model in llm.FALLBACK_MODELS else {}),
         )
     except anthropic.APIError:
         log.exception("Claude draft failed; using template")
