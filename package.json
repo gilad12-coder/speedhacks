@@ -11,7 +11,9 @@
     "db:migrate": "node --env-file=.env.local scripts/migrate.mjs"
   },
   "dependencies": {
+    "@vis.gl/react-maplibre": "^8.1.3",
     "lucide-react": "^1.55.0",
+    "maplibre-gl": "^6.14.0",
     "next": "^15.5.27",
     "postgres": "^3.4.9",
     "react": "^19.1.0",

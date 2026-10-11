@@ -16,6 +16,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Requ
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 
 from househunt import chat as agent, db, geo, pipeline
 from househunt.connectors import google
@@ -50,6 +51,8 @@ async def lifespan(_: FastAPI):
 
     db.init()
     db.recover_calls()
+    from househunt.voice.enrollment import recover_pending
+    recover_pending()
     from househunt import platform
     platform.start_background_worker()
     stop = phone.start_background()   # keeps the call-in briefing fresh, when switched on
@@ -58,6 +61,28 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="KeyHunt", lifespan=lifespan, dependencies=[Depends(require_auth)])
+from househunt.voice.enrollment import router as voice_router
+app.include_router(voice_router)
+app.mount("/voice-assets", StaticFiles(directory=Path(__file__).parent / "static"), name="voice-assets")
+
+
+@app.get("/searches/{search_id}/voice", response_class=HTMLResponse)
+def voice_page(request: Request, search_id: int):
+    from househunt.voice.enrollment import SCRIPT
+    found = db.get_search(search_id)
+    if not found:
+        raise HTTPException(404, "Search not found")
+    return templates.TemplateResponse(request, "voice.html", {"search_id": search_id,
+        "speaker_name": found[0].renter_name or settings.renter_name, "script": SCRIPT},
+        headers={"Cache-Control": "private, no-store", "Permissions-Policy": "microphone=(self)"})
+
+
+@app.get("/households/{household_id}/voice")
+def household_voice_page(household_id: str):
+    sid = db.household_search(household_id)
+    if sid is None:
+        raise HTTPException(404, "Start your household search before setting up its voice")
+    return RedirectResponse(f"/searches/{sid}/voice", status_code=303)
 
 from househunt.web.household_api import router as _household_api  # noqa: E402
 
@@ -254,7 +279,8 @@ def call_recording(call_id: int):
     path = recording_path(call_id)
     if path is None or not path.is_file():
         raise HTTPException(404, "Recording not imported")
-    return FileResponse(path, media_type="audio/wav", headers={"Cache-Control": "private, no-store"})
+    return FileResponse(path, media_type="audio/mpeg" if path.suffix == ".mp3" else "audio/wav",
+                        headers={"Cache-Control": "private, no-store"})
 
 
 @app.post('/agent/households/{household_id}/listings/{key}/call')
@@ -310,6 +336,7 @@ def calls_page(request: Request):
     for c in db.all_calls():
         listing, criteria = _listing_info(cache, c["search_id"], c["listing_key"])
         calls.append({"call": c, "listing": listing, "city": criteria.city if criteria else "",
+                      "tour": next((t for t in db.tours_for_search(c["search_id"]).values() if t["source_call_id"] == c["id"]), None),
                       "outcome": json.loads(c["outcome"]) if c["outcome"] else None})
     return templates.TemplateResponse(request, "calls.html", {"settings": settings, "calls": calls})
 
@@ -601,9 +628,22 @@ def tour_ics(tour_id: int):
     listing = db.get_listing(tour["search_id"], tour["listing_key"])
     body = to_ics(tour_id, tour["start"], listing.title if listing else "Viewing",
                   tour["address"], tour["contact_name"] or tour["contact_phone"],
-                  listing.url if listing else None)
+                  listing.url if listing else None, end_iso=tour["end"])
     return Response(body, media_type="text/calendar",
                     headers={"Content-Disposition": f'attachment; filename="tour-{tour_id}.ics"'})
+
+
+@app.post("/tours/{tour_id}/calendar-sync")
+def retry_tour_calendar(tour_id: int):
+    from househunt.outreach.booking import retry_sync
+    tour = db.get_tour(tour_id)
+    if not tour:
+        raise HTTPException(404)
+    try:
+        retry_sync(tour_id)
+    except Exception:
+        db.update_tour_calendar(tour_id, "pending", "Tour booked; calendar sync could not complete. Check your calendar connection and retry.")
+    return RedirectResponse(f"/searches/{tour['search_id']}#{tour['listing_key']}", status_code=303)
 
 
 # --- connections ------------------------------------------------------------

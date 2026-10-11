@@ -44,6 +44,7 @@ class SearchCriteria:
     nice_to_haves: list[str] = field(default_factory=list)
     move_in_from: str | None = None
     commute: dict = field(default_factory=dict)
+    wishes: list[str] = field(default_factory=list)       # interview answers in the household's words
 
 
 @dataclass
@@ -117,10 +118,3 @@ class AppStage(str, Enum):
     @property
     def closed(self) -> bool:
         return self in (AppStage.REJECTED, AppStage.WITHDRAWN)
-
-
-class CallStatus(str, Enum):
-    QUEUED = "queued"
-    IN_PROGRESS = "in_progress"
-    ENDED = "ended"
-    FAILED = "failed"

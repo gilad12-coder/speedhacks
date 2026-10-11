@@ -1,13 +1,13 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { ArrowRight, CalendarCheck, ExternalLink, Mail, Phone, Star } from "lucide-react";
+import { ArrowRight, CalendarCheck, CheckCircle2, ExternalLink, Mail, Phone, Star } from "lucide-react";
 import { callRental } from "@/app/actions";
 import { Button } from "@/components/shell";
 import type { WorkspaceListing } from "@/lib/workspace";
-import { draftEmail, logViewing, markInterested, saveContact, updateEmail, type ActionState } from "./actions";
+import { draftEmail, logViewing, markInterested, retryCalendarSync, saveContact, updateEmail, type ActionState } from "./actions";
 
-const STATUS: Record<WorkspaceListing["status"], { label: string; tone: string }> = {
+export const STATUS: Record<WorkspaceListing["status"], { label: string; tone: string }> = {
   new: { label: "New", tone: "bg-sunk text-ink-2" },
   candidate: { label: "To check", tone: "bg-sunk text-ink-2" },
   filtered: { label: "Outside your search", tone: "bg-sunk text-ink-3" },
@@ -32,7 +32,7 @@ export function ListingCard({ householdId, listing, callingEnabled }: { househol
   const status = STATUS[listing.status] ?? STATUS.candidate;
   const phone = listing.contact?.phone ?? null;
   const callRunning = listing.call && ["queued", "in_progress", "extracting"].includes(listing.call.status);
-  const canCall = Boolean(phone) && !callRunning && !["filtered", "tour_scheduled"].includes(listing.status);
+  const canCall = Boolean(phone) && (!listing.call || ["attention", "failed"].includes(listing.call.status)) && !["filtered", "tour_scheduled"].includes(listing.status);
   const needsContact = !phone && !listing.contact?.email && listing.status !== "filtered";
 
   function run(task: () => Promise<{ error?: string } | ActionState>, done = "") {
@@ -73,13 +73,36 @@ export function ListingCard({ householdId, listing, callingEnabled }: { househol
       {listing.viewing && (
         <p className="mt-3 flex flex-wrap items-center gap-2 text-sm">
           <CalendarCheck aria-hidden className="size-4 text-green-ink" />
-          Viewing <strong>{when(listing.viewing.start)}</strong>
-          {listing.viewing.calendarUrl && (
+          {listing.viewing.confirmedOnCall ? "Tour confirmed on call" : "Viewing"} <strong>{when(listing.viewing.start)}{listing.viewing.end ? ` – ${new Date(listing.viewing.end).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}` : ""}</strong>
+          {listing.viewing.calendarStatus === "synced" && <span className="text-green-ink">✓ Calendar synced</span>}
+          {listing.viewing.calendarUrl && !listing.viewing.confirmedOnCall && (
             <a className="text-green-ink underline underline-offset-4" href={listing.viewing.calendarUrl} target="_blank" rel="noopener noreferrer">
               Add to Google Calendar
             </a>
           )}
         </p>
+      )}
+
+      {listing.viewing?.confirmedOnCall && listing.viewing.calendarStatus !== "synced" && (
+        <div className="mt-2 text-sm text-amber-ink"><p role="status">{listing.viewing.calendarError || "Tour booked. Calendar sync pending."}</p>
+          <Button variant="quiet" disabled={pending} onClick={() => run(() => retryCalendarSync(householdId, listing.id), "Calendar synced.")}>Retry calendar sync</Button>
+        </div>
+      )}
+      {listing.call && (
+        <div className="mt-3 text-sm">
+          {listing.call.listingVerified === true
+            ? <span className="inline-flex items-center gap-1.5 rounded-full bg-green-soft px-3 py-1 font-medium text-green-ink"><CheckCircle2 aria-hidden className="size-4" />Listing verified</span>
+            : <span className={`rounded-full px-3 py-1 ${listing.call.listingVerified === false ? "bg-red-soft text-red-ink" : "bg-sunk text-ink-2"}`}>{listing.call.listingVerified === false ? "Listing details differ" : "Listing unconfirmed"}</span>}
+          {!!listing.call.verificationEvidence?.length && <details className="mt-2 text-ink-2">
+            <summary className="cursor-pointer">What the contact confirmed</summary>
+            <p className="mt-1 text-xs">Checks the advertised unit and details. Ownership and fraud screening remain separate.</p>
+            {listing.call.verificationEvidence.map((fact) => <div key={fact.key} className="mt-2">
+              <p>{fact.summary}</p>
+              {fact.evidence.map((ev, i) => <blockquote key={i} className="ml-3 text-xs">{Math.floor(ev.t / 60)}:{String(Math.floor(ev.t % 60)).padStart(2, "0")} — “{ev.quote}”</blockquote>)}
+            </div>)}
+          </details>}
+          {listing.call.bookingWarning && <p className="mt-2 text-amber-ink">{listing.call.bookingWarning}</p>}
+        </div>
       )}
 
       {listing.call?.summary && (
@@ -100,7 +123,7 @@ export function ListingCard({ householdId, listing, callingEnabled }: { househol
         {canCall && callingEnabled && (
           <Button variant={listing.call ? "secondary" : "primary"} disabled={pending}
                   onClick={() => run(() => callRental(householdId, listing.id), "Calling now. Results show up here when the call ends.")}>
-            <Phone aria-hidden className="size-4" />{listing.call ? "Call again" : "Call"}
+            <Phone aria-hidden className="size-4" />{listing.call ? "Resume saved call" : "Verify & arrange tour"}
           </Button>
         )}
         {callRunning && <span className="text-sm text-ink-2">Call in progress…</span>}
@@ -116,6 +139,7 @@ export function ListingCard({ householdId, listing, callingEnabled }: { househol
           </Button>
         )}
       </div>
+      {canCall && callingEnabled && !listing.call && <p className="mt-2 text-xs text-ink-3">Your AI assistant confirms the exact listing and can book a tour when everyone&apos;s connected calendar is free. Otherwise it collects times for you.</p>}
       {message && <p role="status" className="mt-3 text-sm text-ink-2">{message}</p>}
 
       {listing.email && listing.email.status !== "discarded" && <EmailDraft householdId={householdId} email={listing.email} />}
@@ -155,7 +179,7 @@ function NextStep({ householdId, listing, canCall, run, pending }: {
             <Mail aria-hidden className="size-4" />Draft the email
           </Button>
         )}
-        {step.action === "prepare" && step.href && (
+        {step.action === "prepare" && step.href && !listing.viewing?.confirmedOnCall && (
           <a className="inline-flex h-10 items-center gap-2 rounded-md bg-green px-4 text-sm font-medium text-on-green" href={step.href} target="_blank" rel="noopener noreferrer">
             <CalendarCheck aria-hidden className="size-4" />Add to Google Calendar
           </a>
@@ -234,7 +258,7 @@ function EmailDraft({ householdId, email }: { householdId: string; email: NonNul
   return (
     <div className="mt-4 rounded-xl border border-line bg-sunk/40 p-4">
       <p className="text-sm font-semibold">Email draft</p>
-      <p className="text-xs text-ink-3">Nothing sends from KeyHunt. Review it, then open it in your Gmail to send.</p>
+      <p className="text-xs text-ink-3">Opens in Gmail for you to send.</p>
       <label className="mt-3 block text-xs font-medium text-ink-2">To
         <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="agent@example.com" type="email"
                className="mt-1 h-10 w-full rounded-md border border-line-strong bg-surface px-3 text-sm" />

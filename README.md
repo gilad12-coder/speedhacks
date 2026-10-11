@@ -13,7 +13,7 @@ sources (citation-backed web search · public property pages · craigslist · Gm
          └─> cross-search: address/contact corroboration, conflicting terms, comparable rents
          └─> call (Dial POST /api/v1/calls, poll GET /api/v1/calls/{id})
                └─> extract (OpenAI/Anthropic: facts + exact transcript evidence)
-                     └─> unbooked tour offers + optional renter notification
+                     └─> exact listing verification → confirmed tours or unbooked offers
 ```
 
 ## Run locally
@@ -63,7 +63,7 @@ The default call cap is 180 seconds. Calls are serialized, fictional 555 numbers
 
 Live extraction uses OpenAI when `OPENAI_API_KEY` exists, otherwise Anthropic. It never falls back to keyword guesses. The raw response and transcript are saved before extraction; provider errors are shown without response bodies or credentials. Opt-outs persist even if extraction fails. Dry runs are explicitly labeled synthetic and never invoke either model provider.
 
-`calls.outcome` now includes `checks` (real/matches/fit/tour with `{callId,t,quote}` evidence), `transcript_turns`, `offered_windows`, `verification_status`, and `mode`, while preserving the existing UI summary fields. Missing evidence stays unknown, not rejected or verified. Tenant qualifications may remain unknown because intake does not collect financial eligibility. Offers never create a tour, calendar event or application automatically. The calendar owner can consume `offered_windows` for the separate confirmation step.
+`calls.outcome` includes `checks` (real/matches/fit/tour with `{callId,t,quote}` evidence), `transcript_turns`, `offered_windows`, `verification_status`, `listing_verified`, `confirmed_tour`, `booking_warning`, and `mode`, while preserving existing summary fields. The green listing check requires the contact to confirm the exact address/unit, authority, availability, advertised rent and bed/bath counts. Financial eligibility remains separate. The agent can book a concrete tour within freshly checked household calendar availability after both sides explicitly confirm it; missing calendars leave it collecting offers. Only confirmed bookings create tours, viewing-tracker entries and calendar events. Calendar retries are idempotent and never redial. See [the integration contract](docs/agent-integration.md#exact-listing-verification-and-booking-on-calls).
 
 Dial's dashboard provides recordings through expiring signed links; the documented public API does not expose a recording-download endpoint. For demo replay, download the call's WAV from Dial → Voice Calls and import it with:
 
@@ -90,7 +90,8 @@ househunt/
   sources/           one module per site, each with fetch() + mock_results()
   collect.py         normalize / dedupe / filter / score
   outreach/
-    script.py        verification + tour-offer voice prompt
+    script.py        exact-listing verification + authorized tour-booking prompt
+    booking.py       fresh availability, confirmed tours and calendar retries
     dial.py          Dial REST client + FakeDialClient for dry runs
     extract.py       transcript -> cited CallSummary via OpenAI/Anthropic
     verification.py  exact-quote, timestamp, requirement and tour-window checks

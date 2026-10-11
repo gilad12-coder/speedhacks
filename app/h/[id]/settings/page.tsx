@@ -4,6 +4,7 @@ import { ProfileMenu } from "@/components/profile-menu";
 import { Wordmark } from "@/components/shell";
 import { getHouseholdState, isMember } from "@/lib/households";
 import { getAccount, getHousemateId } from "@/lib/session";
+import { mainAppUrl } from "@/lib/agent-worker";
 
 const CALENDAR_NOTICES: Record<string, { tone: "green" | "amber"; text: string }> = {
   connected: { tone: "green", text: "Google Calendar is connected." },
@@ -32,6 +33,7 @@ export default async function SettingsPage({
   const account = await getAccount();
   const name = account?.firstName ? `${account.firstName} ${account.lastName}`.trim() : me.name;
   const notice = calendar ? CALENDAR_NOTICES[calendar] : undefined;
+  const voiceUrl = state.searchRequestedAt ? mainAppUrl(id) : null;
 
   return (
     <div className="min-h-dvh">
@@ -85,6 +87,16 @@ export default async function SettingsPage({
           </div>
         </section>
 
+        <section aria-labelledby="voice-title" className="mt-10">
+          <h2 id="voice-title" className="text-sm font-medium text-ink-3">Your assistant’s voice</h2>
+          <div className="mt-3 rounded-2xl border border-line bg-surface px-6 py-5">
+            <p className="font-medium">Let your AI assistant sound like you</p>
+            <p className="mt-2 text-sm leading-relaxed text-ink-3">Record two minutes so calls use your voice. It always says it’s an AI.</p>
+            {voiceUrl ? <a href={`${voiceUrl}/voice`} className="mt-4 inline-block text-sm font-semibold text-green-ink underline">Record my voice in KeyHunt</a>
+              : <p className="mt-3 text-sm text-ink-3">Start your household search to set up its voice.</p>}
+          </div>
+        </section>
+
         <section aria-labelledby="calendar-title" className="mt-10">
           <h2 id="calendar-title" className="text-sm font-medium text-ink-3">
             Calendar
@@ -101,7 +113,7 @@ export default async function SettingsPage({
                 </span>
               </p>
               <p className="mt-0.5 text-sm text-ink-2">
-                Keyhunt only reads when you&apos;re busy and adds tours you accept. It never reads event details.
+                Reads only when you&apos;re busy, never event details.
               </p>
             </div>
             <a

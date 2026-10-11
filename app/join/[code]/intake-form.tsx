@@ -5,11 +5,9 @@ import { startTransition, useActionState, useEffect, useRef, useState } from "re
 import { submitIntake, type FormState } from "@/app/actions";
 import { DateField, todayIso } from "@/components/date-field";
 import { NumberStepper } from "@/components/number-stepper";
-import { SelectField } from "@/components/select-field";
 import { AddressField } from "@/components/address-field";
 import { CommuteModes } from "@/components/commute-modes";
 import { Button } from "@/components/shell";
-import { INCOME_BANDS } from "@/lib/features";
 import type { Housemate } from "@/lib/types";
 
 const inputClass =
@@ -95,19 +93,14 @@ export function IntakeForm({
   };
   const stepRefs = useRef<(HTMLDivElement | null)[]>([]);
   const firstRender = useRef(true);
-  const band = me
-    ? INCOME_BANDS.findIndex((b) => b.min === me.incomeBandUsd.min)
-    : -1;
 
   const steps: Step[] = [
     {
       key: "you",
       icon: UserRound,
       title: "First, a little about you",
-      hint: solo
-        ? "Landlords often ask about income. Keyhunt only shares the range, never more."
-        : "Housemates see your name. Income only counts toward the group total.",
-      fields: ["firstName", "lastName", "incomeBand"],
+      hint: "The name Keyhunt gives landlords.",
+      fields: ["firstName"],
       body: (err) => (
         <div className="grid gap-6">
           <div className="grid grid-cols-2 gap-4">
@@ -124,29 +117,6 @@ export function IntakeForm({
                 className={inputClass}
               />
             </Field>
-            <Field label="Last name" htmlFor="q-last-name" error={err.lastName}>
-              <input
-                id="q-last-name"
-                name="lastName"
-                data-field="lastName"
-                data-required="Add your last name"
-                defaultValue={names.lastName}
-                autoComplete="family-name"
-                maxLength={60}
-                aria-invalid={!!err.lastName}
-                className={inputClass}
-              />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Yearly income, roughly" htmlFor="q-income" error={err.incomeBand}>
-              <SelectField
-                id="q-income"
-                name="incomeBand"
-                defaultValue={String(band >= 0 ? band : 1)}
-                options={INCOME_BANDS.map((b, i) => ({ value: String(i), label: b.label }))}
-              />
-            </Field>
           </div>
         </div>
       ),
@@ -155,7 +125,7 @@ export function IntakeForm({
       key: "where",
       icon: MapPin,
       title: "Where you want to live",
-      hint: "Keyhunt looks for places in this one area. Any address works too; we keep just its city.",
+      hint: "A city or any address.",
       fields: ["location"],
       body: (err) => (
         <Field label="City, neighborhood or address" htmlFor="q-location" error={err.location}>
@@ -178,7 +148,6 @@ export function IntakeForm({
       key: "rent",
       icon: Wallet,
       title: "Rent and move-in",
-      hint: "What you'd pay and when you could move.",
       fields: ["maxBudgetUsd", "moveInFrom", "moveInTo"],
       body: (err) => (
         <div className="grid gap-6">
@@ -231,7 +200,6 @@ export function IntakeForm({
       key: "commute",
       icon: Route,
       title: "Your commute",
-      hint: "Keyhunt checks travel time from every place to here.",
       fields: ["commuteDestination", "maxCommuteMinutes"],
       body: (err) => (
         <div className="grid gap-6">
@@ -269,7 +237,7 @@ export function IntakeForm({
       key: "modes",
       icon: TrainFront,
       title: "How you get there",
-      hint: "Pick every way you'd go. A place counts as close if any of them is quick enough.",
+      hint: "Pick all that apply.",
       fields: ["commuteModes"],
       body: (err) => (
         <Field label="Ways you'd commute" error={err.commuteModes}>

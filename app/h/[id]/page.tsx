@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { CalendarCheck, CalendarX, CircleAlert, Users } from "lucide-react";
+import { CalendarCheck, CalendarX, ChevronDown, CircleAlert, Users } from "lucide-react";
 import { confirmHouseholdBrief, startSearch } from "@/app/actions";
 import Link from "next/link";
 import { ProfileMenu } from "@/components/profile-menu";
@@ -19,12 +19,11 @@ import { proposeTourSlots } from "@/lib/tours";
 import type { Household } from "@/lib/types";
 import {
   pipelineCounts,
-  RULED_OUT_LABELS,
-  ruledOut,
   shortlist,
   usd,
 } from "@/lib/view";
 import { AutoRefresh } from "./auto-refresh";
+import { SearchingScene } from "./searching-scene";
 import { InviteLink } from "./invite-link";
 import { Shortlist } from "./shortlist";
 import { Candidates } from "./candidates";
@@ -129,7 +128,7 @@ export default async function HouseholdPage({
         </aside>
 
         <main className="overflow-y-auto px-12 pt-10 pb-24">
-          {searching && <AutoRefresh />}
+          {searching && <AutoRefresh everyMs={3000} />}
           {!searchRequestedAt && (
             <BriefSection household={household} brief={brief} />
           )}
@@ -143,24 +142,29 @@ export default async function HouseholdPage({
                 >
                   {searching ? "Keyhunt is searching" : "Search finished"}
                 </h2>
-                <p className="text-sm text-ink-2">
-                  {searching
-                    ? run
-                      ? "Places appear below as each call is checked. This page updates on its own."
-                      : "Finding listings that fit your brief. Calls start once there are places to check. This page updates on its own."
-                    : `Every place Keyhunt found, and what happened to it.`}
-                </p>
                 <Link href={`/h/${id}/search`} className="shrink-0 text-sm font-semibold text-green-ink underline decoration-line-strong underline-offset-4 hover:text-green">
                   Open your search →
                 </Link>
               </div>
-              {run && <Pipeline run={run} />}
-              {run?.progress?.length ? <details className="mt-4 text-sm text-ink-2"><summary>{run.progress.at(-1)}</summary><ol className="mt-2 space-y-1">{run.progress.map((step,i) => <li key={i}>{step}</li>)}</ol></details> : null}
-              {run?.warnings?.map((warning,i) => <p key={i} className="mt-3 text-sm text-ink-2">{warning}</p>)}
+              {searching && !run?.listings.length ? (
+                <div className="mt-6">
+                  <SearchingScene status={run?.progress?.at(-1)} />
+                </div>
+              ) : (
+                run && <Pipeline run={run} />
+              )}
+              {run?.progress?.length && run.listings.length ? (
+                <ActivityLog steps={run.progress} live={searching} />
+              ) : null}
+              {run?.warnings?.map((warning, i) => (
+                <Callout key={i} tone="amber">
+                  {warning}
+                </Callout>
+              ))}
             </section>
           )}
 
-          {run && (
+          {run && (run.listings.length > 0 || run.finishedAt) && (
             <section aria-labelledby="shortlist-title" className="mt-14">
               <div className="flex items-baseline justify-between gap-6">
                 <h2
@@ -169,12 +173,6 @@ export default async function HouseholdPage({
                 >
                   Your short list
                 </h2>
-                {list.length > 0 && (
-                  <p className="text-sm text-ink-2">
-                    Every check links to the moment in the call that confirmed
-                    it.
-                  </p>
-                )}
               </div>
               {run.finishedAt && list.length < 3 && (
                 <ThinResults count={list.length} household={household} />
@@ -183,12 +181,6 @@ export default async function HouseholdPage({
                 <p className="mt-6 rounded-2xl border border-dashed border-line-strong px-6 py-16 text-center text-ink-2">
                   No place has passed its calls yet.
                 </p>
-              )}
-              {proposed?.status === "calendars_missing" && (
-                <Callout tone="amber">
-                  Tour times appear once everyone connects Google Calendar.
-                  Still missing: {proposed.names.join(", ")}.
-                </Callout>
               )}
               {proposed?.status === "calendar_error" && (
                 <Callout tone="amber">
@@ -216,10 +208,37 @@ export default async function HouseholdPage({
               )}
             </section>
           )}
-          {run && <Candidates householdId={id} run={run} callerConnected={Boolean(process.env.AGENT_WORKER_URL)} />}
+          {run && <Candidates householdId={id} run={run} budget={brief?.maxTotalRentUsd ?? null} callerConnected={Boolean(process.env.AGENT_WORKER_URL)} />}
         </main>
       </div>
     </div>
+  );
+}
+
+function ActivityLog({ steps, live }: { steps: string[]; live: boolean }) {
+  return (
+    <details className="group mt-4 rounded-2xl border border-line bg-surface">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-3.5 text-sm select-none">
+        <span className={`size-2 shrink-0 rounded-full ${live ? "searching-pulse bg-green" : "bg-line-strong"}`} />
+        <span className="min-w-0 flex-1 truncate text-ink">{steps.at(-1)}</span>
+        <span className="font-mono tabular shrink-0 text-xs text-ink-3">
+          {steps.length} {steps.length === 1 ? "step" : "steps"}
+        </span>
+        <ChevronDown aria-hidden className="size-4 shrink-0 text-ink-3 transition-transform group-open:rotate-180" />
+      </summary>
+      <ol className="border-t border-line px-5 py-4">
+        {steps.map((step, i) => (
+          <li key={i} className="relative pb-3 pl-6 text-sm last:pb-0">
+            {i < steps.length - 1 && <span aria-hidden className="absolute top-2 bottom-0 left-[3px] w-px bg-line" />}
+            <span
+              aria-hidden
+              className={`absolute top-1.5 left-0 size-[7px] rounded-full ${i === steps.length - 1 ? "bg-green" : "bg-line-strong"}`}
+            />
+            <span className={i === steps.length - 1 ? "font-medium text-ink" : "text-ink-2"}>{step}</span>
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
 
@@ -327,9 +346,6 @@ function BriefSection({
       >
         What Keyhunt will look for
       </h2>
-      <p className="mt-2 text-ink-2">
-        {expectedSize === 1 ? "Your answers and interview, as one search." : "Everyone\u2019s answers, merged into one search."}
-      </p>
       {brief && <BriefList brief={brief} columns={3} />}
 
       {conflicts.length > 0 && (
@@ -339,10 +355,6 @@ function BriefSection({
               ? "One thing to settle"
               : `${conflicts.length} things to settle`}
           </h3>
-          <p className="mt-1 text-sm text-ink-2">
-            Until you settle it, Keyhunt leaves the disputed item out of the
-            search. Anyone can change their answers.
-          </p>
           <div className="mt-5 grid grid-cols-2 gap-4">
             {conflicts.map((c) => (
               <div
@@ -486,7 +498,6 @@ function Pipeline({
     ["Verified", counts.verified],
     ["Tour offered", counts.tourOffered],
   ] as const;
-  const out = ruledOut(run);
   return (
     <div className="mt-5">
       <ol className="grid grid-cols-4 overflow-hidden rounded-2xl border border-line bg-surface">
@@ -504,29 +515,6 @@ function Pipeline({
           </li>
         ))}
       </ol>
-      {out.length > 0 && (
-        <details className="group mt-3">
-          <summary className="cursor-pointer text-sm font-medium text-green-ink select-none">
-            Ruled out ({out.length})
-          </summary>
-          <ul className="mt-3 divide-y divide-line rounded-2xl border border-line bg-surface">
-            {out.map((l) => (
-              <li
-                key={l.id}
-                className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,3fr)] gap-4 px-4 py-2.5 text-sm"
-              >
-                <span className="truncate text-ink">{l.address}</span>
-                <span className="font-medium text-ink-2">
-                  {l.ruledOutReason
-                    ? RULED_OUT_LABELS[l.ruledOutReason]
-                    : "Ruled out"}
-                </span>
-                <span className="text-ink-2">{l.ruledOutNote}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
     </div>
   );
 }

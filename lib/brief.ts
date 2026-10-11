@@ -129,10 +129,12 @@ export function buildSearchBrief(householdId: string, housemates: Housemate[], o
     mustHaves,
     dealBreakers,
     niceToHaves,
-    householdIncomeBandUsd: {
-      min: housemates.reduce((sum, h) => sum + h.incomeBandUsd.min, 0),
-      max: housemates.reduce((sum, h) => sum + h.incomeBandUsd.max, 0),
-    },
+    ...(housemates.every((h) => h.incomeBandUsd) && {
+      householdIncomeBandUsd: {
+        min: housemates.reduce((sum, h) => sum + h.incomeBandUsd!.min, 0),
+        max: housemates.reduce((sum, h) => sum + h.incomeBandUsd!.max, 0),
+      },
+    }),
     // A solo search needs no names on its own wishes.
     wishes: housemates.flatMap((h) => h.wishes.map((w) => (housemates.length > 1 ? `${h.name}: ${w}` : w))),
   };

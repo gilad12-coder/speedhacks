@@ -43,11 +43,6 @@ export function StartForm() {
   return (
     <form action={action} className="rounded-3xl border border-line bg-surface p-8 shadow-lift">
       <h2 className="font-display text-2xl font-semibold tracking-tight">Start a search</h2>
-      <p className="mt-2 text-sm leading-relaxed text-ink-2">
-        {who === "solo"
-          ? "You'll fill in a few basics, then Keyhunt interviews you about the rest."
-          : "You'll fill in your preferences first, then get a link to send the others."}
-      </p>
       <fieldset className="mt-7">
         <legend className="text-sm font-medium text-ink">Who&apos;s moving?</legend>
         <div className="mt-3 grid grid-cols-2 gap-3">

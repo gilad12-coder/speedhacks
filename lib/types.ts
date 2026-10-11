@@ -19,7 +19,7 @@ export interface SearchBrief {
   mustHaves: string[]; // e.g. "laundry", "parking"
   dealBreakers: string[]; // e.g. "no pets allowed"
   niceToHaves: string[];
-  householdIncomeBandUsd: { min: number; max: number }; // for tenant fit
+  householdIncomeBandUsd?: { min: number; max: number }; // for tenant fit, only when every housemate gave one
   wishes: string[]; // free-form wishes from each housemate's interview, e.g. "Dana: a quiet street"
 }
 
@@ -64,6 +64,7 @@ export interface TranscriptLine {
 }
 
 export interface Call {
+  listingVerified?: boolean | null; // exact unit/core advertised details confirmed by contact
   id: string;
   listingId: string;
   dialCallId: string;
@@ -72,6 +73,27 @@ export interface Call {
   outcome: "answered" | "no_answer" | "voicemail" | "failed";
   audioUrl: string | null;
   transcript: TranscriptLine[];
+  // Older runs predate these, so they're optional.
+  statedRentUsd?: number | null;
+  deposit?: string | null;
+  leaseTerms?: string | null;
+  answers?: CallAnswer[];
+}
+
+export interface Evidence {
+  callId: string;
+  t: number; // seconds into the call
+  quote: string;
+}
+
+// One question the call asked. "nice" answers are preferences and never rule a place out.
+export interface CallAnswer {
+  key: string;
+  group: "real" | "matches" | "fit" | "nice";
+  label: string;
+  passed: boolean | null;
+  summary: string;
+  evidence: Evidence | null;
 }
 
 export type CheckKind = "real" | "matches" | "fit" | "tour";
@@ -81,7 +103,7 @@ export interface Check {
   kind: CheckKind;
   passed: boolean | null; // null = not confirmed on the call; never shown as passed
   summary: string; // e.g. "Available from Nov 1, allows 4 occupants"
-  evidence: { callId: string; t: number; quote: string } | null; // required when passed === true
+  evidence: Evidence | null; // required when passed === true
 }
 
 // Times the contact offered for a tour; Part 3 intersects these with the group's free time.
@@ -92,6 +114,7 @@ export interface OfferedWindow {
 }
 
 export interface AgentRun {
+  bookedTours?: ConfirmedTour[]; // mutually confirmed on the call; distinct from offers
   householdId: string;
   startedAt: string;
   finishedAt: string | null; // null while still running
@@ -101,6 +124,16 @@ export interface AgentRun {
   offeredWindows: OfferedWindow[];
   progress?: string[];
   warnings?: string[];
+}
+
+export interface ConfirmedTour {
+  listingId: string;
+  callId: string;
+  start: string;
+  end: string;
+  meetingAddress: string;
+  contactEvidence: { callId: string; t: number; quote: string };
+  agentEvidence: { callId: string; t: number; quote: string };
 }
 
 // ---------- Part 3 → Part 1: household and tours ----------
@@ -117,7 +150,7 @@ export interface Housemate {
   wishes: string[]; // what the interview turned up beyond the fixed features
   moveInFrom: string;
   moveInTo: string;
-  incomeBandUsd: { min: number; max: number };
+  incomeBandUsd: { min: number; max: number } | null; // only older rows; the form no longer asks
   calendarConnected: boolean;
   intakeComplete: boolean;
 }

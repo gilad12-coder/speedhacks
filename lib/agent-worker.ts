@@ -1,6 +1,12 @@
 import "server-only";
 import { env } from "./env";
 
+// Voice recording still lives in the worker; search itself stays in the Next dashboard.
+export function mainAppUrl(householdId: string): string | null {
+  const base = (process.env.AGENT_APP_URL || process.env.AGENT_WORKER_URL)?.replace(/\/$/, "");
+  return base ? `${base}/households/${encodeURIComponent(householdId)}` : null;
+}
+
 // The secret only crosses the configured server-to-server boundary; never a browser URL.
 export async function workerRequest(path: string, init: RequestInit = {}) {
   const base = process.env.AGENT_WORKER_URL?.replace(/\/$/, "");
@@ -14,4 +20,3 @@ export async function workerRequest(path: string, init: RequestInit = {}) {
     headers: { ...init.headers, Authorization: `Bearer ${env.agentApiKey}` },
   });
 }
-

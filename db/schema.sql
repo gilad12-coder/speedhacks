@@ -63,3 +63,6 @@ alter table housemates add column if not exists commute_modes text[];
 alter table housemates add column if not exists interview jsonb not null default '[]';
 alter table housemates add column if not exists interview_done boolean not null default false;
 alter table housemates add column if not exists wishes text[] not null default '{}';
+-- The form no longer asks for income or a last name; older rows keep theirs.
+alter table housemates alter column income_min drop not null;
+alter table housemates alter column income_max drop not null;

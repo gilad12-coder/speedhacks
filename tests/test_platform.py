@@ -81,3 +81,21 @@ def test_call_evidence_ids_map_to_local_call_and_audio_proxy(platform):
     assert run['checks'][0]['evidence']['callId']==run['calls'][0]['id']==str(c['id'])
     assert run['calls'][0]['audioUrl']==f"https://app.example.com/api/h/h1/calls/{c['id']}/recording"
     assert 'provider-id' not in run['calls'][0]['audioUrl']
+
+
+def test_call_hears_wishes_and_exports_quoted_answers(platform):
+    _,p = platform
+    from househunt.outreach.script import build_instruction
+    from househunt.models import Listing,Source
+    c = p.criteria_from_brief({'location':'SF','maxTotalRentUsd':3000,'occupants':1,'renterName':'Dana',
+        'mustHaves':['Pets allowed'],'niceToHaves':['In-unit laundry'],'wishes':['A quiet street'],
+        'commute':{'destination':'Office','modes':['transit'],'maxMinutes':30}})
+    text = build_instruction(Listing(source=Source.OTHER,source_id='1',url='https://e.com',title='Rental'),c,'Dana')
+    must, prefs = text.index('Pets allowed'), text.index('preferences')
+    assert must < prefs < text.index('In-unit laundry') and text.index('A quiet street') > prefs and 'Office' in text
+    outcome = {'confirmed_facts':[{'key':'must:0','passed':True,'summary':'Cats are fine','evidence':[{'callId':'dial-x','t':12.5,'quote':'cats are fine'}]}]}
+    rows = {r['key']:r for r in p.call_answers(c,outcome,'7')}
+    assert rows['must:0'] == {'key':'must:0','group':'matches','label':'Pets allowed','passed':True,'summary':'Cats are fine',
+                              'evidence':{'callId':'7','t':12.5,'quote':'cats are fine'}}
+    assert rows['wish:0']['group'] == 'nice' and rows['wish:0']['passed'] is None and rows['wish:0']['evidence'] is None
+    assert rows['occupancy']['label'] == 'Household size' and rows['commute']['group'] == 'nice'

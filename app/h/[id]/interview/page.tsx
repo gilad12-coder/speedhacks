@@ -17,7 +17,6 @@ export default async function InterviewPage({ params }: { params: Promise<{ id: 
   const me = state.household.housemates.find((h) => h.id === meId)!;
   const account = await getAccount();
   const interview = await getInterview(me.id);
-  const solo = state.household.expectedSize === 1;
 
   // Laid out like the intake form (same bar, progress line, banner and columns), so the interview reads
   // as the form's last part rather than a new page.
@@ -40,8 +39,7 @@ export default async function InterviewPage({ params }: { params: Promise<{ id: 
         <div className="overflow-y-auto border-r border-line px-12 py-16">
           <h1 className="font-display text-5xl leading-[1.05] font-semibold tracking-[-0.02em]">Tell Keyhunt the rest</h1>
           <p className="mt-5 max-w-[44ch] text-lg leading-relaxed text-ink-2">
-            Your basics are saved. Now a few questions about everything else that makes a place right for you
-            {solo ? "" : ". Your housemates each do their own"}. Answer in your own words, or pick a suggestion.
+            A few questions about the rest. Answer in your own words or pick a suggestion.
           </p>
         </div>
         <div className="flex min-h-0 flex-col px-16 pt-16 pb-8">

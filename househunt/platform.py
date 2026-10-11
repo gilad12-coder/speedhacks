@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -14,6 +14,7 @@ import httpx
 from househunt import db
 from househunt.config import settings
 from househunt.models import ListingStatus, SearchCriteria
+from househunt.outreach.verification import requirements
 
 
 def criteria_from_brief(brief: dict) -> SearchCriteria:
@@ -23,11 +24,30 @@ def criteria_from_brief(brief: dict) -> SearchCriteria:
     budget, occupants = int(brief['maxTotalRentUsd']), int(brief['occupants'])
     if budget <= 0 or not 1 <= occupants <= 6:
         raise ValueError('Invalid household budget or size')
-    return SearchCriteria(city=location, max_price=budget, min_beds=occupants,
+    # One bedroom per housemate; someone searching alone can take a studio.
+    return SearchCriteria(city=location, max_price=budget, min_beds=occupants if occupants > 1 else 0,
         occupants=occupants, renter_name=str(brief.get('renterName') or settings.renter_name or 'my client')[:80],
         must_haves=list(brief.get('mustHaves', [])), deal_breakers=list(brief.get('dealBreakers', [])),
         nice_to_haves=list(brief.get('niceToHaves', [])), move_in_from=brief.get('moveInFrom'),
-        move_in_by=brief.get('moveInTo'), commute=brief.get('commute', {}))
+        move_in_by=brief.get('moveInTo'), commute=brief.get('commute', {}),
+        wishes=[str(w)[:200] for w in brief.get('wishes', [])][:12])
+
+
+def call_answers(criteria: SearchCriteria, outcome: dict, call_id: str) -> list[dict]:
+    """One row per question the call asked, with the contact's quoted answer when it was confirmed."""
+    confirmed = {f['key']: f for f in outcome.get('confirmed_facts', [])}
+    items = {**{f'must:{i}':m for i,m in enumerate(criteria.must_haves)}, **{f'avoid:{i}':f'No {d.lower()}' for i,d in enumerate(criteria.deal_breakers)},
+             **{f'nice:{i}':n for i,n in enumerate(criteria.nice_to_haves)}, **{f'wish:{i}':w for i,w in enumerate(criteria.wishes)}}
+    names = {'available':'Still available','rent':'Monthly rent','qualifications':'What it takes to apply','beds':'Bedrooms',
+             'baths':'Bathrooms','move_in':'Move-in date','move_window':'Move-in date','occupancy':'Household size','commute':'Commute'}
+    rows = []
+    for r in requirements(criteria):
+        f = confirmed.get(r['key'], {})
+        ev = (f.get('evidence') or [None])[0]
+        rows.append({'key':r['key'],'group':r['group'],'label':names.get(r['key']) or items.get(r['key'], r['key']),'passed':f.get('passed'),
+            'summary':f.get('summary') or 'Not confirmed on the call',
+            'evidence':{'callId':call_id,'t':ev['t'],'quote':ev['quote']} if ev else None})
+    return rows
 
 
 def iso(value: str) -> str:
@@ -39,7 +59,7 @@ def iso(value: str) -> str:
 
 def export_run(household_id: str, search_id: int, app_url: str = '') -> dict:
     criteria, row = db.get_search(search_id)
-    listings, calls, checks, windows = [], [], [], []
+    listings, calls, checks, windows, bookings = [], [], [], [], []
     call_rows = db.calls_for_search(search_id)
     in_flight = row['status'] not in ('done', 'error') or any(c['status'] in ('queued','in_progress','extracting') for c in call_rows.values())
     for listing in db.list_listings(search_id):
@@ -50,7 +70,7 @@ def export_run(household_id: str, search_id: int, app_url: str = '') -> dict:
             status = 'called'
         if outcome.get('verification_status') == 'verified':
             status = 'verified'
-        if outcome.get('offered_windows'):
+        if outcome.get('offered_windows') or outcome.get('tour_booked'):
             status = 'tour_offered'
         if listing.status in (ListingStatus.FILTERED_OUT, ListingStatus.NOT_VIABLE):
             status = 'ruled_out'
@@ -84,26 +104,39 @@ def export_run(household_id: str, search_id: int, app_url: str = '') -> dict:
         calls.append({'id':call_id,'listingId':listing.key,'dialCallId':c['dial_call_id'],
             'startedAt':iso(raw.get('createdAt') or c['created_at']), 'durationSec':float(raw.get('duration') or 0),
             'outcome':'answered' if outcome.get('reached_person') else 'failed' if c['status'] in ('failed','attention') else 'no_answer',
-            'audioUrl':audio,'transcript':outcome.get('transcript_turns',[])})
+            'audioUrl':audio,'transcript':outcome.get('transcript_turns',[]),
+            'listingVerified': outcome.get('listing_verified') if outcome.get('mode') != 'dry_run' else None,
+            'statedRentUsd':outcome.get('monthly_rent'),'deposit':outcome.get('deposit'),'leaseTerms':outcome.get('lease_terms'),
+            'answers':call_answers(criteria, outcome, call_id) if outcome.get('reached_person') else []})
+        booked = outcome.get('confirmed_tour')
+        if booked and outcome.get('tour_booked') and outcome.get('listing_verified') is True and outcome.get('mode') == 'live':
+            bookings.append({'listingId':listing.key, 'callId':call_id, 'start':booked['start'], 'end':booked['end'],
+                'meetingAddress':booked['meeting_address'],
+                'contactEvidence':{**booked['contact_evidence'], 'callId':call_id},
+                'agentEvidence':{**booked['agent_evidence'], 'callId':call_id}})
         for check in outcome.get('checks',[]):
             ev = check.get('evidence')
             if check['kind'] == 'matches' and check['passed'] is True and criteria.commute:
                 check = {**check,'passed':None,'summary':'Call requirements confirmed; requested commute duration has not been measured'}
                 ev = None
             checks.append({**check,'listingId':listing.key,'evidence':{**ev,'callId':call_id} if ev else None})
-        windows.extend({**w,'listingId':listing.key} for w in outcome.get('offered_windows',[]))
+        if not outcome.get('tour_booked'):
+            windows.extend({**w,'listingId':listing.key} for w in outcome.get('offered_windows',[]))
     warnings = [row['error']] if row['error'] else []
     if criteria.commute:
         warnings.append('Commute duration has not been measured; commute limits remain unconfirmed.')
     for c in call_rows.values():
         if c['error']:
             warnings.append(c['error'])
+        outcome = json.loads(c['outcome']) if c['outcome'] else {}
+        if outcome.get('booking_warning'):
+            warnings.append(outcome['booking_warning'])
     events = db.search_events(search_id)
     finished = max([row['created_at'], *[e['created_at'] for e in events],
                     *[c['updated_at'] for c in call_rows.values()]])
     return {'householdId':household_id,'startedAt':iso(row['created_at']),
         'finishedAt':None if in_flight else iso(finished),
-        'listings':listings,'calls':calls,'checks':checks,'offeredWindows':windows,
+        'listings':listings,'calls':calls,'checks':checks,'offeredWindows':windows,'bookedTours':bookings,
         'progress':[e['message'] for e in events], 'warnings':warnings}
 
 
@@ -139,8 +172,17 @@ class PlatformClient:
         r = self.http.post('/api/agent/runs',json=run)
         if not r.is_success:
             raise RuntimeError(f'AgentRun publish returned HTTP {r.status_code}; local evidence is saved')
+        sync_results = {item['callId']:item for item in r.json().get('calendarSync', [])}
+        pending = False
+        for tour in db.tours_for_search(search_id).values():
+            if tour['source_call_id'] is None:
+                continue
+            result = sync_results.get(str(tour['source_call_id']))
+            if result:
+                db.update_tour_calendar(tour['id'], result['status'], result.get('error'))
+            pending = pending or not result or result['status'] != 'synced'
         with db.conn() as conn:
-            conn.execute('UPDATE household_jobs SET published_hash=? WHERE household_id=?',(digest,household_id))
+            conn.execute('UPDATE household_jobs SET published_hash=? WHERE household_id=?',(None if pending else digest,household_id))
 
 
 def ensure_search(client: PlatformClient, brief: dict) -> int:

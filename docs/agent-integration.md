@@ -1,16 +1,14 @@
 # Agent integration
 
-This branch integrates both `ui-refresh` (Python source/call console) and `app-ui-form-and-login` (Next.js household app). The Python worker consumes `GET /api/agent/briefs` and publishes complete snapshots to `POST /api/agent/runs`. The Next.js app remains the household/calendar owner. Both API endpoints require the same server-only `AGENT_API_KEY`.
+This branch integrates `main` (including `app-ui-form-and-login`), `ui-refresh`, `feat/keyhunt-in-dashboard`, and `feat/live-results-and-voice`. The Python worker consumes `GET /api/agent/briefs` and publishes complete snapshots to `POST /api/agent/runs`. Next.js owns household membership and calendars. Agent endpoints require the same server-only `AGENT_API_KEY`.
 
 ## Onboarding → KeyHunt handoff
 
-The Next.js app is the onboarding flow (sign-in, household, intake, interview, brief). The
-Python app is the main UI after that. When the group clicks **Start search**, the server action
-redirects to `${AGENT_APP_URL || AGENT_WORKER_URL}/households/<householdId>`. That page finds
-the household's search (or creates it from the brief via `/api/agent/briefs`) and opens
-`/searches/<id>`, where housemates work the listings: reveal contacts, call, email, mark
-interest, book viewings. The household dashboard keeps an **Open in KeyHunt** link, and
-results keep flowing back to it as `AgentRun`s.
+The Next.js app hosts onboarding and the search workspace at `/h/<householdId>/search`.
+Its server actions verify membership and proxy to `/agent/households/<householdId>/...` on
+the Python worker. Housemates can reveal contacts, call, email, mark interest and track
+viewings without leaving the dashboard. The Python `/searches/<id>` and `/calls` pages
+remain the operator console; the voice recorder link in Settings still opens the worker.
 
 Set `RUN_PLATFORM_WORKER=1` to run the queue worker inside the web process (then skip
 Terminal 3 below); the handoff wakes it so sourcing starts immediately. Searches are only ever
@@ -50,7 +48,20 @@ Recordings remain on the worker's private disk. Import a Dial-downloaded WAV usi
 - `Listing.rentUsd`, `bedrooms`, and `bathrooms` accept `null`. The Zod contract, price sorting, shortlist and calendar formatting preserve unknowns rather than inventing zero values.
 - Optional `Listing.research` carries separate web findings, exact quotes, source links, timestamps and comparable counts. These are not fabricated call checks.
 - Optional `AgentRun.progress` and `warnings` carry operational state. Call evidence IDs are remapped consistently to exported call IDs.
-- The brief's location, budget, one-bedroom-per-occupant requirement (matching the existing UI), must-haves, deal-breakers and move-in window feed search/calls. Financial eligibility and commute duration remain unconfirmed; no routing ETA is invented. Wishes and nice-to-haves do not silently become hard constraints.
+- Optional `Call.listingVerified: boolean | null` carries exact-listing verification; older calls stay unconfirmed. Optional `AgentRun.bookedTours` carries mutually confirmed appointments with `listingId`, `callId`, `start`, `end`, `meetingAddress`, `agentEvidence` and `contactEvidence`. Evidence IDs reference the exported call and quotes must match its correctly attributed transcript. Existing `offeredWindows` stays offer-only; older producers remain valid.
+- The brief's location, budget, bedroom requirements (studios allowed for solo renters; one bedroom per housemate for groups), must-haves, deal-breakers and move-in window feed search/calls. Financial eligibility and commute duration remain unconfirmed; no routing ETA is invented. Wishes and nice-to-haves do not silently become hard constraints.
+
+## Exact listing verification and booking on calls
+
+The caller introduces itself as **Reed's AI assistant** for Reed's search, or uses the household's supplied renter name. It asks the contact to repeat the street address and unit, confirm their authority, availability, actual monthly rent, advertised bed/bath counts, fees and essential requirements. A green **Listing verified** badge requires contact evidence for the exact unit and core advertised facts. Missing evidence is neutral; contradictions are shown as **Listing details differ**. This verifies statements on the call, not legal ownership or absence of fraud. Research findings stay separate.
+
+Before a live call, the worker requests `GET /api/agent/availability/<householdId>?timezone=America/Los_Angeles`. The calendar owner checks all housemates' connected calendars and existing tours, then returns `{enabled, windows: [{start,end}], checked_at, reason}`. The timezone comes from `CALL_TIMEZONE`; ranges cover daytime in that timezone over the next seven days. Missing calendars, an unconfirmed household, errors, explicit free-text scheduling preferences needing clarification, or an existing viewing disable booking and leave the caller collecting offers. A native operator search can use its connected primary Google calendar instead.
+
+The call may book **one** future appointment only within those fresh windows, after the exact listing, essential requirements, fees and no-payment/no-application reservation terms are confirmed. Financial application eligibility can remain unknown. The agent repeats the exact date, start/end, timezone and meeting address and requests the booking; the contact must explicitly confirm it afterward. Extracted dates and times must match the cited turns (full date or today/tomorrow, explicit AM/PM range or duration); ambiguous speech needs review. Availability snapshots expire after ten minutes. Ambiguous or out-of-window commitments generate a visible review warning, not a false booked state.
+
+The worker saves the original authorization with the call before dialing, and the raw transcript before extraction. A confirmed appointment creates a unique local tour tied to that call and advances the viewing tracker. The `POST /api/agent/runs` response includes `calendarSync: [{callId,status,error?}]`; the calendar owner adds the appointment to each housemate's calendar. Stable Google event IDs, per-listing database locks and saved partial success prevent duplicate inserts on retries. A calendar conflict or disconnected account leaves **Tour booked · Calendar sync pending** visible and does not erase the contact's commitment. Pending snapshots retry through the worker loop; **Retry calendar sync** also works without rerunning extraction or dialing.
+
+The private workspace DTO adds `call.listingVerified`, `verificationEvidence`, `bookingWarning`, and `viewing.end`, `confirmedOnCall`, `calendarStatus`, `calendarError`. The UI displays separate verification, booking and calendar states. SQLite migrations are additive on startup; the existing Postgres tours table is reused without a schema migration. The standalone `caller/` package is retained; production dashboard calls use the Python worker.
 
 ## Search and risk screening
 
@@ -67,9 +78,61 @@ The search stage runs independently from calling. This supports Lucy's manually 
 
 ## Using the renter's own voice
 
-Dial's [managed call API](https://docs.getdial.ai/api-reference/rest-api/calls/make-call) currently documents `voiceGender`, not a cloned-voice ID. [Self-hosted audio](https://docs.getdial.ai/documentation/platform/self-hosted) supports an external voice stack but requires per-account approval. The integration continues to use managed calls. No custom-voice switch is presented as working.
+The optional `househunt.voice` service connects Dial's approved [self-hosted audio](https://docs.getdial.ai/documentation/platform/self-hosted) to ElevenLabs Agents. Dial's official SDK validates signatures and audio frames; ElevenLabs provides speech recognition, turn-taking, interruptions, the language model and cloned speech. The adapter uses 16 kHz mono PCM in both directions. It clears Dial playback on interruptions and discards late audio from interrupted turns. There is no custom speech model to train or maintain.
 
-After access is granted, the remaining work is a consenting voice sample and a TTS provider/voice ID, a hosted audio WebSocket bridge with signature verification and interruptions, and our own timestamped transcripts/recordings. Dial does not generate transcripts or recordings in self-hosted audio mode, and enabling that mode affects all new account calls. Keep managed calling until the complete replacement path has been rehearsed. The assistant must still identify itself as AI while using the renter's own voice.
+The main search page now has **Set up my voice** (`/searches/<id>/voice`), also linked from household Settings after a search starts. The embedded recorder supplies a roughly two-minute reading script, microphone level, exact 120-second automatic stop, local playback and retake. The browser captures mono 16 kHz PCM and uploads a WAV smaller than 4 MB only after explicit own-voice consent and **Create my voice**. Server checks validate the actual audio duration and format, reject mostly silent or clipped samples, and limit streamed bodies before calling ElevenLabs. These are basic recording-quality checks, not speaker authentication.
+
+A background job creates the instant clone and a private audition. The user listens, then explicitly approves that exact enrollment before it can be used for their search. A preview retry reuses the clone; it never uploads or creates a second one. Raw WAV samples are held only in memory for the upload; private enrollment records and previews are mode 0600. Server restart converts unfinished jobs into a recoverable error. **Remove voice & recording** removes the locally selected voice/preview and deletes only the provider clone created by that enrollment. Existing call recordings remain in the call history. ElevenLabs processes/stores the source sample and clone in the connected account; its retention policy also applies.
+
+Record in a quiet room with a steady microphone position and natural delivery. Instant cloning needs a listening check; professional cloning requires more audio, an eligible plan and processing time. Neither option guarantees indistinguishable speech over a phone connection. The reading script is example conversation and is never used as the renter’s actual preferences. The assistant identifies itself as the enrolled speaker’s AI assistant.
+
+```sh
+pip install -r requirements-voice.txt
+# Save ELEVENLABS_API_KEY privately in .env; never expose it to browser code.
+# Create the clone in ElevenLabs, or upload a specifically consented local sample:
+python -m househunt.voice.setup clone --sample /path/to/own-voice.wav --name 'KeyHunt voice' --consent
+python -m househunt.voice.setup preview --voice-id YOUR_CLONE_ID
+# Only after the speaker listens and approves:
+python -m househunt.voice.setup enroll --search-id SEARCH_ID --voice-id YOUR_CLONE_ID --speaker-name RENTER_NAME --consent --approve-audition
+python -m househunt.voice.setup prepare-agent --voice-id YOUR_CLONE_ID
+```
+
+The setup tool creates an authenticated agent, defaults to `eleven_v4_turbo`, and saves its ID privately. Set `ELEVENLABS_TTS_MODEL` before creation to audition another supported model. No stock voice is substituted for a missing enrollment. Each search must have its own explicit consent and approved audition; this prevents another household from inheriting somebody else's voice.
+
+Run the bridge in a **single process on the same private data volume as the Python caller**. The separate listener exposes only health and signed audio WebSockets, so an audio tunnel does not publish the operator console. `Dockerfile.voice` packages this listener; separate services on unrelated disks will not work with the local SQLite design.
+
+```sh
+# Obtain a reachable HTTPS/WSS hostname first; /audio is the endpoint prefix.
+python -m househunt.voice.setup configure-dial --ws-url wss://YOUR_HOST/audio
+# Saves the endpoint and signing secret; does not activate account-wide routing.
+VOICE_MODE=elevenlabs .venv/bin/uvicorn househunt.voice.bridge:app --env-file .env --host 127.0.0.1 --port 8790 --no-access-log --ws-max-size 100000
+# After enrollment, reachability/authentication checks, and readiness to rehearse:
+python -m househunt.voice.setup activate --ws-url wss://YOUR_HOST/audio --search-id SEARCH_ID --confirm-account-wide
+# Restart the caller using the updated .env after activation.
+```
+
+Activation routes **all new calls on the Dial account** through this endpoint, including the team's phone-briefing number. This rental-call adapter does not serve inbound briefings; keep managed mode for that demo or use a separate Dial account until inbound routing is implemented. Unknown, inbound, unenrolled, duplicate and wrongly signed calls are rejected. For rollback, disable Self-Hosted in Dial and set `VOICE_MODE=managed` in the caller. Quick tunnels are suitable for development only; their hostname changes on restart, and the local machine must remain awake.
+
+The provider conversation ID is saved privately before audio output. After hangup, the caller imports ElevenLabs' finalized timestamped transcript and, when available, recording into the existing quote-validation and authenticated playback paths. Provider response bodies and signed URLs are never logged. If evidence is still processing, retry the saved attempt; no new call is placed. Dial socket reconnects preserve a live provider session for up to 16 seconds; process restarts safely end the old conversation instead of repeating its introduction. Private recordings and profiles require the same retention/access controls as the existing call database; no raw voice sample is committed to Git.
+
+The assistant still introduces itself as the renter's **AI assistant**, and tour offers remain unbooked until the household confirms separately. Custom voice is optional and remains inactive until the real clone and phone path have been rehearsed.
+
+## Voice enrollment API
+
+The browser-facing, session-authenticated API is `/api/h/<householdId>/voice`. It checks household membership before forwarding to `/agent/households/<householdId>/voice`, which requires the shared server bearer key. The Python operator UI uses `/api/searches/<searchId>/voice` under `APP_PASSWORD`; enrollment is refused if that password is absent. There are no public voice/provider IDs or provider keys in responses. No endpoint below places a call or changes Dial's account-wide mode.
+
+| Method | Suffix | Purpose |
+| --- | --- | --- |
+| GET | (none) | Status, script paragraphs, `targetSeconds: 120`, enrollment ID, approval and setup state |
+| POST | (none) | Raw `audio/wav`, mono PCM16 at 16 kHz, 119.5–122 seconds, maximum 4,000,000 bytes; returns 202 |
+| GET | `/preview` | Private generated MP3 audition, `Cache-Control: private, no-store` |
+| POST | `/preview` | Retry a failed preview or retry after ElevenLabs speaker verification; reuses the existing clone |
+| POST | `/approve` | JSON `{ "enrollmentId": "…", "approved": true }`; approves only the current ready audition |
+| DELETE | (none) | Remove the selected voice, private audition and this enrollment's provider clone |
+
+All mutations require `X-KeyHunt-Voice: 1`; cross-site browser requests are rejected. Upload also requires `X-Voice-Consent: true` and `X-Voice-Name: <encodeURIComponent(firstName)>`. No sample is uploaded until the user chooses **Create my voice**. Status phases are `empty`, `creating`, `creating_preview`, `verification_required`, `audition`, `approved`, or `error`. Poll after a 202; a request retry receives 409 while an enrollment already exists. If creation times out before a provider ID is returned, inspect the account before deliberately removing/retrying that attempt.
+
+The worker and enrollment server must share the same private disk and run one web process. The two-minute PCM upload fits Vercel's body limit. Custom audio still needs the separate signed WebSocket listener, approved enrollment and explicit account-wide Dial activation described above. The native Python UI currently shares the operator password; it does not inherit the Next.js housemate session. Use the Next.js API for session-based household access.
 
 ## Validation
 

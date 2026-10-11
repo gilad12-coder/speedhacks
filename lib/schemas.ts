@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { COMMUTE_MODES, INCOME_BANDS } from "./features";
+import { COMMUTE_MODES } from "./features";
 
 const isoDate = z.iso.date();
 const isoDateTime = z.iso.datetime({ offset: true });
@@ -7,7 +7,6 @@ const isoDateTime = z.iso.datetime({ offset: true });
 export const intakeSchema = z
   .object({
     firstName: z.string().trim().min(1, "Add your first name").max(40),
-    lastName: z.string().trim().min(1, "Add your last name").max(60),
     location: z.string().trim().min(2, "Where do you want to live?").max(120),
     maxBudgetUsd: z.coerce.number().int().min(300, "Budget looks too low").max(20_000),
     commuteDestination: z.string().trim().min(2, "Where do you commute to?").max(200),
@@ -17,7 +16,6 @@ export const intakeSchema = z
     maxCommuteMinutes: z.coerce.number().int().min(5).max(180),
     moveInFrom: isoDate,
     moveInTo: isoDate,
-    incomeBand: z.coerce.number().int().min(0).max(INCOME_BANDS.length - 1),
   })
   .refine((v) => v.moveInTo >= v.moveInFrom, { path: ["moveInTo"], message: "Latest move-in is before the earliest" });
 
@@ -53,7 +51,10 @@ const listingSchema = z.object({
   }).optional(),
 });
 
+const evidenceSchema = z.object({ callId: z.string(), t: z.number().nonnegative(), quote: z.string().min(1) });
+
 const callSchema = z.object({
+  listingVerified: z.boolean().nullable().optional(),
   id: z.string().min(1),
   listingId: z.string().min(1),
   dialCallId: z.string(),
@@ -64,6 +65,21 @@ const callSchema = z.object({
   transcript: z.array(
     z.object({ t: z.number().nonnegative(), speaker: z.enum(["agent", "contact"]), text: z.string() }),
   ),
+  statedRentUsd: z.number().nonnegative().nullable().optional(),
+  deposit: z.coerce.string().max(300).nullable().optional(),
+  leaseTerms: z.coerce.string().max(300).nullable().optional(),
+  answers: z.array(
+    z.object({
+      key: z.string().min(1).max(40),
+      group: z.enum(["real", "matches", "fit", "nice"]),
+      label: z.string().min(1).max(200),
+      passed: z.boolean().nullable(),
+      summary: z.string().max(500),
+      evidence: evidenceSchema.nullable(),
+    })
+    // An answer without a quote behind it is shown as unconfirmed, never as a yes or no.
+    .transform((a) => (a.evidence ? a : { ...a, passed: null })),
+  ).max(60).optional(),
 });
 
 const checkSchema = z
@@ -72,7 +88,7 @@ const checkSchema = z
     kind: z.enum(["real", "matches", "fit", "tour"]),
     passed: z.boolean().nullable(),
     summary: z.string(),
-    evidence: z.object({ callId: z.string(), t: z.number().nonnegative(), quote: z.string().min(1) }).nullable(),
+    evidence: evidenceSchema.nullable(),
   })
   .refine((c) => c.passed !== true || c.evidence !== null, "A passed check must cite call evidence");
 
@@ -85,12 +101,33 @@ export const agentRunSchema = z
     calls: z.array(callSchema),
     checks: z.array(checkSchema),
     offeredWindows: z.array(z.object({ listingId: z.string(), start: isoDateTime, end: isoDateTime })),
+    bookedTours: z.array(z.object({
+      listingId: z.string(), callId: z.string(), start: isoDateTime, end: isoDateTime, meetingAddress: z.string().min(1),
+      contactEvidence: z.object({ callId: z.string(), t: z.number().nonnegative(), quote: z.string().min(1) }),
+      agentEvidence: z.object({ callId: z.string(), t: z.number().nonnegative(), quote: z.string().min(1) }),
+    })).optional(),
     progress: z.array(z.string()).optional(),
     warnings: z.array(z.string()).optional(),
   })
   .superRefine((run, ctx) => {
     const listingIds = new Set(run.listings.map((l) => l.id));
     const callIds = new Set(run.calls.map((c) => c.id));
+    const bookedListings = new Set<string>();
+    for (const [i, tour] of (run.bookedTours ?? []).entries()) {
+      const call = run.calls.find((c) => c.id === tour.callId && c.listingId === tour.listingId);
+      const evidenceMatches = (["contact", "agent"] as const).every((speaker) => {
+        const ev = speaker === "contact" ? tour.contactEvidence : tour.agentEvidence;
+        return ev.callId === tour.callId && call?.transcript.some((line) => line.speaker === speaker && line.t === ev.t && line.text.includes(ev.quote));
+      });
+      const duration = Date.parse(tour.end) - Date.parse(tour.start);
+      if (!call || call.listingVerified !== true || call.outcome !== "answered" || !listingIds.has(tour.listingId)
+          || !evidenceMatches || tour.contactEvidence.t <= tour.agentEvidence.t
+          || duration <= 0 || duration > 7_200_000 || Date.parse(tour.start) <= Date.parse(call.startedAt)
+          || bookedListings.has(tour.listingId)) {
+        ctx.addIssue({ code: "custom", path: ["bookedTours", i], message: "A booking needs one verified listing, an exact time and both sides' call evidence" });
+      }
+      bookedListings.add(tour.listingId);
+    }
     for (const [i, c] of run.checks.entries()) {
       if (!listingIds.has(c.listingId)) ctx.addIssue({ code: "custom", path: ["checks", i], message: "Unknown listingId" });
       if (c.evidence && !callIds.has(c.evidence.callId))

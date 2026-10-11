@@ -57,16 +57,14 @@ export default async function JoinPage({
       <p className="mt-5 max-w-[44ch] text-lg leading-relaxed text-ink-2">
         {solo ? (
           <>
-            Start with the basics Keyhunt filters on. Next, a short interview covers everything else, in your
-            own words.
+            The basics first, then a short interview.
           </>
         ) : (
           <>
             {others.length
               ? `You're joining ${others.map((h) => h.name).join(", ")}. `
               : "You're the first one here. "}
-            Only your group sees these answers. Keyhunt merges everyone&apos;s into one search and points out
-            where you disagree.
+            Only your group sees your answers.
           </>
         )}
       </p>
