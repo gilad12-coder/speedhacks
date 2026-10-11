@@ -12,24 +12,40 @@ from househunt.sources.base import ListingSource
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko)"
 
-# Craigslist subdomains for cities whose name doesn't map directly.
+# city -> (Craigslist site, subarea). A subarea keeps e.g. "San Francisco" from returning
+# the whole Bay Area; None searches the full site.
 SITE_ALIASES = {
-    "san francisco": "sfbay",
-    "sf": "sfbay",
-    "bay area": "sfbay",
-    "oakland": "sfbay",
-    "new york": "newyork",
-    "nyc": "newyork",
-    "los angeles": "losangeles",
-    "la": "losangeles",
-    "washington": "washingtondc",
-    "dc": "washingtondc",
+    "san francisco": ("sfbay", "sfc"),
+    "sf": ("sfbay", "sfc"),
+    "bay area": ("sfbay", None),
+    "oakland": ("sfbay", "eby"),
+    "berkeley": ("sfbay", "eby"),
+    "east bay": ("sfbay", "eby"),
+    "san jose": ("sfbay", "sby"),
+    "south bay": ("sfbay", "sby"),
+    "peninsula": ("sfbay", "pen"),
+    "north bay": ("sfbay", "nby"),
+    "new york": ("newyork", None),
+    "nyc": ("newyork", None),
+    "manhattan": ("newyork", "mnh"),
+    "brooklyn": ("newyork", "brk"),
+    "queens": ("newyork", "que"),
+    "los angeles": ("losangeles", None),
+    "la": ("losangeles", None),
+    "washington": ("washingtondc", None),
+    "dc": ("washingtondc", None),
 }
 
 
-def site_for(city: str) -> str:
+def site_for(city: str) -> tuple[str, str | None]:
     c = city.lower().strip()
-    return SITE_ALIASES.get(c, re.sub(r"[^a-z]", "", c))
+    return SITE_ALIASES.get(c, (re.sub(r"[^a-z]", "", c), None))
+
+
+def neighborhood_query(neighborhoods: list[str]) -> str | None:
+    """Craigslist full-text OR query, e.g. mission|"noe valley"."""
+    terms = [f'"{n}"' if " " in n else n for n in (n.strip().lower() for n in neighborhoods) if n]
+    return "|".join(terms) or None
 
 
 class CraigslistSource(ListingSource):
@@ -48,8 +64,11 @@ class CraigslistSource(ListingSource):
             params["min_price"] = criteria.min_price
         if criteria.min_beds:
             params["min_bedrooms"] = criteria.min_beds
-        area = "sfc/" if criteria.city.lower().strip() in ("san francisco", "sf") else ""
-        url = f"https://{site_for(criteria.city)}.craigslist.org/search/{area}apa"
+        if q := neighborhood_query(criteria.neighborhoods):
+            params["query"] = q
+        site, subarea = site_for(criteria.city)
+        path = f"{subarea}/apa" if subarea else "apa"
+        url = f"https://{site}.craigslist.org/search/{path}"
         with httpx.Client(headers={"User-Agent": UA}, follow_redirects=True, timeout=20) as http:
             response = http.get(url, params=params)
             response.raise_for_status()
@@ -90,6 +109,10 @@ class CraigslistSource(ListingSource):
             post = BeautifulSoup(response.text, "html.parser")
         except httpx.HTTPError:
             return
+        if post.select_one("a.show-contact"):
+            listing.contact_hint = "show_contact"   # phone/email hidden in the description
+        elif post.select_one(".reply-button-row, button.reply-button"):
+            listing.contact_hint = "reply"
         body = post.find("section", id="postingbody")
         if body:
             for junk in body.select(".print-information"):

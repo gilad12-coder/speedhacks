@@ -54,6 +54,15 @@ def dedupe(listings: list[Listing]) -> list[Listing]:
     return list(seen.values())
 
 
+def mentions_neighborhood(l: Listing, neighborhoods: list[str]) -> bool:
+    """Sites label locations loosely ("San Francisco, CA"), so look everywhere it might be named."""
+    text = " ".join(x for x in [l.neighborhood, l.address, l.title, l.description] if x).lower()
+    # "Mission" shouldn't match "1045 Mission St" in SoMa.
+    street = r"(?!\s+(?:st|street|ave|avenue|blvd|rd|road|dr|way)\b)"
+    return any(re.search(rf"\b{re.escape(n.strip().lower())}\b{street}", text)
+               for n in neighborhoods if n.strip())
+
+
 def passes_filters(l: Listing, c: SearchCriteria) -> tuple[bool, str | None]:
     if l.research.get("availability") == "unavailable":
         return False, "Public page explicitly says this rental is unavailable"
@@ -68,9 +77,8 @@ def passes_filters(l: Listing, c: SearchCriteria) -> tuple[bool, str | None]:
         return False, f"{l.beds} beds < {c.min_beds}"
     if l.baths is not None and l.baths < c.min_baths:
         return False, f"{l.baths} baths < {c.min_baths}"
-    if c.neighborhoods and l.neighborhood:
-        if not any(n.lower() in l.neighborhood.lower() for n in c.neighborhoods):
-            return False, f"neighborhood {l.neighborhood} not wanted"
+    if c.neighborhoods and not mentions_neighborhood(l, c.neighborhoods):
+        return False, f"not in {', '.join(c.neighborhoods)}"
     return True, None
 
 

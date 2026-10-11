@@ -28,7 +28,13 @@ SITES = {
     "redfin.com": (Source.REDFIN, re.compile(r"redfin\.com/.+/(home|apartment)/\d+")),
     "apartments.com": (Source.APARTMENTS, re.compile(r"apartments\.com/[\w-]+/\w+/?$")),
     "streeteasy.com": (Source.STREETEASY, re.compile(r"streeteasy\.com/(rental|building)/")),
+    # Group-post and Marketplace notification emails; parsed by parse_facebook().
+    "facebookmail.com": (Source.FACEBOOK, re.compile(r"facebook\.com/")),
 }
+
+FB_LINK = re.compile(r"facebook\.com/(?:groups/[\w.]+/(?:posts|permalink)/(\d+)|marketplace/item/(\d+))")
+HOUSING = re.compile(r"\b(rent|rental|room|sublet|sublease|bedroom|\d\s*br|studio|apartment|apt|"
+                     r"lease|housing|roommate|flat|in-law|available)\b", re.I)
 
 PRICE = re.compile(r"\$\s?(\d{1,2},?\d{3})(?:\s*(?:/|per\s*)\s*mo)?", re.I)
 BEDS = re.compile(r"(\d+)\s*(?:bd|bds|beds?|br)\b", re.I)
@@ -71,10 +77,53 @@ def _block_text(a) -> str:
     return a.get_text(" ", strip=True)
 
 
+def parse_facebook(html: str) -> list[Listing]:
+    """Posts from Facebook group / Marketplace notification emails that look like housing."""
+    soup = BeautifulSoup(html, "html.parser")
+    found: dict[str, Listing] = {}
+    for a in soup.find_all("a", href=True):
+        url = unwrap(a["href"])
+        m = FB_LINK.search(url)
+        if not m:
+            continue
+        post_id = m.group(1) or m.group(2)
+        # The smallest ancestor with enough text to be the post itself.
+        node, text = a, a.get_text(" ", strip=True)
+        for _ in range(6):
+            if len(text) >= 60 or node.parent is None:
+                break
+            parent = node.parent
+            # Stop before swallowing a neighbouring post.
+            ids = {g for l in parent.find_all("a", href=True)
+                   if (fm := FB_LINK.search(unwrap(l["href"]))) for g in fm.groups() if g}
+            if ids - {post_id}:
+                break
+            node, text = parent, parent.get_text(" ", strip=True)
+        if len(text) > 1500 or not HOUSING.search(text):
+            continue
+        listing = found.get(post_id)
+        if listing is None or len(text) > len(listing.description):
+            price = PRICE.search(text)
+            beds = 0 if re.search(r"\bstudio\b", text, re.I) else (
+                int(b.group(1)) if (b := BEDS.search(text)) else None)
+            found[post_id] = Listing(
+                source=Source.FACEBOOK, source_id=post_id, url=url.split("?")[0],
+                title=re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0][:90],
+                price=int(price.group(1).replace(",", "")) if price else None,
+                beds=beds,
+                baths=float(b.group(1)) if (b := BATHS.search(text)) else None,
+                address=(m2.group(0).strip() if (m2 := ADDRESS.search(text)) else None),
+                description=text,
+            )
+    return list(found.values())
+
+
 def parse_alert(html: str, sender: str, resolve_redirects: bool = True) -> list[Listing]:
     site = _site_for(sender)
     if not site or not html:
         return []
+    if "facebookmail.com" in sender.lower():
+        return parse_facebook(html)
     source, link_re = site
     soup = BeautifulSoup(html, "html.parser")
     found: dict[str, Listing] = {}

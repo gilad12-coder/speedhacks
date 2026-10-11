@@ -274,3 +274,280 @@ def test_add_contact_and_listing_by_hand():
 
         assert client.post(f"/searches/{sid}/listings", data={"url": "not a link"},
                            follow_redirects=False).status_code == 400
+
+
+def test_neighborhood_matching():
+    from househunt.collect import mentions_neighborhood
+    from househunt.models import Listing, Source
+
+    def l(**kw):
+        return Listing(source=Source.CRAIGSLIST, source_id="x", url="u", title=kw.pop("title", ""), **kw)
+
+    assert mentions_neighborhood(l(neighborhood="mission district"), ["Mission"])
+    assert mentions_neighborhood(l(neighborhood="San Francisco, CA",
+                                   description="Sunny flat in the heart of the Mission"), ["mission"])
+    assert not mentions_neighborhood(l(address="1045 Mission St", neighborhood="SOMA"), ["Mission"])
+    assert mentions_neighborhood(l(title="Noe Valley 1BR"), ["Mission", "Noe Valley"])
+    assert not mentions_neighborhood(l(title="Oakland loft"), ["Mission"])
+
+
+def test_craigslist_site_and_query():
+    from househunt.sources.craigslist import neighborhood_query, site_for
+
+    assert site_for("San Francisco") == ("sfbay", "sfc")
+    assert site_for("Portland") == ("portland", None)
+    assert neighborhood_query(["Mission", "Noe Valley"]) == 'mission|"noe valley"'
+    assert neighborhood_query([]) is None
+
+
+FB_EMAIL = """
+<table><tr><td>
+  <a href="https://www.facebook.com/groups/sfhousing/posts/987654321/?ref=notif">
+    Jane posted in SF Housing</a>
+  <div>Room available in 2BR in the Mission, $1,650/mo, utilities included. Available Nov 1.
+    Text 415-555-0142.</div>
+</td></tr><tr><td>
+  <a href="https://www.facebook.com/groups/sfhousing/posts/111/">Selling my couch, great condition!</a>
+</td></tr></table>
+"""
+
+
+def test_parse_facebook_group_email():
+    from househunt.collect import normalize
+    from househunt.sources.email_alerts import parse_alert
+
+    out = parse_alert(FB_EMAIL, "Facebook <notification@facebookmail.com>")
+    assert [l.source_id for l in out] == ["987654321"]  # the couch isn't housing
+    post = normalize(out[0])
+    assert post.price == 1650 and post.beds == 2
+    assert post.url == "https://www.facebook.com/groups/sfhousing/posts/987654321/"
+    assert post.contact.phone == "+14155550142"
+
+
+def test_facebook_links():
+    from househunt.facebook import links
+    from househunt.models import SearchCriteria
+
+    out = dict(links(SearchCriteria(city="San Francisco", max_price=3500, neighborhoods=["Mission"])))
+    assert out["Marketplace rentals"] == \
+        "https://www.facebook.com/marketplace/sanfrancisco/propertyrentals?maxPrice=3500"
+    assert "query=Mission+apartment" in out["Marketplace: Mission"]
+    assert out["Groups: San Francisco housing"].endswith("q=San%20Francisco%20housing")
+
+
+def test_zillow_links():
+    import json
+    from urllib.parse import parse_qs, urlparse
+
+    from househunt.facebook import zillow_links
+    from househunt.models import SearchCriteria
+
+    [(label, url)] = zillow_links(SearchCriteria(city="San Francisco", max_price=3500,
+                                                 min_beds=1, neighborhoods=["Mission"]))
+    assert label == "Zillow: Mission, San Francisco"
+    assert urlparse(url).path == "/homes/for_rent/Mission-San-Francisco_rb/"
+    state = json.loads(parse_qs(urlparse(url).query)["searchQueryState"][0])
+    assert state["filterState"]["fr"] == {"value": True}           # rentals only
+    assert state["filterState"]["mp"] == {"max": 3500}
+    assert state["filterState"]["beds"] == {"min": 1}
+    assert len(zillow_links(SearchCriteria(city="Oakland", max_price=3000))) == 1
+
+
+def test_paste_contact_from_listing():
+    from fastapi.testclient import TestClient
+    from househunt import db
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        r = client.post("/searches", data={"city": "sf", "max_price": 3000, "min_beds": 1})
+        sid = int(r.url.path.rsplit("/", 1)[-1])
+        page = client.get(f"/searches/{sid}").text
+        assert "Get the number to call" in page and "Reveal on Facebook" in page
+
+        client.post(f"/searches/{sid}/listings/facebook:fb-42/contact",
+                    data={"pasted": "show contact info\n(510) 513-6710 ask for Jo"})
+        fb = db.get_listing(sid, "facebook:fb-42")
+        assert fb.contact.phone == "+15105136710"
+        assert "Get the number to call" not in client.get(f"/searches/{sid}").text.split(
+            'id="facebook:fb-42"')[1].split("</article>")[0]
+
+        bad = client.post(f"/searches/{sid}/listings/facebook:fb-42/contact",
+                          data={"pasted": "no contact here"}, follow_redirects=False)
+        assert bad.status_code == 400
+
+
+def test_firecrawl_fills_pasted_listing(monkeypatch):
+    import httpx
+    from househunt import firecrawl
+    from househunt.manual import listing_from_url
+    from househunt.models import SearchCriteria, Source
+
+    sent = []
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        sent.append(json)
+        return httpx.Response(200, request=httpx.Request("POST", url), json={"data": {"json": {
+            "title": "Bright 1BR at The Valencia", "monthly_rent": 3100, "bedrooms": 1,
+            "bathrooms": 1, "address": "1 Valencia St, San Francisco, CA",
+            "summary": "Top floor, in-unit laundry.", "available_date": "Nov 1",
+            "contact_phone": "(415) 555-0177", "contact_email": "leasing@valencia.example"}}})
+
+    monkeypatch.setattr(firecrawl, "configured", lambda: True)
+    monkeypatch.setattr(firecrawl.httpx, "post", fake_post)
+
+    c = SearchCriteria(city="San Francisco", max_price=3500, min_beds=1)
+    l = listing_from_url("https://valenciaapts.example/units/4b", c)
+    assert l.source == Source.OTHER
+    assert (l.title, l.price, l.beds, l.address) == (
+        "Bright 1BR at The Valencia", 3100, 1, "1 Valencia St, San Francisco, CA")
+    assert l.contact.phone == "+14155550177" and l.contact.email == "leasing@valencia.example"
+    assert "Available: Nov 1" in l.description
+    # Only basic proxies, no scripted clicks.
+    assert sent[0]["proxy"] == "basic" and "actions" not in sent[0]
+
+    # What the renter typed wins over the extraction.
+    l2 = listing_from_url("https://valenciaapts.example/units/4b", c, price=2900, phone="4155550100")
+    assert l2.price == 2900 and l2.contact.phone == "+14155550100"
+
+    # Zillow / Facebook are never sent to Firecrawl.
+    sent.clear()
+    listing_from_url("https://www.zillow.com/homedetails/x/1_zpid/", c)
+    listing_from_url("https://www.facebook.com/marketplace/item/9/", c)
+    assert sent == []
+class _Block:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+    def to_dict(self):
+        return {k: v for k, v in self.__dict__.items()}
+
+
+class _FakeStream:
+    def __init__(self, final, chunks):
+        self.final, self.text_stream = final, iter(chunks)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def get_final_message(self):
+        return self.final
+
+
+class _FakeClaude:
+    """Turn 1: save a note via the tool. Turn 2 (after the tool result): reply in text."""
+
+    def __init__(self):
+        self.requests = []
+        self.beta = self
+        self.messages = self
+
+    def stream(self, **kw):
+        self.requests.append(kw)
+        if len(self.requests) == 1:
+            final = _Block(stop_reason="tool_use", content=[
+                _Block(type="text", text="Noted."),
+                _Block(type="tool_use", id="tu1", name="save_note",
+                       input={"note": "Ask whether street noise is a problem at night"})])
+            return _FakeStream(final, ["Noted."])
+        final = _Block(stop_reason="end_turn",
+                       content=[_Block(type="text", text="I'll raise it on the next call.")])
+        return _FakeStream(final, ["I'll raise it ", "on the next call."])
+
+
+def _events(resp):
+    import json
+    return [json.loads(line) for line in resp.text.splitlines() if line]
+
+
+def test_place_chat_saves_notes_that_calls_use(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from househunt import chat, db, llm, pipeline
+    from househunt.models import SearchCriteria
+    from househunt.outreach.script import build_instruction
+    from househunt.web.app import app
+
+    fake = _FakeClaude()
+    monkeypatch.setattr(llm, "has_credentials", lambda: True)
+    monkeypatch.setattr(llm, "client", lambda: fake)
+
+    with TestClient(app) as client:
+        sid = db.create_search(SearchCriteria(city="sf", max_price=3000, min_beds=1))
+        pipeline.run_search(sid)
+        key = "zillow:z-1001"
+        r = client.post(f"/searches/{sid}/listings/{key}/chat", follow_redirects=False)
+        chat_id = int(r.headers["location"].rsplit("/", 1)[-1])
+        # Same place, same chat.
+        r2 = client.post(f"/searches/{sid}/listings/{key}/chat", follow_redirects=False)
+        assert r2.headers["location"] == r.headers["location"]
+
+        events = _events(client.post(f"/chats/{chat_id}/messages",
+                                     data={"message": "I'm worried it's noisy at night"}))
+        assert {"t": "note", "v": "Ask whether street noise is a problem at night"}.items() <= \
+            next(e for e in events if e["t"] == "note").items()
+        assert events[-1] == {"t": "done"}
+        assert "on the next call." in "".join(e["v"] for e in events if e["t"] == "text")
+
+        # The first request carried the user's message followed by a fresh context snapshot.
+        first = fake.requests[0]["messages"]
+        assert [m["role"] for m in first] == ["user", "system"]
+        assert "Sunny 2BR near the park" in first[1]["content"]
+        # The second request echoed the tool call and its result.
+        second = fake.requests[1]["messages"]
+        assert second[-1]["content"][0]["type"] == "tool_result"
+
+        notes = db.place_notes(sid, key)
+        assert notes == ["Ask whether street noise is a problem at night"]
+        listing, (criteria, _) = db.get_listing(sid, key), db.get_search(sid)
+        assert "street noise" in build_instruction(listing, criteria, "Lucy", notes)
+
+        # Notes show on the card, the chat page, and can be edited.
+        assert "street noise" in client.get(f"/searches/{sid}").text
+        assert "street noise" in client.get(f"/chats/{chat_id}").text
+        r = client.post(f"/places/{sid}/{key}/notes/add", data={"note": "Parking included?"})
+        assert r.json()["added"] and len(r.json()["notes"]) == 2
+        client.post(f"/places/{sid}/{key}/notes", data={"notes": "Parking included?"},
+                    headers={"x-requested-with": "fetch"})
+        assert db.place_notes(sid, key) == ["Parking included?"]
+
+        # A second turn only re-sends context when it changed (the notes did).
+        client.post(f"/chats/{chat_id}/messages", data={"message": "thanks"})
+        roles = [m["role"] for m in fake.requests[-1]["messages"]]
+        assert roles.count("system") == 2 and roles[-1] == "system"
+
+
+def test_chat_without_key_keeps_history_valid(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from househunt import db, llm
+    from househunt.web.app import app
+
+    monkeypatch.setattr(llm, "has_credentials", lambda: False)
+    with TestClient(app) as client:
+        r = client.get("/chats/agent", follow_redirects=False)
+        chat_id = int(r.headers["location"].rsplit("/", 1)[-1])
+        events = _events(client.post(f"/chats/{chat_id}/messages", data={"message": "hi"}))
+        assert events[0]["t"] == "error" and "ANTHROPIC_API_KEY" in events[0]["v"]
+        assert [m["role"] for m in db.chat_messages(chat_id)] == ["user", "system", "assistant"]
+        assert client.get(f"/chats/{chat_id}").status_code == 200
+
+
+def test_calls_and_viewings_pages():
+    from fastapi.testclient import TestClient
+
+    from househunt import db, pipeline
+    from househunt.models import SearchCriteria
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        assert "No calls yet" in client.get("/calls").text
+        sid = db.create_search(SearchCriteria(city="sf", max_price=3000, min_beds=1))
+        pipeline.run_search(sid)
+        page = client.get("/calls").text
+        assert "Sunny 2BR near the park" in page and "Discuss" in page
+        assert client.get("/viewings").status_code == 200
+        apps = client.get("/applications").text
+        assert 'href="/calls"' in apps and 'href="/viewings"' in apps

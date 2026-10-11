@@ -13,11 +13,11 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
-from househunt import db, geo, pipeline
+from househunt import chat as agent, db, geo, pipeline
 from househunt.connectors import google
 from househunt.config import settings
 from househunt.models import AppStage, ListingStatus, SearchCriteria
@@ -54,8 +54,9 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="KeyHunt", lifespan=lifespan, dependencies=[Depends(require_auth)])
 
 # Sidebar tabs: (path, label, icon). A tab shows up once its route exists.
-NAV = [("/", "Searches", "list"), ("/searches/new", "New search", "plus"),
-       ("/applications", "Applications", "clipboard"), ("/connections", "Connections", "plug")]
+NAV = [("/", "Searches", "list"), ("/calls", "Calls", "phone"), ("/viewings", "Viewings", "calendar"),
+       ("/applications", "Applications", "clipboard"), ("/chats/agent", "Ask your agent", "chat"),
+       ("/connections", "Connections", "plug")]
 
 
 def nav_items() -> list[tuple[str, str, str]]:
@@ -83,8 +84,12 @@ def when(value: str | None, fmt: str | None = None) -> str:
 
 
 templates.env.filters["when"] = when
+def recent_chats() -> list:
+    return [c for c in db.list_chats(8) if c["listing_key"]][:5]
+
+
 templates.env.globals.update(nav_items=nav_items, recent_searches=recent_searches,
-                             settings=settings)
+                             recent_chats=recent_chats, settings=settings)
 
 
 def _split(s: str) -> list[str]:
@@ -152,6 +157,8 @@ def show_search(request: Request, search_id: int):
     outcomes = {k: json.loads(c["outcome"]) for k, c in calls.items() if c["outcome"]}
     tours = db.tours_for_search(search_id)
     tracked = db.applications_for_search(search_id)
+    place_notes = db.notes_for_search(search_id)
+    chats = db.chats_for_search(search_id)
     emails = db.emails_for_search(search_id)
     in_flight = row["status"] in ("pending", "sourcing", "screening", "calling") or any(
         c["status"] in ("queued", "in_progress", "extracting") for c in calls.values()) or any(
@@ -171,6 +178,7 @@ def show_search(request: Request, search_id: int):
         "settings": settings, "pins": pins, "center": geo.cached(criteria.city),
         "counts": counts, "tracked": tracked, "stages": AppStage,
         "research_events": db.search_events(search_id),
+        "place_notes": place_notes, "chats": chats,
     })
 
 
@@ -245,6 +253,115 @@ def track_listing(search_id: int, key: str):
         next_step="Viewing" if tour else None, next_date=tour["start"] if tour else None,
     )
     return RedirectResponse(f"/searches/{search_id}", status_code=303)
+
+
+# --- calls & viewings -------------------------------------------------------
+
+def _listing_info(cache: dict, search_id: int, key: str):
+    if (search_id, key) not in cache:
+        found = db.get_search(search_id)
+        cache[(search_id, key)] = (db.get_listing(search_id, key), found[0] if found else None)
+    return cache[(search_id, key)]
+
+
+@app.get("/calls", response_class=HTMLResponse)
+def calls_page(request: Request):
+    cache: dict = {}
+    calls = []
+    for c in db.all_calls():
+        listing, criteria = _listing_info(cache, c["search_id"], c["listing_key"])
+        calls.append({"call": c, "listing": listing, "city": criteria.city if criteria else "",
+                      "outcome": json.loads(c["outcome"]) if c["outcome"] else None})
+    return templates.TemplateResponse(request, "calls.html", {"settings": settings, "calls": calls})
+
+
+@app.get("/viewings", response_class=HTMLResponse)
+def viewings_page(request: Request):
+    cache: dict = {}
+    now = datetime.now().isoformat(timespec="minutes")
+    items = []
+    booked = set()
+    for t in db.all_tours():
+        listing, criteria = _listing_info(cache, t["search_id"], t["listing_key"])
+        booked.add((t["search_id"], t["listing_key"]))
+        items.append({"start": t["start"], "title": listing.title if listing else "Viewing",
+                      "address": t["address"], "contact": t["contact_name"] or t["contact_phone"],
+                      "url": listing.url if listing else None, "ics": f"/tours/{t['id']}.ics",
+                      "search_id": t["search_id"], "key": t["listing_key"],
+                      "city": criteria.city if criteria else "", "source": "Booked by your agent"})
+    # Viewings you track by hand on the applications board.
+    for a in db.list_applications():
+        if a["stage"] == AppStage.VIEWING.value and a["next_date"] and \
+                (a["search_id"], a["listing_key"]) not in booked:
+            items.append({"start": a["next_date"], "title": a["title"], "address": a["address"],
+                          "contact": None, "url": a["url"], "ics": None, "search_id": a["search_id"],
+                          "key": a["listing_key"], "city": "", "source": "From your board",
+                          "app_id": a["id"]})
+    items.sort(key=lambda i: i["start"])
+    return templates.TemplateResponse(request, "viewings.html", {
+        "settings": settings, "upcoming": [i for i in items if i["start"] >= now],
+        "past": [i for i in items if i["start"] < now][::-1],
+    })
+
+
+# --- agent chats & place notes ----------------------------------------------
+
+@app.get("/chats/agent")
+def agent_chat():
+    return RedirectResponse(f"/chats/{db.get_or_create_chat(None, None, 'Your search')}", 303)
+
+
+@app.post("/searches/{search_id}/listings/{key}/chat")
+def start_place_chat(search_id: int, key: str):
+    listing = db.get_listing(search_id, key)
+    if not listing:
+        raise HTTPException(404)
+    return RedirectResponse(f"/chats/{db.get_or_create_chat(search_id, key, listing.title)}", 303)
+
+
+@app.get("/chats/{chat_id}", response_class=HTMLResponse)
+def chat_page(request: Request, chat_id: int):
+    chat = db.get_chat(chat_id)
+    if not chat:
+        raise HTTPException(404)
+    ctx = {"settings": settings, "chat": chat, "has_key": agent.llm.has_credentials(),
+           "messages": [m for m in db.chat_messages(chat_id) if m["display"]]}
+    if chat["listing_key"]:
+        sid, key = chat["search_id"], chat["listing_key"]
+        call = db.calls_for_search(sid).get(key)
+        ctx.update(listing=db.get_listing(sid, key), notes=db.place_notes(sid, key),
+                   call=call, outcome=json.loads(call["outcome"]) if call and call["outcome"] else None,
+                   tour=db.tours_for_search(sid).get(key), app=db.find_application(sid, key))
+    return templates.TemplateResponse(request, "chat.html", ctx)
+
+
+@app.post("/chats/{chat_id}/messages")
+def chat_send(chat_id: int, message: str = Form(...)):
+    if not db.get_chat(chat_id):
+        raise HTTPException(404)
+    if not message.strip():
+        raise HTTPException(400, "empty message")
+    events = (json.dumps(e) + "\n" for e in agent.respond(chat_id, message.strip()))
+    return StreamingResponse(events, media_type="application/x-ndjson")
+
+
+@app.post("/places/{search_id}/{key}/notes")
+def save_place_notes(request: Request, search_id: int, key: str, notes: str = Form(""),
+                     next: str = Form("")):
+    if not db.get_listing(search_id, key):
+        raise HTTPException(404)
+    db.set_place_notes(search_id, key, notes.splitlines())
+    if request.headers.get("x-requested-with") == "fetch":
+        return {"notes": db.place_notes(search_id, key)}
+    return RedirectResponse(next if next.startswith("/") else f"/searches/{search_id}#{key}", 303)
+
+
+@app.post("/places/{search_id}/{key}/notes/add")
+def add_place_note(search_id: int, key: str, note: str = Form(...)):
+    if not db.get_listing(search_id, key):
+        raise HTTPException(404)
+    added = db.add_place_note(search_id, key, note[:400])
+    return {"added": added, "notes": db.place_notes(search_id, key)}
 
 
 # --- applications -----------------------------------------------------------
@@ -530,17 +647,24 @@ def add_listing(search_id: int, url: str = Form(...), title: str = Form(""),
 
 @app.post("/searches/{search_id}/listings/{key}/contact")
 def add_contact(search_id: int, key: str, phone: str = Form(""), email: str = Form(""),
-                name: str = Form("")):
+                name: str = Form(""), pasted: str = Form("")):
     from househunt.manual import InvalidInput, set_contact
 
     listing = db.get_listing(search_id, key)
     if not listing:
         raise HTTPException(404)
     try:
-        set_contact(listing, phone, email, name)
+        set_contact(listing, phone, email, name, pasted=pasted)
     except InvalidInput as e:
         raise HTTPException(400, str(e))
     if listing.status == ListingStatus.FILTERED_OUT:
         listing.notes.append("contact added by you")
     db.upsert_listing(search_id, listing)
     return RedirectResponse(f"/searches/{search_id}#{key}", 303)
+
+
+# Pre-filled Facebook searches for the search page (see househunt/facebook.py).
+from househunt import facebook as _facebook  # noqa: E402
+
+templates.env.globals["facebook_links"] = _facebook.links
+templates.env.globals["zillow_links"] = _facebook.zillow_links

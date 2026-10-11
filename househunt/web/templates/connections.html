@@ -67,8 +67,16 @@
 </div>
 
 <div class="card">
-  <h3>Facebook Marketplace <span class="pill">not available</span></h3>
-  <p class="muted">Facebook gives apps no access to Marketplace or Messenger, and automating your logged-in
-    account breaks their terms and can get it banned. Planned: paste a Marketplace link and the agent takes it from there.</p>
+  <h3>Facebook <span class="pill {{ 'viable' if google else '' }}">{{ "via Gmail" if google else "needs Google" }}</span></h3>
+  <p class="muted">Meta has no API for searching Marketplace or groups, and automating your account can get it banned,
+    so KeyHunt works alongside your own Facebook instead:</p>
+  <ol>
+    <li><strong>Group posts by email:</strong> join housing groups, then in Facebook go to
+      <a href="https://www.facebook.com/settings/?tab=notifications" target="_blank" rel="noopener">Settings → Notifications → Groups</a>
+      and turn on <em>Email</em> for new posts. Every search reads those emails (last 7 days) and keeps the ones that look like housing.</li>
+    <li><strong>Find on Facebook:</strong> each search has links that open Marketplace rentals and housing-group searches for your city and budget.</li>
+    <li><strong>Paste a post:</strong> anything you find goes into <em>Add a listing you found</em> on the search page.</li>
+  </ol>
+  <p class="muted">Sellers usually reply only in Messenger, so that part stays with you.</p>
 </div>
 {% endblock %}

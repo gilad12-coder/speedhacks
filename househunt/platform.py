@@ -98,8 +98,10 @@ def export_run(household_id: str, search_id: int, app_url: str = '') -> dict:
         if c['error']:
             warnings.append(c['error'])
     events = db.search_events(search_id)
+    finished = max([row['created_at'], *[e['created_at'] for e in events],
+                    *[c['updated_at'] for c in call_rows.values()]])
     return {'householdId':household_id,'startedAt':iso(row['created_at']),
-        'finishedAt':None if in_flight else iso(events[-1]['created_at'] if events else row['created_at']),
+        'finishedAt':None if in_flight else iso(finished),
         'listings':listings,'calls':calls,'checks':checks,'offeredWindows':windows,
         'progress':[e['message'] for e in events], 'warnings':warnings}
 

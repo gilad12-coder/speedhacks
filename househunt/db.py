@@ -82,6 +82,30 @@ CREATE TABLE IF NOT EXISTS applications (
     updated_at TEXT NOT NULL,
     UNIQUE (search_id, listing_key)
 );
+CREATE TABLE IF NOT EXISTS place_notes (
+    search_id INTEGER NOT NULL,
+    listing_key TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',            -- one note per line; read by chats and calls
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (search_id, listing_key)
+);
+CREATE TABLE IF NOT EXISTS chats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    search_id INTEGER,                        -- both NULL for the general chat
+    listing_key TEXT,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (search_id, listing_key)
+);
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL,
+    role TEXT NOT NULL,                       -- user | assistant | system (API roles)
+    content TEXT NOT NULL,                    -- JSON exactly as sent to / returned by the API
+    display TEXT,                             -- what the chat page shows; NULL = hidden turn
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS geocache (
     query TEXT PRIMARY KEY,
     lat REAL,                                 -- NULL = looked up, no match
@@ -385,6 +409,94 @@ def journey_counts() -> dict[str, int]:
             "viable": one("SELECT COUNT(*) FROM listings WHERE status IN ('viable', 'tour_scheduled')"),
             "tours": one("SELECT COUNT(*) FROM tours"),
         }
+
+
+# --- place notes ------------------------------------------------------------
+
+def place_notes(search_id: int, listing_key: str) -> list[str]:
+    with conn() as c:
+        row = c.execute("SELECT body FROM place_notes WHERE search_id = ? AND listing_key = ?",
+                        (search_id, listing_key)).fetchone()
+    return [n for n in (row["body"] if row else "").splitlines() if n.strip()]
+
+
+def notes_for_search(search_id: int) -> dict[str, list[str]]:
+    with conn() as c:
+        rows = c.execute("SELECT listing_key, body FROM place_notes WHERE search_id = ?",
+                         (search_id,)).fetchall()
+    return {r["listing_key"]: [n for n in r["body"].splitlines() if n.strip()] for r in rows}
+
+
+def set_place_notes(search_id: int, listing_key: str, notes: list[str]) -> None:
+    body = "\n".join(n.strip().lstrip("-• ").strip() for n in notes if n.strip())
+    with conn() as c:
+        c.execute("INSERT INTO place_notes (search_id, listing_key, body, updated_at) VALUES (?, ?, ?, ?) "
+                  "ON CONFLICT(search_id, listing_key) DO UPDATE SET body=excluded.body, "
+                  "updated_at=excluded.updated_at", (search_id, listing_key, body, now()))
+
+
+def add_place_note(search_id: int, listing_key: str, note: str) -> bool:
+    """Append a note unless it's already there. Returns True if added."""
+    note = " ".join(note.split()).lstrip("-• ")
+    notes = place_notes(search_id, listing_key)
+    if not note or note.lower() in (n.lower() for n in notes):
+        return False
+    set_place_notes(search_id, listing_key, notes + [note])
+    return True
+
+
+# --- chats ------------------------------------------------------------------
+
+def get_or_create_chat(search_id: int | None, listing_key: str | None, title: str) -> int:
+    with conn() as c:
+        row = c.execute("SELECT id FROM chats WHERE search_id IS ? AND listing_key IS ?",
+                        (search_id, listing_key)).fetchone()
+        if row:
+            return row["id"]
+        return c.execute("INSERT INTO chats (search_id, listing_key, title, created_at, updated_at) "
+                         "VALUES (?, ?, ?, ?, ?)",
+                         (search_id, listing_key, title, now(), now())).lastrowid
+
+
+def get_chat(chat_id: int) -> sqlite3.Row | None:
+    with conn() as c:
+        return c.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
+
+
+def list_chats(limit: int = 50) -> list[sqlite3.Row]:
+    with conn() as c:
+        return c.execute("SELECT * FROM chats ORDER BY updated_at DESC LIMIT ?", (limit,)).fetchall()
+
+
+def chats_for_search(search_id: int) -> dict[str, sqlite3.Row]:
+    with conn() as c:
+        rows = c.execute("SELECT * FROM chats WHERE search_id = ?", (search_id,)).fetchall()
+    return {r["listing_key"]: r for r in rows}
+
+
+def add_chat_message(chat_id: int, role: str, content, display: str | None) -> int:
+    with conn() as c:
+        c.execute("UPDATE chats SET updated_at = ? WHERE id = ?", (now(), chat_id))
+        return c.execute("INSERT INTO chat_messages (chat_id, role, content, display, created_at) "
+                         "VALUES (?, ?, ?, ?, ?)",
+                         (chat_id, role, json.dumps(content), display, now())).lastrowid
+
+
+def chat_messages(chat_id: int) -> list[sqlite3.Row]:
+    with conn() as c:
+        return c.execute("SELECT * FROM chat_messages WHERE chat_id = ? ORDER BY id",
+                         (chat_id,)).fetchall()
+
+
+def all_calls() -> list[sqlite3.Row]:
+    """Every call across searches, newest first (all attempts, not just the latest)."""
+    with conn() as c:
+        return c.execute("SELECT * FROM calls ORDER BY id DESC").fetchall()
+
+
+def all_tours() -> list[sqlite3.Row]:
+    with conn() as c:
+        return c.execute("SELECT * FROM tours ORDER BY start").fetchall()
 
 
 # --- geocode cache ----------------------------------------------------------

@@ -68,6 +68,8 @@ class Listing:
     neighborhood: str | None = None
     lat: float | None = None
     lng: float | None = None
+    # How to reveal a contact the site hides, e.g. "show_contact" / "reply" on Craigslist.
+    contact_hint: str | None = None
     description: str = ""
     contact: Contact | None = None
     status: ListingStatus = ListingStatus.NEW

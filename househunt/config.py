@@ -40,6 +40,7 @@ class Settings:
     search_model: str
     search_max_listings: int
     screen_top_n: int
+    firecrawl_api_key: str | None    # optional: parse pasted links from unsupported sites
 
 
 def load() -> Settings:
@@ -70,6 +71,7 @@ def load() -> Settings:
         search_model=env("SEARCH_MODEL", "gpt-4.1"),
         search_max_listings=max(1, min(15, int(env("SEARCH_MAX_LISTINGS", "10")))),
         screen_top_n=max(1, min(10, int(env("SCREEN_TOP_N", "5")))),
+        firecrawl_api_key=env("FIRECRAWL_API_KEY"),
     )
 
 

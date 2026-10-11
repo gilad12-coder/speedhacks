@@ -46,7 +46,12 @@ def source_listings(criteria: SearchCriteria, progress=lambda message: None) -> 
                 from househunt.research.web import Page
                 pages = [Page(l.url, l.title, l.research["page_text"], images=l.photo_urls) for l in found if l.research.get("page_text")]
                 progress(f"Checking city, unit, rent and requirements on {len(pages)} Craigslist pages")
+                originals = {l.url:l for l in found}
                 found = [l for i in range(0, len(pages), 4) for l in read_rentals(pages[i:i+4], criteria)]
+                for listing in found:
+                    if original := originals.get(listing.url):
+                        listing.contact_hint = original.contact_hint
+                        listing.lat, listing.lng = original.lat, original.lng
             for listing in found:
                 listing.research.pop("page_text", None)
             progress(f"{src.name}: found {len(found)} listings")
@@ -209,7 +214,8 @@ def _call_listing(search_id: int, key: str) -> None:
                         raise RuntimeError("Daily call limit reached for this contact")
                 if not criteria.tour_availability:
                     criteria.tour_availability = calendar_availability()
-                instruction = row["instruction"] or build_instruction(listing, criteria, settings.renter_name)
+                instruction = row["instruction"] or build_instruction(listing, criteria, settings.renter_name,
+                                                                       db.place_notes(search_id,key))
                 db.update_call(call_id, instruction=instruction)
                 placed = dial.place_call(listing.contact.phone, instruction,
                     max_seconds=settings.call_max_seconds, idempotency_key=row["attempt_key"])
