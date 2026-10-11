@@ -438,12 +438,12 @@ def restore_lead(app_id: int):
 
 @app.get("/phone", response_class=HTMLResponse)
 def phone_page(request: Request, msg: str | None = None, error: str | None = None):
-    from househunt import briefing, flags, phone
+    from househunt import flags, phone
 
     return templates.TemplateResponse(request, "phone.html", {
         "settings": settings, "msg": msg, "error": error, "configured": phone.configured(),
         "enabled": phone.enabled(), "number": db.get_state("phone_number"),
-        "synced_at": db.get_state("inbound_synced_at"), "facts": briefing.facts(),
+        "synced_at": db.get_state("inbound_synced_at"),
         "flags": flags.compute(), "inbound": db.inbound_calls(),
     })
 
