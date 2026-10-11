@@ -2,9 +2,12 @@ import Link from "next/link";
 import { Logo } from "./logo";
 
 export function Wordmark({ tone = "ink", size = "md" }: { tone?: "ink" | "light"; size?: "md" | "lg" | "xl" }) {
+  const logo = <Logo light={tone === "light"} stacked={size === "xl"} size={size === "lg" ? "h-12" : "h-8"} />;
+  // The big stacked title is a brand moment, not navigation.
+  if (size === "xl") return logo;
   return (
     <Link href="/" className="inline-flex">
-      <Logo light={tone === "light"} stacked={size === "xl"} size={size === "lg" ? "h-12" : "h-8"} />
+      {logo}
     </Link>
   );
 }
