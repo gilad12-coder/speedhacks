@@ -14,6 +14,7 @@ class Source(str, Enum):
     REDFIN = "redfin"
     APARTMENTS = "apartments"
     STREETEASY = "streeteasy"
+    OTHER = "other"
 
 
 class ListingStatus(str, Enum):
