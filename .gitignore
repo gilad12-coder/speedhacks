@@ -54,3 +54,4 @@ data/
 recordings/
 caller/data/
 caller/dist/
+caller/node_modules/

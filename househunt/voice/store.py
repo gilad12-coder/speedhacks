@@ -11,7 +11,7 @@ from househunt import db
 
 def private_path(kind: str, identifier: str) -> Path:
     from househunt.config import settings
-    if kind not in {"profiles", "sessions"} or not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", identifier):
+    if kind not in {"profiles", "sessions", "enrollments"} or not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", identifier):
         raise ValueError("Invalid voice storage identifier")
     return Path(settings.db_path).resolve().parent / "voice" / kind / f"{identifier}.json"
 

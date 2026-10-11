@@ -128,7 +128,7 @@ def main():
         if not args.sample.is_file() or not 1_000 <= args.sample.stat().st_size <= 30_000_000:
             raise RuntimeError("Provide a clean local audio sample smaller than 30 MB")
         with args.sample.open("rb") as sample:
-            result = client.voices.ivc.create(name=args.name, files=[sample], remove_background_noise=False)
+            result = client.voices.ivc.create(name=args.name, files=[sample], remove_background_noise=False, request_options={"max_retries": 0})
         print("Voice ID:", result.voice_id)
         if result.requires_verification:
             print("Speaker verification is required in ElevenLabs before this voice can be used.")

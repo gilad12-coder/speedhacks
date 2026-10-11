@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Your voice · KeyHunt{% endblock %}
+{% block style %}
+<style>
+.voice-layout {display:grid;grid-template-columns:minmax(270px,.9fr) minmax(300px,1.1fr);gap:24px;align-items:start}
+.voice-controls {position:sticky;top:24px}.voice-controls label {display:block;margin-top:16px}.voice-controls input[type=text] {width:100%;margin-top:6px}
+.voice-controls .consent {display:flex;flex-direction:row;align-items:flex-start;gap:10px;font-size:13px;line-height:1.6}.consent input {margin-top:4px;flex:none}
+.voice-clock {font-size:48px;font-variant-numeric:tabular-nums;letter-spacing:-.04em;font-weight:600;margin:18px 0 4px}
+.voice-meter {width:100%;height:8px;accent-color:var(--accent)}.voice-actions {display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.voice-script p {font-size:16px;line-height:1.85;margin:0 0 22px}.voice-script h2 {margin-top:0}.voice-controls audio {width:100%;margin-top:10px}
+.voice-step {font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.voice-controls [hidden], .voice-layout [hidden] {display:none!important}.voice-controls button:disabled {opacity:.5;cursor:not-allowed}
+@media(max-width:900px){.voice-layout{grid-template-columns:1fr}.voice-controls{position:static}.voice-script{max-height:55vh;overflow:auto}}
+</style>
+{% endblock %}
+{% block content %}
+<a href="/searches/{{ search_id }}" class="small">← Back to your search</a>
+<div class="page-head" style="margin-top:14px"><div><h1>Your voice. Your AI assistant.</h1><p class="muted">Two minutes of natural speech give your assistant a voice that sounds like you.</p></div></div>
+<div id="voice-enrollment" class="voice-layout" data-api="/api/searches/{{ search_id }}/voice">
+  <section class="card voice-controls" aria-label="Voice recording">
+    <span class="voice-step">1 · Record &nbsp; 2 · Listen &nbsp; 3 · Approve</span>
+    <p id="voice-status" role="status" aria-live="polite">Loading your voice settings…</p>
+    <div id="voice-record-form">
+      <label for="voice-name">Your first name</label>
+      <input id="voice-name" type="text" maxlength="80" value="{{ speaker_name }}" autocomplete="given-name">
+      <p class="small muted">Calls will introduce your assistant as “<span id="voice-name-preview">{{ speaker_name }}</span>’s AI assistant.”</p>
+      <label class="consent"><input id="voice-consent" type="checkbox"><span>This is my own voice. I agree to send this recording to ElevenLabs to create a voice clone for my KeyHunt assistant. I can remove it here later.</span></label>
+      <div class="voice-clock" id="voice-timer" aria-label="Recording time">0:00 <span class="muted" style="font-size:20px">/ 2:00</span></div>
+      <progress id="voice-progress" class="voice-meter" max="120" value="0" aria-label="Recording progress"></progress>
+      <p id="voice-tip" class="small muted">Find a quiet room. Use your normal voice and keep the microphone at a steady distance.</p>
+      <meter id="voice-level" min="0" max="1" value="0" aria-label="Microphone level" style="width:100%" hidden></meter>
+      <div class="voice-actions"><button class="btn" id="voice-start" disabled>Record two minutes</button><button class="btn secondary" id="voice-stop" hidden>Stop & retake</button></div>
+      <div id="voice-sample" hidden><p class="small">Listen to your recording before sending it.</p><audio id="voice-original" controls></audio><div class="voice-actions"><button class="btn" id="voice-upload">Create my voice</button><button class="btn secondary" id="voice-retake">Record again</button></div></div>
+    </div>
+    <div id="voice-audition" hidden><h2>Does this sound like you?</h2><p class="muted small">Listen to the full preview. Your voice is used only after you approve it.</p><audio id="voice-preview" controls></audio><div class="voice-actions"><button class="btn" id="voice-approve" disabled>Use this voice</button></div></div>
+    <div id="voice-approved" hidden><p>Your voice is approved for this search. Calls will still clearly identify the assistant as AI.</p><p id="voice-availability" class="small muted"></p></div>
+    <button class="btn secondary small" id="voice-remove" hidden>Remove voice & recording</button>
+    <button class="btn secondary small" id="voice-retry" hidden>Retry preview</button>
+    <p class="small muted" style="margin-top:20px">Your original sample leaves this browser only when you click Create my voice. KeyHunt keeps the preview privately. ElevenLabs processes and stores the source sample and clone in the connected account. Remove voice deletes the clone created here.</p>
+  </section>
+  <section class="card voice-script" aria-labelledby="script-title">
+    <span class="voice-step">Read aloud at your own pace</span><h2 id="script-title" style="font-size:21px;margin-top:8px">A little conversation about home</h2>
+    <p class="muted" style="font-size:13px;line-height:1.6">Speak naturally, with brief pauses and normal expression. These are sample details, not your actual rental requirements. If you finish early, reread a paragraph until the timer reaches 2:00.</p>
+    {% for paragraph in script %}<p>{{ paragraph }}</p>{% endfor %}
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script type="module" src="/voice-assets/recorder.js"></script>{% endblock %}

@@ -69,7 +69,11 @@ The search stage runs independently from calling. This supports Lucy's manually 
 
 The optional `househunt.voice` service connects Dial's approved [self-hosted audio](https://docs.getdial.ai/documentation/platform/self-hosted) to ElevenLabs Agents. Dial's official SDK validates signatures and audio frames; ElevenLabs provides speech recognition, turn-taking, interruptions, the language model and cloned speech. The adapter uses 16 kHz mono PCM in both directions. It clears Dial playback on interruptions and discards late audio from interrupted turns. There is no custom speech model to train or maintain.
 
-The initial enrollment uses ElevenLabs' existing recording/Instant Voice Clone screen, then an operator binds the approved voice to a specific search. An embedded KeyHunt microphone/enrollment screen is not yet implemented. Record 1–2 minutes of clean, conversational speech from the consenting speaker, with consistent microphone position and no background voices or music. The voice lives in the ElevenLabs account used to create it. Instant cloning needs a listening check; professional cloning requires more audio, an eligible plan and processing time. Neither option guarantees indistinguishable speech over a phone connection.
+The main search page now has **Set up my voice** (`/searches/<id>/voice`), also linked from household Settings after a search starts. The embedded recorder supplies a roughly two-minute reading script, microphone level, exact 120-second automatic stop, local playback and retake. The browser captures mono 16 kHz PCM and uploads a WAV smaller than 4 MB only after explicit own-voice consent and **Create my voice**. Server checks validate the actual audio duration and format, reject mostly silent or clipped samples, and limit streamed bodies before calling ElevenLabs. These are basic recording-quality checks, not speaker authentication.
+
+A background job creates the instant clone and a private audition. The user listens, then explicitly approves that exact enrollment before it can be used for their search. A preview retry reuses the clone; it never uploads or creates a second one. Raw WAV samples are held only in memory for the upload; private enrollment records and previews are mode 0600. Server restart converts unfinished jobs into a recoverable error. **Remove voice & recording** removes the locally selected voice/preview and deletes only the provider clone created by that enrollment. Existing call recordings remain in the call history. ElevenLabs processes/stores the source sample and clone in the connected account; its retention policy also applies.
+
+Record in a quiet room with a steady microphone position and natural delivery. Instant cloning needs a listening check; professional cloning requires more audio, an eligible plan and processing time. Neither option guarantees indistinguishable speech over a phone connection. The reading script is example conversation and is never used as the renter’s actual preferences. The assistant identifies itself as the enrolled speaker’s AI assistant.
 
 ```sh
 pip install -r requirements-voice.txt
@@ -96,11 +100,28 @@ python -m househunt.voice.setup activate --ws-url wss://YOUR_HOST/audio --search
 # Restart the caller using the updated .env after activation.
 ```
 
-Activation routes **all new calls on the Dial account** through this endpoint. Unknown, inbound, unenrolled, duplicate and wrongly signed calls are rejected. For rollback, disable Self-Hosted in Dial and set `VOICE_MODE=managed` in the caller. Quick tunnels are suitable for development only; their hostname changes on restart, and the local machine must remain awake.
+Activation routes **all new calls on the Dial account** through this endpoint, including the team's phone-briefing number. This rental-call adapter does not serve inbound briefings; keep managed mode for that demo or use a separate Dial account until inbound routing is implemented. Unknown, inbound, unenrolled, duplicate and wrongly signed calls are rejected. For rollback, disable Self-Hosted in Dial and set `VOICE_MODE=managed` in the caller. Quick tunnels are suitable for development only; their hostname changes on restart, and the local machine must remain awake.
 
 The provider conversation ID is saved privately before audio output. After hangup, the caller imports ElevenLabs' finalized timestamped transcript and, when available, recording into the existing quote-validation and authenticated playback paths. Provider response bodies and signed URLs are never logged. If evidence is still processing, retry the saved attempt; no new call is placed. Dial socket reconnects preserve a live provider session for up to 16 seconds; process restarts safely end the old conversation instead of repeating its introduction. Private recordings and profiles require the same retention/access controls as the existing call database; no raw voice sample is committed to Git.
 
 The assistant still introduces itself as the renter's **AI assistant**, and tour offers remain unbooked until the household confirms separately. Custom voice is optional and remains inactive until the real clone and phone path have been rehearsed.
+
+## Voice enrollment API
+
+The browser-facing, session-authenticated API is `/api/h/<householdId>/voice`. It checks household membership before forwarding to `/agent/households/<householdId>/voice`, which requires the shared server bearer key. The Python operator UI uses `/api/searches/<searchId>/voice` under `APP_PASSWORD`; enrollment is refused if that password is absent. There are no public voice/provider IDs or provider keys in responses. No endpoint below places a call or changes Dial's account-wide mode.
+
+| Method | Suffix | Purpose |
+| --- | --- | --- |
+| GET | (none) | Status, script paragraphs, `targetSeconds: 120`, enrollment ID, approval and setup state |
+| POST | (none) | Raw `audio/wav`, mono PCM16 at 16 kHz, 119.5–122 seconds, maximum 4,000,000 bytes; returns 202 |
+| GET | `/preview` | Private generated MP3 audition, `Cache-Control: private, no-store` |
+| POST | `/preview` | Retry a failed preview or retry after ElevenLabs speaker verification; reuses the existing clone |
+| POST | `/approve` | JSON `{ "enrollmentId": "…", "approved": true }`; approves only the current ready audition |
+| DELETE | (none) | Remove the selected voice, private audition and this enrollment's provider clone |
+
+All mutations require `X-KeyHunt-Voice: 1`; cross-site browser requests are rejected. Upload also requires `X-Voice-Consent: true` and `X-Voice-Name: <encodeURIComponent(firstName)>`. No sample is uploaded until the user chooses **Create my voice**. Status phases are `empty`, `creating`, `creating_preview`, `verification_required`, `audition`, `approved`, or `error`. Poll after a 202; a request retry receives 409 while an enrollment already exists. If creation times out before a provider ID is returned, inspect the account before deliberately removing/retrying that attempt.
+
+The worker and enrollment server must share the same private disk and run one web process. The two-minute PCM upload fits Vercel's body limit. Custom audio still needs the separate signed WebSocket listener, approved enrollment and explicit account-wide Dial activation described above. The native Python UI currently shares the operator password; it does not inherit the Next.js housemate session. Use the Next.js API for session-based household access.
 
 ## Validation
 
