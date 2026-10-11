@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import threading
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from househunt import db
 from househunt.config import settings
@@ -100,6 +100,8 @@ def finish(sid: int, key: str, policy: dict):
 
 def run_due(sid: int | None = None, key: str | None = None) -> None:
     from househunt import pipeline
+    if settings.mock_sources or settings.call_mode.value == 'dry_run':
+        return  # Never turn persisted live jobs into synthetic "completed" calls.
     # Re-read and claim after acquiring the same lock as manual calls.
     with pipeline._call_lock:
         with db.conn() as c:

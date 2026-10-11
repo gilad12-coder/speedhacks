@@ -339,8 +339,13 @@ def block_contact(phone: str) -> None:
 
 
 def contact_called_today(phone: str, except_id: int) -> bool:
+    from zoneinfo import ZoneInfo
+    zone = ZoneInfo(settings.call_timezone)
+    today = datetime.now(zone).date()
     with conn() as c:
-        count = c.execute("SELECT COUNT(*) FROM calls WHERE phone=? AND id<>? AND mode='live' AND direction='outbound' AND dial_call_id IS NOT NULL AND substr(created_at,1,10)=?", (phone, except_id, now()[:10])).fetchone()[0]
+        rows = c.execute("SELECT created_at FROM calls WHERE phone=? AND id<>? AND mode='live' AND direction='outbound' AND dial_call_id IS NOT NULL", (phone, except_id)).fetchall()
+        # Existing naive timestamps were written in the worker's own timezone.
+        count = sum(datetime.fromisoformat(row['created_at']).astimezone(zone).date() == today for row in rows)
         return count >= settings.max_calls_per_number_per_day
 
 

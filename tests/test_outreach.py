@@ -180,3 +180,19 @@ def test_two_households_same_unit_callback_stays_unassigned(outreach):
         db.update_call(row['id'], status='ended', dial_call_id=f'outbound-{search}')
     raw = {'transcriptTurns': [{'speaker': 'user', 'startMs': 0, 'text': '900 Pine Street Unit 6'}]}
     assert callbacks.match(listing.contact.phone, raw) is None
+
+
+def test_daily_contact_limit_uses_property_day_not_utc_day(outreach, monkeypatch):
+    caller, _, _, _, _ = outreach
+    db, _, sid, listing, _ = caller
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            current = datetime.fromisoformat('2026-10-13T00:30:00+00:00')
+            return current.astimezone(tz) if tz else current.replace(tzinfo=None)
+    monkeypatch.setattr(db, 'datetime', Clock)
+    row = db.claim_call(sid, listing.key, listing.contact.phone, 'live')
+    db.update_call(row['id'], dial_call_id='earlier', created_at='2026-10-12T22:00:00+00:00', status='ended')
+    assert db.contact_called_today(listing.contact.phone, -1)  # Both Monday in Pacific time.
+    db.update_call(row['id'], created_at='2026-10-12T01:00:00+00:00')
+    assert not db.contact_called_today(listing.contact.phone, -1)  # Sunday in Pacific time.
