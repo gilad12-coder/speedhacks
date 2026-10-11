@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, List, Map as MapIcon } from "lucide-react";
 import { Wordmark } from "@/components/shell";
 import { getHouseholdState, isMember } from "@/lib/households";
 import { getHousemateId } from "@/lib/session";
 import { getWorkspace, SEARCH_RUNNING, type WorkspaceListing } from "@/lib/workspace";
 import { AutoRefresh } from "../auto-refresh";
 import { ListingCard } from "./listing-card";
+import { MapView } from "./map-view";
 import { AddListing, RefineSearch } from "./panels";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +16,12 @@ export const dynamic = "force-dynamic";
 const ORDER: WorkspaceListing["status"][] = ["tour_scheduled", "viable", "contacted", "candidate", "new", "not_viable", "filtered"];
 const rank = (l: WorkspaceListing) => (l.interested ? 0 : 1) * 10 + ORDER.indexOf(l.status);
 
-export default async function SearchPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SearchPage({ params, searchParams }: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ view?: string }>;
+}) {
   const { id } = await params;
+  const view = (await searchParams).view === "map" ? "map" : "list";
   const state = await getHouseholdState(id);
   if (!state) notFound();
   if (!(await isMember(id, await getHousemateId(id)))) notFound();
@@ -67,7 +72,7 @@ export default async function SearchPage({ params }: { params: Promise<{ id: str
     <>
       {header}
       {(running || callsRunning) && <AutoRefresh everyMs={4000} />}
-      <main className="mx-auto max-w-4xl px-8 py-10">
+      <main className={`mx-auto px-8 py-10 ${view === "map" ? "max-w-6xl" : "max-w-4xl"}`}>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="font-display text-3xl font-semibold tracking-tight">{c.city}</h1>
@@ -91,7 +96,19 @@ export default async function SearchPage({ params }: { params: Promise<{ id: str
           <AddListing householdId={id} />
         </div>
 
-        <ol className="mt-8 space-y-4">
+        <nav aria-label="View" className="mt-8 inline-flex rounded-full border border-line bg-surface p-1 text-sm font-medium">
+          {([["list", "List", List], ["map", "Map", MapIcon]] as const).map(([key, label, Icon]) => (
+            <Link key={key} href={`?view=${key}`} replace scroll={false} aria-current={view === key ? "page" : undefined}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-colors ${view === key ? "bg-green text-on-green" : "text-ink-2 hover:text-ink"}`}>
+              <Icon aria-hidden className="size-4" />{label}
+            </Link>
+          ))}
+        </nav>
+
+        {view === "map" ? (
+          <div className="mt-4"><MapView listings={listings} budget={c.max_price} /></div>
+        ) : (<>
+        <ol className="mt-4 space-y-4">
           {active.map((l) => <ListingCard key={l.id} householdId={id} listing={l} callingEnabled={callingEnabled} />)}
           {!active.length && (
             <li className="rounded-2xl border border-line bg-surface p-8 text-center text-ink-2">
@@ -108,6 +125,7 @@ export default async function SearchPage({ params }: { params: Promise<{ id: str
             </ol>
           </details>
         )}
+        </>)}
       </main>
     </>
   );

@@ -91,7 +91,7 @@ export default async function SettingsPage({
           <h2 id="voice-title" className="text-sm font-medium text-ink-3">Your assistant’s voice</h2>
           <div className="mt-3 rounded-2xl border border-line bg-surface px-6 py-5">
             <p className="font-medium">Let your AI assistant sound like you</p>
-            <p className="mt-2 text-sm leading-relaxed text-ink-3">Record two minutes using our reading script, listen to your voice preview, then approve it for calls. Your assistant will always introduce itself as AI.</p>
+            <p className="mt-2 text-sm leading-relaxed text-ink-3">Record two minutes so calls use your voice. It always says it’s an AI.</p>
             {voiceUrl ? <a href={`${voiceUrl}/voice`} className="mt-4 inline-block text-sm font-semibold text-green-ink underline">Record my voice in KeyHunt</a>
               : <p className="mt-3 text-sm text-ink-3">Start your household search to set up its voice.</p>}
           </div>
@@ -113,7 +113,7 @@ export default async function SettingsPage({
                 </span>
               </p>
               <p className="mt-0.5 text-sm text-ink-2">
-                Keyhunt only reads when you&apos;re busy and adds tours you accept. It never reads event details.
+                Reads only when you&apos;re busy, never event details.
               </p>
             </div>
             <a

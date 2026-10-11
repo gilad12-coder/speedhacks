@@ -19,8 +19,6 @@ import { proposeTourSlots } from "@/lib/tours";
 import type { Household } from "@/lib/types";
 import {
   pipelineCounts,
-  RULED_OUT_LABELS,
-  ruledOut,
   shortlist,
   usd,
 } from "@/lib/view";
@@ -144,13 +142,6 @@ export default async function HouseholdPage({
                 >
                   {searching ? "Keyhunt is searching" : "Search finished"}
                 </h2>
-                <p className="text-sm text-ink-2">
-                  {searching
-                    ? run?.listings.length
-                      ? "Places appear below as each call is checked. This page updates on its own."
-                      : "This page updates on its own."
-                    : `Every place Keyhunt found, and what happened to it.`}
-                </p>
                 <Link href={`/h/${id}/search`} className="shrink-0 text-sm font-semibold text-green-ink underline decoration-line-strong underline-offset-4 hover:text-green">
                   Open your search →
                 </Link>
@@ -182,12 +173,6 @@ export default async function HouseholdPage({
                 >
                   Your short list
                 </h2>
-                {list.length > 0 && (
-                  <p className="text-sm text-ink-2">
-                    Every check links to the moment in the call that confirmed
-                    it.
-                  </p>
-                )}
               </div>
               {run.finishedAt && list.length < 3 && (
                 <ThinResults count={list.length} household={household} />
@@ -196,12 +181,6 @@ export default async function HouseholdPage({
                 <p className="mt-6 rounded-2xl border border-dashed border-line-strong px-6 py-16 text-center text-ink-2">
                   No place has passed its calls yet.
                 </p>
-              )}
-              {proposed?.status === "calendars_missing" && (
-                <Callout tone="amber">
-                  Tour times appear once everyone connects Google Calendar.
-                  Still missing: {proposed.names.join(", ")}.
-                </Callout>
               )}
               {proposed?.status === "calendar_error" && (
                 <Callout tone="amber">
@@ -229,7 +208,7 @@ export default async function HouseholdPage({
               )}
             </section>
           )}
-          {run && <Candidates householdId={id} run={run} callerConnected={Boolean(process.env.AGENT_WORKER_URL)} />}
+          {run && <Candidates householdId={id} run={run} budget={brief?.maxTotalRentUsd ?? null} callerConnected={Boolean(process.env.AGENT_WORKER_URL)} />}
         </main>
       </div>
     </div>
@@ -367,9 +346,6 @@ function BriefSection({
       >
         What Keyhunt will look for
       </h2>
-      <p className="mt-2 text-ink-2">
-        {expectedSize === 1 ? "Your answers and interview, as one search." : "Everyone\u2019s answers, merged into one search."}
-      </p>
       {brief && <BriefList brief={brief} columns={3} />}
 
       {conflicts.length > 0 && (
@@ -379,10 +355,6 @@ function BriefSection({
               ? "One thing to settle"
               : `${conflicts.length} things to settle`}
           </h3>
-          <p className="mt-1 text-sm text-ink-2">
-            Until you settle it, Keyhunt leaves the disputed item out of the
-            search. Anyone can change their answers.
-          </p>
           <div className="mt-5 grid grid-cols-2 gap-4">
             {conflicts.map((c) => (
               <div
@@ -526,7 +498,6 @@ function Pipeline({
     ["Verified", counts.verified],
     ["Tour offered", counts.tourOffered],
   ] as const;
-  const out = ruledOut(run);
   return (
     <div className="mt-5">
       <ol className="grid grid-cols-4 overflow-hidden rounded-2xl border border-line bg-surface">
@@ -544,29 +515,6 @@ function Pipeline({
           </li>
         ))}
       </ol>
-      {out.length > 0 && (
-        <details className="group mt-3">
-          <summary className="cursor-pointer text-sm font-medium text-green-ink select-none">
-            Ruled out ({out.length})
-          </summary>
-          <ul className="mt-3 divide-y divide-line rounded-2xl border border-line bg-surface">
-            {out.map((l) => (
-              <li
-                key={l.id}
-                className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,3fr)] gap-4 px-4 py-2.5 text-sm"
-              >
-                <span className="truncate text-ink">{l.address}</span>
-                <span className="font-medium text-ink-2">
-                  {l.ruledOutReason
-                    ? RULED_OUT_LABELS[l.ruledOutReason]
-                    : "Ruled out"}
-                </span>
-                <span className="text-ink-2">{l.ruledOutNote}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
     </div>
   );
 }

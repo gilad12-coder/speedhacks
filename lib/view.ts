@@ -49,10 +49,6 @@ export function shortlist(run: AgentRun): Listing[] {
     .slice(0, 7);
 }
 
-export function ruledOut(run: AgentRun): Listing[] {
-  return run.listings.filter((l) => l.status === "ruled_out");
-}
-
 export function primaryCall(run: AgentRun, listingId: string) {
   const calls = run.calls.filter((c) => c.listingId === listingId);
   return calls.find((c) => c.outcome === "answered") ?? calls[0] ?? null;

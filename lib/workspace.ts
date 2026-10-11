@@ -18,6 +18,8 @@ export interface WorkspaceListing {
   sqft: number | null;
   address: string | null;
   neighborhood: string | null;
+  lat: number | null;
+  lng: number | null;
   status: "new" | "candidate" | "filtered" | "contacted" | "viable" | "not_viable" | "tour_scheduled";
   score: number;
   notes: string[];

@@ -1,8 +1,8 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Check, Minus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { AgentRun, Call, Listing } from "@/lib/types";
+import type { AgentRun, Call, CallAnswer, Listing } from "@/lib/types";
 import { CHECK_LABELS, CHECK_ORDER, checksFor, formatClock, primaryCall } from "@/lib/view";
 import { ScreeningDetails } from "./screening";
 
@@ -103,6 +103,7 @@ export function PlacePanel({
               );
             })}
           </ul>
+          <CallAnswers call={call} onSeek={onSeek} />
           {call.audioUrl ? (
             <audio
               ref={audio}
@@ -141,6 +142,61 @@ export function PlacePanel({
         </div>
       </div>
     </dialog>
+  );
+}
+
+function CallAnswers({ call, onSeek }: { call: Call; onSeek: (t: number) => void }) {
+  const answers = call.answers ?? [];
+  const required = answers.filter((a) => a.group !== "nice");
+  const preferred = answers.filter((a) => a.group === "nice");
+  const terms = [
+    call.statedRentUsd != null && `Rent quoted: $${call.statedRentUsd.toLocaleString("en-US")}/mo`,
+    call.deposit && `Deposit: ${call.deposit}`,
+    call.leaseTerms && `Lease: ${call.leaseTerms}`,
+  ].filter(Boolean) as string[];
+  if (!answers.length && !terms.length) return null;
+  return (
+    <div className="mt-5 space-y-4 border-t border-line pt-4">
+      {terms.length > 0 && <p className="text-sm text-ink-2">{terms.join(" · ")}</p>}
+      {required.length > 0 && <AnswerList title="Your requirements" answers={required} onSeek={onSeek} />}
+      {preferred.length > 0 && <AnswerList title="Your preferences" answers={preferred} onSeek={onSeek} />}
+    </div>
+  );
+}
+
+function AnswerList({ title, answers, onSeek }: { title: string; answers: CallAnswer[]; onSeek: (t: number) => void }) {
+  return (
+    <div>
+      <h4 className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase">{title}</h4>
+      <ul className="space-y-1.5">
+        {answers.map((a) => {
+          const Icon = a.passed === true ? Check : a.passed === false ? X : Minus;
+          const tone = a.passed === true ? "text-green-ink" : a.passed === false ? "text-red-ink" : "text-ink-3";
+          const body = (
+            <>
+              <Icon aria-hidden className={`mt-0.5 size-4 shrink-0 ${tone}`} />
+              <span className="min-w-0">
+                <span className={a.passed === null ? "text-ink-2" : "font-medium text-ink"}>{a.label}</span>
+                {a.evidence && <span className="font-mono tabular ml-2 text-ink-3">{formatClock(a.evidence.t)}</span>}
+                <span className="block text-ink-3">{a.evidence ? `“${a.evidence.quote}”` : a.summary}</span>
+              </span>
+              <span className="sr-only">{a.passed === true ? "Yes" : a.passed === false ? "No" : "Not confirmed"}</span>
+            </>
+          );
+          return (
+            <li key={a.key} className="text-sm">
+              {a.evidence ? (
+                <button type="button" onClick={() => onSeek(a.evidence!.t)} className="flex gap-2 rounded-md text-left hover:bg-sunk">
+                  {body}
+                </button>
+              ) : (
+                <div className="flex gap-2">{body}</div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

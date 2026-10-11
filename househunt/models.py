@@ -44,6 +44,7 @@ class SearchCriteria:
     nice_to_haves: list[str] = field(default_factory=list)
     move_in_from: str | None = None
     commute: dict = field(default_factory=dict)
+    wishes: list[str] = field(default_factory=list)       # interview answers in the household's words
 
 
 @dataclass

@@ -420,3 +420,380 @@ h3 {
   .searching-lens { transform: translateX(340px); }
   .searching-lit { animation: none; opacity: 0.6; }
 }
+
+/* ── Listings map ─────────────────────────────────────────────────────────
+   Ported from the NYC field guide map (MapLibre + CARTO Positron). Its palette
+   is scoped to .kh-map so it can't leak into the app's own tokens. */
+.kh-map {
+  --paper: oklch(0.965 0.012 75);
+  --paper-deep: oklch(0.935 0.015 75);
+  --ink: oklch(0.18 0.02 55);
+  --ink-soft: oklch(0.5 0.02 60);
+  --ink-faint: oklch(0.63 0.018 65);
+  --line: oklch(0.88 0.018 75);
+  --line-dark: oklch(0.76 0.025 68);
+  --night: oklch(0.22 0.03 45);
+  --mint: oklch(0.86 0.04 65);
+  --mint-deep: oklch(0.37 0.15 25);
+  --gold: oklch(0.62 0.12 65);
+  --coral: oklch(0.43 0.16 25);
+  --sky: oklch(0.75 0.02 70);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-fast: 160ms;
+  --motion-state: 240ms;
+  color: var(--ink);
+}
+
+.map-card {
+  overflow: hidden;
+  border: 1px solid var(--line-dark);
+  border-radius: 17px;
+  background: var(--night);
+  box-shadow: 0 22px 48px rgb(22 32 34 / 0.12);
+}
+
+.map-card.is-fullscreen {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  border-radius: 0;
+  box-shadow: 0 0 0 100vmax rgb(22 32 34 / 0.56);
+  animation: map-card-enter 360ms var(--ease-out-expo) both;
+}
+
+.map-card.is-fullscreen .map-surface,
+.map-card.is-fullscreen .maplibre-map-shell {
+  min-height: 0;
+  flex: 1;
+}
+
+.map-surface {
+  position: relative;
+  display: flex;
+  min-height: 640px;
+  overflow: hidden;
+  isolation: isolate;
+  background: #d9d0c6;
+}
+
+.maplibre-map-shell {
+  position: relative;
+  width: 100%;
+  min-height: 640px;
+}
+
+.maplibre-map-host {
+  position: absolute;
+  inset: 0;
+}
+
+.maplibre-map-host .maplibregl-map {
+  z-index: 0;
+  color: var(--ink);
+  background: #d9d0c6;
+  font-family: var(--font-sans);
+}
+
+.map-control-button {
+  display: grid;
+  width: 42px;
+  height: 38px;
+  place-items: center;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out-quart), color var(--motion-fast) var(--ease-out-quart), transform var(--motion-fast) var(--ease-out-quart);
+}
+
+.map-control-button:hover { color: var(--mint-deep); background: rgb(199 181 165 / 0.28); }
+.map-control-button:active { transform: scale(0.88); }
+.map-control-button:focus-visible { outline: 2px solid var(--mint-deep); outline-offset: -4px; }
+
+.map-control-cluster {
+  position: absolute;
+  z-index: 500;
+  top: 18px;
+  left: 18px;
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
+  transition: top var(--motion-state) var(--ease-out-quart), left var(--motion-state) var(--ease-out-quart), right var(--motion-state) var(--ease-out-quart);
+}
+
+/* When the panel docks to the map's left edge, move zoom/recenter under the fullscreen toggle. */
+.map-surface:has(.gmaps-card) .map-control-cluster {
+  top: 66px;
+  left: auto;
+  right: 18px;
+  align-items: flex-end;
+}
+
+.map-zoom-controls {
+  overflow: hidden;
+  border: 1px solid rgb(22 32 34 / 0.18);
+  border-radius: 13px;
+  background: rgb(246 241 235 / 0.92);
+  box-shadow: 0 8px 20px rgb(22 32 34 / 0.18);
+  backdrop-filter: blur(12px);
+}
+
+.map-zoom-controls .map-control-button + .map-control-button { border-top: 1px solid rgb(184 169 157 / 0.7); }
+
+.map-control-recenter,
+.map-control-fullscreen {
+  border: 1px solid rgb(22 32 34 / 0.18);
+  border-radius: 50%;
+  background: rgb(246 241 235 / 0.92);
+  box-shadow: 0 8px 20px rgb(22 32 34 / 0.18);
+  backdrop-filter: blur(12px);
+}
+
+.map-control-fullscreen {
+  position: absolute;
+  z-index: 500;
+  top: 18px;
+  right: 18px;
+}
+
+.map-control-recenter:hover,
+.map-control-fullscreen:hover,
+.map-control-fullscreen[aria-pressed="true"] { color: var(--night); background: var(--mint); }
+
+.maplibre-place-marker {
+  position: relative;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0;
+  border: 2px solid var(--night);
+  border-radius: 50%;
+  color: var(--night);
+  background: var(--sky);
+  box-shadow: 0 2px 7px rgb(31 54 54 / 0.3);
+  cursor: pointer;
+  transition: transform var(--motion-state) var(--ease-out-quart), box-shadow var(--motion-state) var(--ease-out-quart), opacity var(--motion-state) var(--ease-out-quart);
+}
+
+.maplibre-place-marker:hover,
+.maplibre-place-marker.is-selected {
+  box-shadow: 0 0 0 5px rgb(255 255 255 / 0.76), 0 5px 14px rgb(31 54 54 / 0.32);
+  transform: scale(1.18);
+}
+
+.maplibre-place-marker.is-selected::after {
+  position: absolute;
+  inset: -8px;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  opacity: 0.3;
+  content: "";
+}
+
+.maplibre-place-marker.price-light { background: var(--mint); }
+.maplibre-place-marker.price-mid { background: var(--sky); }
+.maplibre-place-marker.price-high { background: var(--gold); }
+.maplibre-place-marker.price-splurge { background: var(--coral); color: var(--paper); }
+.maplibre-place-marker.is-visited { border-color: var(--mint-deep); }
+.maplibre-place-marker.is-skipped { opacity: 0.44; }
+
+.gmaps-card {
+  position: absolute;
+  z-index: 6;
+  top: 12px;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  width: 366px;
+  max-width: calc(100% - 24px);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line-dark);
+  border-radius: 16px;
+  background: rgb(246 241 235 / 0.96);
+  box-shadow: 0 18px 44px rgb(22 32 34 / 0.24);
+  backdrop-filter: blur(16px);
+  animation: gmaps-panel-in 400ms var(--ease-out-expo) both;
+}
+
+.gmaps-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgb(22 32 34 / 0.14);
+  border-radius: 50%;
+  color: var(--ink-soft);
+  background: rgb(255 255 255 / 0.7);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out-quart), background-color var(--motion-fast) var(--ease-out-quart), transform var(--motion-fast) var(--ease-out-quart);
+}
+
+.gmaps-close:hover { color: var(--ink); background: var(--mint); transform: rotate(90deg); }
+.gmaps-close:focus-visible { outline: 2px solid var(--mint-deep); outline-offset: 2px; }
+
+.gmaps-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 20px 20px;
+}
+
+.gmaps-header { padding: 0 34px 0 0; }
+
+.gmaps-name {
+  font-family: var(--font-display);
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.gmaps-rating {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.gmaps-score {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.gmaps-score small { color: var(--ink-faint); font-size: 9px; font-weight: 500; }
+
+.gmaps-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 11px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.gmaps-dot { color: var(--ink-faint); }
+
+.gmaps-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 17px;
+}
+
+.gmaps-action {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--ink-soft);
+  background: rgb(255 255 255 / 0.5);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-out-quart), color var(--motion-fast) var(--ease-out-quart), transform var(--motion-fast) var(--ease-out-quart);
+}
+
+.gmaps-action:hover { border-color: var(--ink-soft); color: var(--ink); }
+.gmaps-action:active { transform: scale(0.95); }
+
+.gmaps-action-ic {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--paper-deep);
+}
+
+.gmaps-action--primary { border-color: transparent; color: var(--ink); }
+.gmaps-action--primary .gmaps-action-ic { color: var(--paper); background: var(--mint-deep); }
+
+.gmaps-details {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.gmaps-row {
+  display: flex;
+  gap: 12px;
+  padding: 13px 2px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.gmaps-row:last-child { border-bottom: none; }
+.gmaps-row p { flex: 1; }
+.gmaps-row strong { color: var(--ink); font-weight: 600; }
+
+.gmaps-row-ic {
+  display: flex;
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--mint-deep);
+}
+
+.map-legend {
+  position: absolute;
+  z-index: 5;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  gap: 12px;
+  padding: 7px 12px;
+  border: 1px solid rgb(22 32 34 / 0.18);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  background: rgb(246 241 235 / 0.92);
+  font-size: 11px;
+  backdrop-filter: blur(12px);
+}
+
+.map-legend i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border: 1px solid var(--night);
+  border-radius: 50%;
+}
+
+.map-attribution {
+  position: absolute;
+  z-index: 5;
+  left: 18px;
+  bottom: 14px;
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+@keyframes map-card-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gmaps-panel-in { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: translateX(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .map-card.is-fullscreen, .gmaps-card { animation: none; }
+  .maplibre-place-marker, .gmaps-close, .map-control-button { transition: none; }
+}

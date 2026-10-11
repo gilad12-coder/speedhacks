@@ -51,6 +51,8 @@ const listingSchema = z.object({
   }).optional(),
 });
 
+const evidenceSchema = z.object({ callId: z.string(), t: z.number().nonnegative(), quote: z.string().min(1) });
+
 const callSchema = z.object({
   listingVerified: z.boolean().nullable().optional(),
   id: z.string().min(1),
@@ -63,6 +65,21 @@ const callSchema = z.object({
   transcript: z.array(
     z.object({ t: z.number().nonnegative(), speaker: z.enum(["agent", "contact"]), text: z.string() }),
   ),
+  statedRentUsd: z.number().nonnegative().nullable().optional(),
+  deposit: z.coerce.string().max(300).nullable().optional(),
+  leaseTerms: z.coerce.string().max(300).nullable().optional(),
+  answers: z.array(
+    z.object({
+      key: z.string().min(1).max(40),
+      group: z.enum(["real", "matches", "fit", "nice"]),
+      label: z.string().min(1).max(200),
+      passed: z.boolean().nullable(),
+      summary: z.string().max(500),
+      evidence: evidenceSchema.nullable(),
+    })
+    // An answer without a quote behind it is shown as unconfirmed, never as a yes or no.
+    .transform((a) => (a.evidence ? a : { ...a, passed: null })),
+  ).max(60).optional(),
 });
 
 const checkSchema = z
@@ -71,7 +88,7 @@ const checkSchema = z
     kind: z.enum(["real", "matches", "fit", "tour"]),
     passed: z.boolean().nullable(),
     summary: z.string(),
-    evidence: z.object({ callId: z.string(), t: z.number().nonnegative(), quote: z.string().min(1) }).nullable(),
+    evidence: evidenceSchema.nullable(),
   })
   .refine((c) => c.passed !== true || c.evidence !== null, "A passed check must cite call evidence");
 

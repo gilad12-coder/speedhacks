@@ -14,6 +14,7 @@ import httpx
 from househunt import db
 from househunt.config import settings
 from househunt.models import ListingStatus, SearchCriteria
+from househunt.outreach.verification import requirements
 
 
 def criteria_from_brief(brief: dict) -> SearchCriteria:
@@ -28,7 +29,25 @@ def criteria_from_brief(brief: dict) -> SearchCriteria:
         occupants=occupants, renter_name=str(brief.get('renterName') or settings.renter_name or 'my client')[:80],
         must_haves=list(brief.get('mustHaves', [])), deal_breakers=list(brief.get('dealBreakers', [])),
         nice_to_haves=list(brief.get('niceToHaves', [])), move_in_from=brief.get('moveInFrom'),
-        move_in_by=brief.get('moveInTo'), commute=brief.get('commute', {}))
+        move_in_by=brief.get('moveInTo'), commute=brief.get('commute', {}),
+        wishes=[str(w)[:200] for w in brief.get('wishes', [])][:12])
+
+
+def call_answers(criteria: SearchCriteria, outcome: dict, call_id: str) -> list[dict]:
+    """One row per question the call asked, with the contact's quoted answer when it was confirmed."""
+    confirmed = {f['key']: f for f in outcome.get('confirmed_facts', [])}
+    items = {**{f'must:{i}':m for i,m in enumerate(criteria.must_haves)}, **{f'avoid:{i}':f'No {d.lower()}' for i,d in enumerate(criteria.deal_breakers)},
+             **{f'nice:{i}':n for i,n in enumerate(criteria.nice_to_haves)}, **{f'wish:{i}':w for i,w in enumerate(criteria.wishes)}}
+    names = {'available':'Still available','rent':'Monthly rent','qualifications':'What it takes to apply','beds':'Bedrooms',
+             'baths':'Bathrooms','move_in':'Move-in date','move_window':'Move-in date','occupancy':'Household size','commute':'Commute'}
+    rows = []
+    for r in requirements(criteria):
+        f = confirmed.get(r['key'], {})
+        ev = (f.get('evidence') or [None])[0]
+        rows.append({'key':r['key'],'group':r['group'],'label':names.get(r['key']) or items.get(r['key'], r['key']),'passed':f.get('passed'),
+            'summary':f.get('summary') or 'Not confirmed on the call',
+            'evidence':{'callId':call_id,'t':ev['t'],'quote':ev['quote']} if ev else None})
+    return rows
 
 
 def iso(value: str) -> str:
@@ -86,7 +105,9 @@ def export_run(household_id: str, search_id: int, app_url: str = '') -> dict:
             'startedAt':iso(raw.get('createdAt') or c['created_at']), 'durationSec':float(raw.get('duration') or 0),
             'outcome':'answered' if outcome.get('reached_person') else 'failed' if c['status'] in ('failed','attention') else 'no_answer',
             'audioUrl':audio,'transcript':outcome.get('transcript_turns',[]),
-            'listingVerified': outcome.get('listing_verified') if outcome.get('mode') != 'dry_run' else None})
+            'listingVerified': outcome.get('listing_verified') if outcome.get('mode') != 'dry_run' else None,
+            'statedRentUsd':outcome.get('monthly_rent'),'deposit':outcome.get('deposit'),'leaseTerms':outcome.get('lease_terms'),
+            'answers':call_answers(criteria, outcome, call_id) if outcome.get('reached_person') else []})
         booked = outcome.get('confirmed_tour')
         if booked and outcome.get('tour_booked') and outcome.get('listing_verified') is True and outcome.get('mode') == 'live':
             bookings.append({'listingId':listing.key, 'callId':call_id, 'start':booked['start'], 'end':booked['end'],

@@ -99,9 +99,7 @@ export function IntakeForm({
       key: "you",
       icon: UserRound,
       title: "First, a little about you",
-      hint: solo
-        ? "Keyhunt gives this name when it calls landlords for you."
-        : "Housemates see it, and Keyhunt gives it when it calls landlords for you.",
+      hint: "The name Keyhunt gives landlords.",
       fields: ["firstName"],
       body: (err) => (
         <div className="grid gap-6">
@@ -127,7 +125,7 @@ export function IntakeForm({
       key: "where",
       icon: MapPin,
       title: "Where you want to live",
-      hint: "Keyhunt looks for places in this one area. Any address works too; we keep just its city.",
+      hint: "A city or any address.",
       fields: ["location"],
       body: (err) => (
         <Field label="City, neighborhood or address" htmlFor="q-location" error={err.location}>
@@ -150,7 +148,6 @@ export function IntakeForm({
       key: "rent",
       icon: Wallet,
       title: "Rent and move-in",
-      hint: "What you'd pay and when you could move.",
       fields: ["maxBudgetUsd", "moveInFrom", "moveInTo"],
       body: (err) => (
         <div className="grid gap-6">
@@ -203,7 +200,6 @@ export function IntakeForm({
       key: "commute",
       icon: Route,
       title: "Your commute",
-      hint: "Keyhunt checks travel time from every place to here.",
       fields: ["commuteDestination", "maxCommuteMinutes"],
       body: (err) => (
         <div className="grid gap-6">
@@ -241,7 +237,7 @@ export function IntakeForm({
       key: "modes",
       icon: TrainFront,
       title: "How you get there",
-      hint: "Pick every way you'd go. A place counts as close if any of them is quick enough.",
+      hint: "Pick all that apply.",
       fields: ["commuteModes"],
       body: (err) => (
         <Field label="Ways you'd commute" error={err.commuteModes}>

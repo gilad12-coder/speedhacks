@@ -73,6 +73,27 @@ export interface Call {
   outcome: "answered" | "no_answer" | "voicemail" | "failed";
   audioUrl: string | null;
   transcript: TranscriptLine[];
+  // Older runs predate these, so they're optional.
+  statedRentUsd?: number | null;
+  deposit?: string | null;
+  leaseTerms?: string | null;
+  answers?: CallAnswer[];
+}
+
+export interface Evidence {
+  callId: string;
+  t: number; // seconds into the call
+  quote: string;
+}
+
+// One question the call asked. "nice" answers are preferences and never rule a place out.
+export interface CallAnswer {
+  key: string;
+  group: "real" | "matches" | "fit" | "nice";
+  label: string;
+  passed: boolean | null;
+  summary: string;
+  evidence: Evidence | null;
 }
 
 export type CheckKind = "real" | "matches" | "fit" | "tour";
@@ -82,7 +103,7 @@ export interface Check {
   kind: CheckKind;
   passed: boolean | null; // null = not confirmed on the call; never shown as passed
   summary: string; // e.g. "Available from Nov 1, allows 4 occupants"
-  evidence: { callId: string; t: number; quote: string } | null; // required when passed === true
+  evidence: Evidence | null; // required when passed === true
 }
 
 // Times the contact offered for a tour; Part 3 intersects these with the group's free time.

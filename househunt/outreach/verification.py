@@ -83,10 +83,11 @@ def requirements(c: SearchCriteria, listing: Listing | None = None) -> list[dict
         result.append({"key": "beds", "group": "matches", "question": f"Are there at least {c.min_beds} bedrooms?"})
     if c.min_baths:
         result.append({"key": "baths", "group": "matches", "question": f"Are there at least {c.min_baths} bathrooms?"})
-    if c.move_in_by:
+    if c.move_in_by and not c.move_in_from:
         result.append({"key": "move_in", "group": "matches", "question": f"Can the tenancy start by {c.move_in_by}?"})
     if c.occupants:
-        result.append({"key": "occupancy", "group": "fit", "question": f"Can {c.occupants} housemates rent and occupy the unit?"})
+        who = "one person" if c.occupants == 1 else f"{c.occupants} housemates"
+        result.append({"key": "occupancy", "group": "fit", "question": f"Can {who} rent and occupy the unit?"})
     result.extend({"key": f"must:{i}", "group": "matches", "question": f"Required: {item}. Please confirm."} for i, item in enumerate(c.must_haves))
     result.extend({"key": f"avoid:{i}", "group": "matches", "question": f"Deal-breaker to avoid: {item}. Confirm this is NOT present."} for i, item in enumerate(c.deal_breakers))
     if c.move_in_from and c.move_in_by:
@@ -100,6 +101,11 @@ def requirements(c: SearchCriteria, listing: Listing | None = None) -> list[dict
         for key, value in (("beds", listing.beds), ("baths", listing.baths)):
             if value is not None:
                 result.append({"key": f"advertised_{key}", "group": "listing", "question": f"The ad says {value} {key}. Is that the exact count for this unit?"})
+    # "nice" answers are recorded for the household but never decide whether a place is verified.
+    result.extend({"key": f"nice:{i}", "group": "nice", "question": f"Nice to have: {item}. Does the place have it?"} for i, item in enumerate(c.nice_to_haves))
+    result.extend({"key": f"wish:{i}", "group": "nice", "question": f"The household said: \"{item}\". Does the place suit this?"} for i, item in enumerate(c.wishes))
+    if c.commute.get("destination"):
+        result.append({"key": "commute", "group": "nice", "question": f"Roughly how long is the trip to {c.commute['destination']} by {', '.join(c.commute.get('modes') or [c.commute.get('mode', 'transit')])}? The household's limit is {c.commute.get('maxMinutes')} minutes."})
     return result
 
 

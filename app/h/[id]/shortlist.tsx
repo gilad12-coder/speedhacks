@@ -321,8 +321,7 @@ function BookDialog({
         <span className="font-mono tabular">{formatSlot(slot.start, slot.end)}</span>
       </p>
       <p className="mt-4 text-sm leading-relaxed text-ink-2">
-        Keyhunt adds it to the Google Calendar of {housemates.map((h) => h.name).join(", ")}. You meet{" "}
-        {listing.contact.name} there.
+        Adds it to {housemates.map((h) => h.name).join(", ")}&apos;s calendars.
       </p>
       {error && (
         <p role="alert" className="mt-4 rounded-xl bg-red-soft px-4 py-3 text-sm text-red-ink">

@@ -15,7 +15,7 @@ export function RefineSearch({ householdId, criteria, running }: { householdId: 
       <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold">
         <SlidersHorizontal aria-hidden className="size-4" />Refine the search
       </summary>
-      <p className="mt-1 text-sm text-ink-2">Search again with different neighborhoods or limits. Places you&apos;ve called, emailed or starred keep their progress.</p>
+      <p className="mt-1 text-sm text-ink-2">Called, emailed and starred places keep their progress.</p>
       <form action={action} className="mt-4 grid grid-cols-2 gap-3">
         <label className="col-span-2 text-xs font-medium text-ink-2">Neighborhoods <span className="font-normal text-ink-3">(comma separated)</span>
           <input name="neighborhoods" defaultValue={criteria.neighborhoods.join(", ")} placeholder="Mission, Noe Valley" className={`mt-1 ${input}`} />
@@ -46,7 +46,7 @@ export function AddListing({ householdId }: { householdId: string }) {
       <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold">
         <Plus aria-hidden className="size-4" />Add a listing you found
       </summary>
-      <p className="mt-1 text-sm text-ink-2">Zillow, Facebook Marketplace, Craigslist, a building&apos;s own site. Craigslist and most building sites fill in automatically.</p>
+      <p className="mt-1 text-sm text-ink-2">Any listing link.</p>
       <form action={action} className="mt-4 grid grid-cols-3 gap-3">
         <input name="url" type="url" required placeholder="https://…" aria-label="Listing link" className={`col-span-3 ${input}`} />
         <input name="price" inputMode="numeric" placeholder="Rent $/mo" aria-label="Rent" className={input} />

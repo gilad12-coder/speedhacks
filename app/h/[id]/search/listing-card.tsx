@@ -7,7 +7,7 @@ import { Button } from "@/components/shell";
 import type { WorkspaceListing } from "@/lib/workspace";
 import { draftEmail, logViewing, markInterested, retryCalendarSync, saveContact, updateEmail, type ActionState } from "./actions";
 
-const STATUS: Record<WorkspaceListing["status"], { label: string; tone: string }> = {
+export const STATUS: Record<WorkspaceListing["status"], { label: string; tone: string }> = {
   new: { label: "New", tone: "bg-sunk text-ink-2" },
   candidate: { label: "To check", tone: "bg-sunk text-ink-2" },
   filtered: { label: "Outside your search", tone: "bg-sunk text-ink-3" },
@@ -258,7 +258,7 @@ function EmailDraft({ householdId, email }: { householdId: string; email: NonNul
   return (
     <div className="mt-4 rounded-xl border border-line bg-sunk/40 p-4">
       <p className="text-sm font-semibold">Email draft</p>
-      <p className="text-xs text-ink-3">Nothing sends from KeyHunt. Review it, then open it in your Gmail to send.</p>
+      <p className="text-xs text-ink-3">Opens in Gmail for you to send.</p>
       <label className="mt-3 block text-xs font-medium text-ink-2">To
         <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="agent@example.com" type="email"
                className="mt-1 h-10 w-full rounded-md border border-line-strong bg-surface px-3 text-sm" />
