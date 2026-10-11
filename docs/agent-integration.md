@@ -1,6 +1,6 @@
 # Agent integration
 
-This branch integrates `main` (including `app-ui-form-and-login`), `ui-refresh`, and `feat/keyhunt-in-dashboard`. The Python worker consumes `GET /api/agent/briefs` and publishes complete snapshots to `POST /api/agent/runs`. Next.js owns household membership and calendars. Agent endpoints require the same server-only `AGENT_API_KEY`.
+This branch integrates `main` (including `app-ui-form-and-login`), `ui-refresh`, `feat/keyhunt-in-dashboard`, and `feat/live-results-and-voice`. The Python worker consumes `GET /api/agent/briefs` and publishes complete snapshots to `POST /api/agent/runs`. Next.js owns household membership and calendars. Agent endpoints require the same server-only `AGENT_API_KEY`.
 
 ## Onboarding → KeyHunt handoff
 
@@ -49,7 +49,7 @@ Recordings remain on the worker's private disk. Import a Dial-downloaded WAV usi
 - Optional `Listing.research` carries separate web findings, exact quotes, source links, timestamps and comparable counts. These are not fabricated call checks.
 - Optional `AgentRun.progress` and `warnings` carry operational state. Call evidence IDs are remapped consistently to exported call IDs.
 - Optional `Call.listingVerified: boolean | null` carries exact-listing verification; older calls stay unconfirmed. Optional `AgentRun.bookedTours` carries mutually confirmed appointments with `listingId`, `callId`, `start`, `end`, `meetingAddress`, `agentEvidence` and `contactEvidence`. Evidence IDs reference the exported call and quotes must match its correctly attributed transcript. Existing `offeredWindows` stays offer-only; older producers remain valid.
-- The brief's location, budget, one-bedroom-per-occupant requirement (matching the existing UI), must-haves, deal-breakers and move-in window feed search/calls. Financial eligibility and commute duration remain unconfirmed; no routing ETA is invented. Wishes and nice-to-haves do not silently become hard constraints.
+- The brief's location, budget, bedroom requirements (studios allowed for solo renters; one bedroom per housemate for groups), must-haves, deal-breakers and move-in window feed search/calls. Financial eligibility and commute duration remain unconfirmed; no routing ETA is invented. Wishes and nice-to-haves do not silently become hard constraints.
 
 ## Exact listing verification and booking on calls
 

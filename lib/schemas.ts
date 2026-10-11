@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { COMMUTE_MODES, INCOME_BANDS } from "./features";
+import { COMMUTE_MODES } from "./features";
 
 const isoDate = z.iso.date();
 const isoDateTime = z.iso.datetime({ offset: true });
@@ -7,7 +7,6 @@ const isoDateTime = z.iso.datetime({ offset: true });
 export const intakeSchema = z
   .object({
     firstName: z.string().trim().min(1, "Add your first name").max(40),
-    lastName: z.string().trim().min(1, "Add your last name").max(60),
     location: z.string().trim().min(2, "Where do you want to live?").max(120),
     maxBudgetUsd: z.coerce.number().int().min(300, "Budget looks too low").max(20_000),
     commuteDestination: z.string().trim().min(2, "Where do you commute to?").max(200),
@@ -17,7 +16,6 @@ export const intakeSchema = z
     maxCommuteMinutes: z.coerce.number().int().min(5).max(180),
     moveInFrom: isoDate,
     moveInTo: isoDate,
-    incomeBand: z.coerce.number().int().min(0).max(INCOME_BANDS.length - 1),
   })
   .refine((v) => v.moveInTo >= v.moveInFrom, { path: ["moveInTo"], message: "Latest move-in is before the earliest" });
 

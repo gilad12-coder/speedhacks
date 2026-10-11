@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 export function UserBubble({ text }: { text: string }) {
   return (
-    <div className="msg-in flex justify-end">
+    <div className="msg-in flex w-full justify-end">
       <div dir="auto" className="max-w-[80%] rounded-[22px] rounded-ee-[4px] bg-green px-4 py-2.5 text-[15px] leading-[1.45] whitespace-pre-wrap text-on-green">
         {text}
       </div>

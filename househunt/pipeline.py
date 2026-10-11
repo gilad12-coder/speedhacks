@@ -354,25 +354,6 @@ def track_viewing(search_id: int, listing: Listing, start: str) -> None:
                           stage=AppStage.VIEWING.value, next_step="Viewing", next_date=start)
 
 
-def add_to_calendar(listing: Listing, s: CallSummary) -> None:
-    from househunt.connectors import google
-
-    if not google.connection():
-        return
-    contact = listing.contact
-    desc = "\n".join(x for x in [
-        s.summary,
-        f"Contact: {contact.name or ''} {contact.phone or ''}".strip() if contact else None,
-        listing.url,
-    ] if x)
-    try:
-        link = google.add_event(s.tour_start, f"Viewing: {listing.title}", listing.address, desc)
-        listing.notes.append(f"added to Google Calendar: {link}")
-    except Exception:
-        log.exception("could not add viewing to calendar")
-        listing.notes.append("could not add viewing to Google Calendar")
-
-
 def notify_summary(search_id: int) -> None:
     """Text the renter the viable listings (no-op without NOTIFY_NUMBER)."""
     if not settings.notify_number:

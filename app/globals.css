@@ -331,16 +331,16 @@ h3 {
 .msg-in { animation: msg-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .choices-in { animation: msg-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @keyframes summary-badge { from { transform: scale(0.4) rotate(-30deg); opacity: 0; } }
-@keyframes summary-chip { from { opacity: 0; transform: translateY(6px) scale(0.96); } }
+@keyframes summary-item { from { opacity: 0; transform: translateY(6px) scale(0.96); } }
 .summary-badge { animation: summary-badge 520ms var(--ease-out-expo) 120ms both; }
 .summary-indicator { transition: transform 420ms var(--ease-out-expo); }
 .summary-track { transition: transform 520ms var(--ease-out-expo); }
-.summary-chip { animation: summary-chip 360ms var(--ease-out-expo) both; }
+.summary-item { animation: summary-item 360ms var(--ease-out-expo) both; }
 .summary-dot { transition: width 320ms var(--ease-out-expo), background-color 320ms; }
 @keyframes fade-in { from { opacity: 0; } }
 .fade-in { animation: fade-in 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @media (prefers-reduced-motion: reduce) {
-  .ember-ripple, .ember-core, .msg-in, .choices-in, .fade-in, .summary-badge, .summary-chip { animation: none; }
+  .ember-ripple, .ember-core, .msg-in, .choices-in, .fade-in, .summary-badge, .summary-item { animation: none; }
   .summary-indicator, .summary-track, .summary-dot { transition: none; }
   .ember-ripple { opacity: 0; }
 }
@@ -388,4 +388,35 @@ h3 {
 }
 @media (prefers-reduced-motion: reduce) {
   .logo-stacked .logo-word, .logo-stacked .logo-letter { animation: none; }
+}
+
+/* Searching: the lens crosses the street on a loop; windows light as it reaches each house and fade after. */
+@keyframes searching-lens {
+  from { transform: translateX(-40px); }
+  to { transform: translateX(760px); }
+}
+@keyframes searching-lit {
+  0% { opacity: 0.15; }
+  5%, 45% { opacity: 1; }
+  80%, 100% { opacity: 0; }
+}
+@keyframes searching-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.7); }
+}
+@keyframes searching-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+}
+.searching { animation: searching-in 520ms var(--ease-out-expo) both; }
+.searching-lens { animation: searching-lens 4200ms linear infinite; }
+.searching-lit { opacity: 0; animation: searching-lit 4200ms linear infinite; }
+.searching-pulse { animation: searching-pulse 1600ms ease-in-out infinite; }
+
+/* A result that arrives while the page refreshes rises in; ones already shown keep their place. */
+.result-in { animation: rise 520ms var(--ease-out-expo) both; animation-delay: calc(min(var(--i, 0), 6) * 70ms); }
+
+@media (prefers-reduced-motion: reduce) {
+  .searching, .searching-lens, .searching-pulse, .result-in { animation: none; }
+  .searching-lens { transform: translateX(340px); }
+  .searching-lit { animation: none; opacity: 0.6; }
 }

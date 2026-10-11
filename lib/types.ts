@@ -19,7 +19,7 @@ export interface SearchBrief {
   mustHaves: string[]; // e.g. "laundry", "parking"
   dealBreakers: string[]; // e.g. "no pets allowed"
   niceToHaves: string[];
-  householdIncomeBandUsd: { min: number; max: number }; // for tenant fit
+  householdIncomeBandUsd?: { min: number; max: number }; // for tenant fit, only when every housemate gave one
   wishes: string[]; // free-form wishes from each housemate's interview, e.g. "Dana: a quiet street"
 }
 
@@ -129,7 +129,7 @@ export interface Housemate {
   wishes: string[]; // what the interview turned up beyond the fixed features
   moveInFrom: string;
   moveInTo: string;
-  incomeBandUsd: { min: number; max: number };
+  incomeBandUsd: { min: number; max: number } | null; // only older rows; the form no longer asks
   calendarConnected: boolean;
   intakeComplete: boolean;
 }

@@ -14,9 +14,9 @@ export const briefSchema = z.object({
   renterName: text.optional(), location: z.string().default(''), wishes: z.array(text).default([]),
   moveInFrom: isoDate, moveInTo: isoDate, commute,
   mustHaves: z.array(text).max(20), dealBreakers: z.array(text).max(20), niceToHaves: z.array(text).max(20),
-  householdIncomeBandUsd: z.object({ min: z.number().nonnegative(), max: z.number().nonnegative() })
+  householdIncomeBandUsd: z.object({ min: z.number().nonnegative(), max: z.number().nonnegative() }).optional()
 }).strict().refine(v => v.moveInFrom <= v.moveInTo, 'Move-in dates are reversed')
-  .refine(v => v.householdIncomeBandUsd.min <= v.householdIncomeBandUsd.max, 'Income range is reversed') satisfies z.ZodType<SearchBrief, z.ZodTypeDef, unknown>;
+  .refine(v => !v.householdIncomeBandUsd || v.householdIncomeBandUsd.min <= v.householdIncomeBandUsd.max, 'Income range is reversed') satisfies z.ZodType<SearchBrief, z.ZodTypeDef, unknown>;
 export const listingSchema = z.object({
   id: text, source: z.enum(['curated', 'live_search']), sourceUrl: z.string().url(), address: text,
   neighborhood: text, rentUsd: z.number().positive().nullable(), bedrooms: z.number().nonnegative().nullable(), bathrooms: z.number().nonnegative().nullable(),

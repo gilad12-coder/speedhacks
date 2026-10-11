@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { commuteModeLabel, FEATURE_LABELS, INCOME_BANDS } from "./features";
+import { commuteModeLabel, FEATURE_LABELS } from "./features";
 import type { Housemate } from "./types";
 
 export interface InterviewChoice {
@@ -114,7 +114,6 @@ export function systemPrompt({ me, groupSize }: InterviewContext, mustFinish: bo
     `Rent: up to $${me.maxBudgetUsd}/month${solo ? "" : " for their share"}`,
     `Move-in: between ${me.moveInFrom} and ${me.moveInTo}`,
     `Commute: to ${me.commute.destination}, by ${me.commute.modes.map(commuteModeLabel).join(" or ")}, at most ${me.commute.maxMinutes} min`,
-    `Yearly income: ${INCOME_BANDS.find((b) => b.min === me.incomeBandUsd.min)?.label ?? "not given"}`,
   ];
   const earlier = [...me.mustHaves.map((f) => `needs ${f}`), ...me.niceToHaves.map((f) => `would like ${f}`), ...me.dealBreakers.map((f) => `rules out ${f}`), ...me.wishes];
 
@@ -129,7 +128,7 @@ ${solo ? "- Whether they want a whole place, or a room in a shared place." : "- 
 - Anything else they care about. Let them lead.
 
 Rules:
-- Call a tool on every turn: "ask" for one question at a time, "finish" when done.
+- Call a tool on every turn: "ask" for one question at a time, "finish" when done. Plain-text replies never reach the person, and options always go in "choices", never in the message.
 - Exactly one question per message, never two joined with "and" or "also".
 - If they answer something else or skip a question, take that as their answer and move on; never repeat a question.
 - Use what they already told you, in the form and in this conversation. Never ask something they have answered, and build on their earlier picks instead of starting a topic over.
@@ -166,7 +165,7 @@ export function parseToolCall(name: string, rawArgs: string): AgentStep {
 
 type ModelMessage = { content?: string | null; tool_calls?: { function?: { name?: string; arguments?: string } }[] };
 
-async function callModel(messages: { role: string; content: string }[], tools: object[]): Promise<ModelMessage | undefined> {
+async function callModel(messages: object[], tools: object[]): Promise<ModelMessage | undefined> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new InterviewError("The interview isn't set up yet: OPENROUTER_API_KEY is missing.");
 
@@ -197,27 +196,38 @@ export async function nextAgentStep(ctx: InterviewContext, history: InterviewMes
     { role: "system", content: systemPrompt(ctx, mustFinish) },
     // The model needs a user turn to start from; the person never sees this one.
     ...(history[0]?.role === "user" ? [] : [{ role: "user", content: "Hi, I'm ready." }]),
-    ...history.map((m) => ({
-      role: m.role === "agent" ? "assistant" : "user",
-      content: m.choices?.length ? `${m.text}\nChoices: ${m.choices.map((c) => c.label).join(" / ")}` : m.text,
-    })),
+    // Earlier questions go back as real ask calls: replayed as plain text, the model copies
+    // that format and starts writing "Choices: ..." into its message instead of calling the tool.
+    ...history.flatMap((m, i) =>
+      m.role === "user"
+        ? [{ role: "user", content: m.text }]
+        : [
+            {
+              role: "assistant",
+              content: "",
+              tool_calls: [{ id: `ask_${i}`, type: "function", function: { name: "ask", arguments: JSON.stringify({ message: m.text, choices: m.choices ?? [] }) } }],
+            },
+            { role: "tool", tool_call_id: `ask_${i}`, content: "Shown to the person." },
+          ],
+    ),
     ...(wrapUp ? [{ role: "user", content: "That's all I want to say. Please wrap up." }] : []),
   ];
 
-  // A model that answers in text when it must finish gets one more try before the turn fails.
-  for (let attempt = 0; attempt < (mustFinish ? 2 : 1); attempt++) {
-    const message = await callModel(messages, mustFinish ? [finishTool] : [askTool, finishTool]);
+  // Every turn must be a tool call (the model can't be forced into one), so a plain-text reply
+  // goes back to it with a nudge to resend it through the tool.
+  const tools = mustFinish ? [finishTool] : [askTool, finishTool];
+  const toolNames = mustFinish ? '"finish"' : '"ask" or "finish"';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const message = await callModel(messages, tools);
     const call = message?.tool_calls?.[0]?.function;
     if (call?.name) {
       const step = parseToolCall(call.name, call.arguments ?? "{}");
       if (!mustFinish || step.kind === "finish") return step;
-      continue;
     }
-    if (mustFinish) continue;
-    // Some providers answer in plain text instead of calling a tool; treat that as a question.
-    const text = message?.content?.trim();
-    if (!text) throw new InterviewError("The interviewer sent an empty reply.");
-    return { kind: "ask", text: text.slice(0, 600), choices: [] };
+    messages.push(
+      { role: "assistant", content: message?.content?.trim() || "(no tool call)" },
+      { role: "user", content: `That didn't reach me. Send it again as a ${toolNames} tool call, with any options in "choices", never in the message text.` },
+    );
   }
-  throw new InterviewError("The interviewer couldn't wrap up. Try again.");
+  throw new InterviewError("The interviewer couldn't send its question. Try again.");
 }

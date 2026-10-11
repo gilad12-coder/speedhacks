@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -23,7 +23,8 @@ def criteria_from_brief(brief: dict) -> SearchCriteria:
     budget, occupants = int(brief['maxTotalRentUsd']), int(brief['occupants'])
     if budget <= 0 or not 1 <= occupants <= 6:
         raise ValueError('Invalid household budget or size')
-    return SearchCriteria(city=location, max_price=budget, min_beds=occupants,
+    # One bedroom per housemate; someone searching alone can take a studio.
+    return SearchCriteria(city=location, max_price=budget, min_beds=occupants if occupants > 1 else 0,
         occupants=occupants, renter_name=str(brief.get('renterName') or settings.renter_name or 'my client')[:80],
         must_haves=list(brief.get('mustHaves', [])), deal_breakers=list(brief.get('dealBreakers', [])),
         nice_to_haves=list(brief.get('niceToHaves', [])), move_in_from=brief.get('moveInFrom'),

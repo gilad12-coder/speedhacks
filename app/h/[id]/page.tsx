@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { CalendarCheck, CalendarX, CircleAlert, Users } from "lucide-react";
+import { CalendarCheck, CalendarX, ChevronDown, CircleAlert, Users } from "lucide-react";
 import { confirmHouseholdBrief, startSearch } from "@/app/actions";
 import Link from "next/link";
 import { ProfileMenu } from "@/components/profile-menu";
@@ -25,6 +25,7 @@ import {
   usd,
 } from "@/lib/view";
 import { AutoRefresh } from "./auto-refresh";
+import { SearchingScene } from "./searching-scene";
 import { InviteLink } from "./invite-link";
 import { Shortlist } from "./shortlist";
 import { Candidates } from "./candidates";
@@ -129,7 +130,7 @@ export default async function HouseholdPage({
         </aside>
 
         <main className="overflow-y-auto px-12 pt-10 pb-24">
-          {searching && <AutoRefresh />}
+          {searching && <AutoRefresh everyMs={3000} />}
           {!searchRequestedAt && (
             <BriefSection household={household} brief={brief} />
           )}
@@ -145,22 +146,34 @@ export default async function HouseholdPage({
                 </h2>
                 <p className="text-sm text-ink-2">
                   {searching
-                    ? run
+                    ? run?.listings.length
                       ? "Places appear below as each call is checked. This page updates on its own."
-                      : "Finding listings that fit your brief. Calls start once there are places to check. This page updates on its own."
+                      : "This page updates on its own."
                     : `Every place Keyhunt found, and what happened to it.`}
                 </p>
                 <Link href={`/h/${id}/search`} className="shrink-0 text-sm font-semibold text-green-ink underline decoration-line-strong underline-offset-4 hover:text-green">
                   Open your search →
                 </Link>
               </div>
-              {run && <Pipeline run={run} />}
-              {run?.progress?.length ? <details className="mt-4 text-sm text-ink-2"><summary>{run.progress.at(-1)}</summary><ol className="mt-2 space-y-1">{run.progress.map((step,i) => <li key={i}>{step}</li>)}</ol></details> : null}
-              {run?.warnings?.map((warning,i) => <p key={i} className="mt-3 text-sm text-ink-2">{warning}</p>)}
+              {searching && !run?.listings.length ? (
+                <div className="mt-6">
+                  <SearchingScene status={run?.progress?.at(-1)} />
+                </div>
+              ) : (
+                run && <Pipeline run={run} />
+              )}
+              {run?.progress?.length && run.listings.length ? (
+                <ActivityLog steps={run.progress} live={searching} />
+              ) : null}
+              {run?.warnings?.map((warning, i) => (
+                <Callout key={i} tone="amber">
+                  {warning}
+                </Callout>
+              ))}
             </section>
           )}
 
-          {run && (
+          {run && (run.listings.length > 0 || run.finishedAt) && (
             <section aria-labelledby="shortlist-title" className="mt-14">
               <div className="flex items-baseline justify-between gap-6">
                 <h2
@@ -220,6 +233,33 @@ export default async function HouseholdPage({
         </main>
       </div>
     </div>
+  );
+}
+
+function ActivityLog({ steps, live }: { steps: string[]; live: boolean }) {
+  return (
+    <details className="group mt-4 rounded-2xl border border-line bg-surface">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-3.5 text-sm select-none">
+        <span className={`size-2 shrink-0 rounded-full ${live ? "searching-pulse bg-green" : "bg-line-strong"}`} />
+        <span className="min-w-0 flex-1 truncate text-ink">{steps.at(-1)}</span>
+        <span className="font-mono tabular shrink-0 text-xs text-ink-3">
+          {steps.length} {steps.length === 1 ? "step" : "steps"}
+        </span>
+        <ChevronDown aria-hidden className="size-4 shrink-0 text-ink-3 transition-transform group-open:rotate-180" />
+      </summary>
+      <ol className="border-t border-line px-5 py-4">
+        {steps.map((step, i) => (
+          <li key={i} className="relative pb-3 pl-6 text-sm last:pb-0">
+            {i < steps.length - 1 && <span aria-hidden className="absolute top-2 bottom-0 left-[3px] w-px bg-line" />}
+            <span
+              aria-hidden
+              className={`absolute top-1.5 left-0 size-[7px] rounded-full ${i === steps.length - 1 ? "bg-green" : "bg-line-strong"}`}
+            />
+            <span className={i === steps.length - 1 ? "font-medium text-ink" : "text-ink-2"}>{step}</span>
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
 
