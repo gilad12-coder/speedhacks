@@ -11,6 +11,9 @@ class Source(str, Enum):
     ZILLOW = "zillow"
     CRAIGSLIST = "craigslist"
     FACEBOOK = "facebook"
+    REDFIN = "redfin"
+    APARTMENTS = "apartments"
+    STREETEASY = "streeteasy"
 
 
 class ListingStatus(str, Enum):

@@ -27,6 +27,9 @@ class Settings:
     app_password: str | None         # HTTP basic auth for the deployed app
     claude_model: str
     geocode: bool                    # place listings on the map via OpenStreetMap Nominatim
+    google_client_id: str | None
+    google_client_secret: str | None
+    public_base_url: str | None      # e.g. https://househunt.onrender.com (for OAuth redirect)
 
 
 def load() -> Settings:
@@ -44,6 +47,9 @@ def load() -> Settings:
         app_password=env("APP_PASSWORD"),
         claude_model=env("CLAUDE_MODEL", "claude-opus-5-5"),
         geocode=env("GEOCODE", "1") == "1",
+        google_client_id=env("GOOGLE_CLIENT_ID"),
+        google_client_secret=env("GOOGLE_CLIENT_SECRET"),
+        public_base_url=env("PUBLIC_BASE_URL"),
     )
 
 

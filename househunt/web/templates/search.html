@@ -152,7 +152,7 @@
 <div class="split">
   <div id="listings">
     {% macro listing_card(l) %}
-    {% set call = calls.get(l.key) %}{% set o = outcomes.get(l.key) %}{% set tour = tours.get(l.key) %}
+    {% set call = calls.get(l.key) %}{% set o = outcomes.get(l.key) %}{% set tour = tours.get(l.key) %}{% set email = emails.get(l.key) %}
     <article class="card listing" data-key="{{ l.key }}">
       <div class="row1">
         <div>
@@ -180,7 +180,7 @@
       {% if notes %}<div class="notes">{% for n in notes %}<div>{{ n }}</div>{% endfor %}</div>{% endif %}
       {% set can_call = l.contact and l.contact.phone and l.status.value in ("candidate", "contacted", "not_viable") and not (call and call.status in ("queued", "in_progress")) %}
       {% set app = tracked.get(l.key) %}
-      {% if call or can_call or app or l.status.value != "filtered" %}
+      {% if call or can_call or app or email or l.status.value != "filtered" %}
       <div class="actions">
         {% if can_call %}
           <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/call">
@@ -188,6 +188,15 @@
           </form>
         {% elif not (l.contact and l.contact.phone) and l.status.value == "candidate" %}
           <span class="muted small">No phone number in listing</span>
+        {% endif %}
+        {% if email and email.status == "sent" %}
+          <a class="pill viable" href="/emails/{{ email.id }}">{{ icon("mail", 12) }}Email sent</a>
+        {% elif email %}
+          <a class="btn secondary" href="/emails/{{ email.id }}">{{ icon("mail", 14) }}Review email draft</a>
+        {% elif l.status.value != "filtered" %}
+          <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/email">
+            <button type="submit" class="secondary" title="Claude drafts it; nothing sends until you approve">{{ icon("mail", 14) }}Draft email</button>
+          </form>
         {% endif %}
         {% if app %}
           <a class="pill viable" href="/applications#app-{{ app.id }}">{{ icon("bookmark", 12) }}{{ stages(app.stage).label }}</a>

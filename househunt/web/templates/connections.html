@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Connections</h2>
+{% if msg %}<p class="flash">{{ msg }}</p>{% endif %}
+{% if error %}<p class="flash error">{{ error }}</p>{% endif %}
+
+<div class="card">
+  <h3>Google <span class="pill {{ 'viable' if google else '' }}">{{ "connected" if google else "not connected" }}</span></h3>
+  <p class="muted">Calendar: offer your free times on calls and add booked viewings.
+    Gmail: pull listings from saved-search alert emails, and send inquiry emails you approve.</p>
+  {% if google %}
+    <p>Signed in as <strong>{{ google.account }}</strong> since {{ google.connected_at }}.</p>
+    {% if not can_send %}<p class="warn">Sending email isn't allowed on this connection yet.
+      <a href="/auth/google/start">Reconnect Google</a> to approve and send drafts.</p>{% endif %}
+    <div style="display:flex; gap:8px; flex-wrap:wrap">
+      <a href="/connections/google/alerts"><button type="button">Check alert emails</button></a>
+      <form method="post" action="/connections/google/disconnect">
+        <button class="secondary" type="submit">Disconnect</button>
+      </form>
+    </div>
+  {% elif google_configured %}
+    <a href="/auth/google/start"><button type="button">Connect Google</button></a>
+  {% else %}
+    <p class="warn">Google sign-in isn't set up on this server yet.</p>
+    <details open><summary>One-time setup (about 10 minutes)</summary><ol>
+      <li>Open <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud Console</a> and create a project.</li>
+      <li>Enable the <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" rel="noopener">Gmail API</a> and the <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com" target="_blank" rel="noopener">Google Calendar API</a>.</li>
+      <li>Under <a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener">Google Auth Platform</a>, configure consent: User type <strong>External</strong>, publishing status <strong>Testing</strong>, and add your Gmail address as a test user.</li>
+      <li>Create an <a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noopener">OAuth client</a> of type <strong>Web application</strong> with this authorized redirect URI:<br><code>{{ redirect_uri }}</code></li>
+      <li>Put the client ID and secret in your <code>.env</code> (never in code) and restart:<br>
+        <code>GOOGLE_CLIENT_ID=…</code><br><code>GOOGLE_CLIENT_SECRET=…</code></li>
+    </ol>
+    <p class="muted">In Testing mode Google expires the connection every 7 days; just click Connect again.</p>
+    </details>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>Listing alerts <span class="pill">via Gmail</span></h3>
+  <p class="muted">Zillow and Facebook don't let apps search with your account. Instead, set up saved
+    searches with <strong>instant</strong> email alerts; every search here reads alerts from the last 7 days.</p>
+  <ol>
+    <li><strong>Zillow:</strong> run your search on <a href="https://www.zillow.com/homes/for_rent/" target="_blank" rel="noopener">zillow.com</a>, click <em>Save search</em>, set email frequency to <em>Instantly</em>.</li>
+    <li><strong>Redfin / Apartments.com / StreetEasy / HotPads:</strong> same idea, "Save search" with instant or daily email.</li>
+    <li>Make sure alerts land in the Gmail account connected above.</li>
+  </ol>
+  <p class="muted">Supported senders: {{ alert_sites | join(", ") }}.</p>
+</div>
+
+<div class="card">
+  <h3>Dial <span class="pill {{ 'viable' if settings.dial_api_key else '' }}">{{ "key set" if settings.dial_api_key else "not set up" }}</span></h3>
+  <p class="muted">Places the AI voice calls to listing contacts and texts you results.</p>
+  <ul>
+    <li>From number: <strong>{{ settings.dial_from_number or "not set (DIAL_FROM_NUMBER)" }}</strong></li>
+    <li>Your phone for texts/test calls: <strong>{{ settings.notify_number or "not set (NOTIFY_NUMBER)" }}</strong></li>
+    <li>Call mode: <strong>{{ settings.call_mode.value }}</strong>{% if settings.mock_sources %} · real dialing is off while sources are mocked{% endif %}</li>
+  </ul>
+  {% if settings.dial_api_key and settings.notify_number %}
+    <form method="post" action="/connections/dial/test-call"><button type="submit">Test call to my phone</button></form>
+  {% else %}
+    <details><summary>Setup</summary><ol>
+      <li>In a terminal: <code>dial auth login you@example.com</code>, then <code>dial auth verify-otp --code 123456</code> and verify your phone.</li>
+      <li>Copy the API key from <code>~/.local/share/dial/auth.json</code> and your number from <code>dial number list</code>.</li>
+      <li>Set <code>DIAL_API_KEY</code>, <code>DIAL_FROM_NUMBER</code>, and <code>NOTIFY_NUMBER</code> in <code>.env</code> and restart.</li>
+    </ol></details>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>Facebook Marketplace <span class="pill">not available</span></h3>
+  <p class="muted">Facebook gives apps no access to Marketplace or Messenger, and automating your logged-in
+    account breaks their terms and can get it banned. Planned: paste a Marketplace link and the agent takes it from there.</p>
+</div>
+{% endblock %}

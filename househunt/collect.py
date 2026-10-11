@@ -6,6 +6,7 @@ import re
 
 from househunt.models import Contact, Listing, ListingStatus, SearchCriteria
 
+EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 PHONE_RE = re.compile(r"\(?\b([2-9]\d{2})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})\b")
 
 
@@ -15,12 +16,17 @@ def extract_phone(text: str) -> str | None:
 
 
 def normalize(listing: Listing) -> Listing:
-    """Fill gaps some sources leave empty (e.g. a phone number buried in the description)."""
+    """Fill gaps some sources leave empty (e.g. a phone or email buried in the description)."""
     if not (listing.contact and listing.contact.phone):
         phone = extract_phone(listing.description)
         if phone:
             listing.contact = listing.contact or Contact()
             listing.contact.phone = phone
+    if not (listing.contact and listing.contact.email):
+        m = EMAIL_RE.search(listing.description or "")
+        if m:
+            listing.contact = listing.contact or Contact()
+            listing.contact.email = m.group(0)
     return listing
 
 

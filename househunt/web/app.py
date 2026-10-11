@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import re
 import logging
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -15,8 +17,10 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
 from househunt import db, geo, pipeline
+from househunt.connectors import google
 from househunt.config import settings
 from househunt.models import AppStage, ListingStatus, SearchCriteria
+from househunt.sources.email_alerts import GmailAlertsSource
 from househunt.tours import to_ics
 
 logging.basicConfig(level=logging.INFO)
@@ -135,6 +139,7 @@ def show_search(request: Request, search_id: int):
     outcomes = {k: json.loads(c["outcome"]) for k, c in calls.items() if c["outcome"]}
     tours = db.tours_for_search(search_id)
     tracked = db.applications_for_search(search_id)
+    emails = db.emails_for_search(search_id)
     in_flight = row["status"] in ("pending", "sourcing", "calling") or any(
         c["status"] in ("queued", "in_progress") for c in calls.values())
     order = [ListingStatus.TOUR_SCHEDULED, ListingStatus.VIABLE, ListingStatus.CONTACTED,
@@ -148,9 +153,9 @@ def show_search(request: Request, search_id: int):
         counts[l.status.value] += 1
     return templates.TemplateResponse(request, "search.html", {
         "search": row, "criteria": criteria, "listings": listings, "calls": calls,
-        "outcomes": outcomes, "tours": tours, "refresh": in_flight, "settings": settings,
-        "pins": pins, "center": geo.cached(criteria.city), "counts": counts,
-        "tracked": tracked, "stages": AppStage,
+        "outcomes": outcomes, "tours": tours, "emails": emails, "refresh": in_flight,
+        "settings": settings, "pins": pins, "center": geo.cached(criteria.city),
+        "counts": counts, "tracked": tracked, "stages": AppStage,
     })
 
 
@@ -267,3 +272,146 @@ def tour_ics(tour_id: int):
                   listing.url if listing else None)
     return Response(body, media_type="text/calendar",
                     headers={"Content-Disposition": f'attachment; filename="tour-{tour_id}.ics"'})
+
+
+# --- connections ------------------------------------------------------------
+
+def _redirect_uri(request: Request) -> str:
+    base = settings.public_base_url or str(request.base_url)
+    return base.rstrip("/") + "/auth/google/callback"
+
+
+@app.get("/connections", response_class=HTMLResponse)
+def connections(request: Request, msg: str | None = None, error: str | None = None):
+    return templates.TemplateResponse(request, "connections.html", {
+        "settings": settings, "msg": msg, "error": error,
+        "google_configured": google.configured(),
+        "google": google.connection(),
+        "can_send": google.has_scope(google.SEND_SCOPE),
+        "redirect_uri": _redirect_uri(request),
+        "alert_sites": ["Zillow", "Trulia", "HotPads", "Redfin", "Apartments.com", "StreetEasy"],
+    })
+
+
+@app.get("/auth/google/start")
+def google_start(request: Request):
+    if not google.configured():
+        raise HTTPException(400, "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET first")
+    return RedirectResponse(google.authorize_url(_redirect_uri(request)))
+
+
+@app.get("/auth/google/callback")
+def google_callback(request: Request, state: str = "", code: str | None = None,
+                    error: str | None = None):
+    if error:
+        return RedirectResponse(f"/connections?error={quote_plus(f'Google sign-in cancelled ({error})')}", 303)
+    if not (code and google.check_state(state)):
+        return RedirectResponse("/connections?error=Sign-in+expired,+try+again", 303)
+    try:
+        email = google.exchange_code(code, _redirect_uri(request))
+    except Exception as e:
+        return RedirectResponse(f"/connections?error={quote_plus(f'Google sign-in failed: {e}')}", 303)
+    return RedirectResponse(f"/connections?msg={quote_plus(f'Connected {email}')}", 303)
+
+
+@app.post("/connections/google/disconnect")
+def google_disconnect():
+    google.disconnect()
+    return RedirectResponse("/connections?msg=Google+disconnected", 303)
+
+
+@app.get("/connections/google/alerts", response_class=HTMLResponse)
+def google_alerts_preview(request: Request):
+    """Show what we parse out of recent alert emails, without starting a search."""
+    try:
+        listings = GmailAlertsSource().fetch(None)
+        error = None
+    except Exception as e:
+        listings, error = [], str(e)
+    return templates.TemplateResponse(request, "alerts.html", {
+        "settings": settings, "listings": listings, "error": error, "days": GmailAlertsSource.days,
+    })
+
+
+@app.post("/connections/dial/test-call")
+def dial_test_call():
+    if not (settings.dial_api_key and settings.notify_number):
+        return RedirectResponse("/connections?error=Set+DIAL_API_KEY+and+NOTIFY_NUMBER+first", 303)
+    try:
+        from househunt.outreach.dial import DialClient
+
+        call = DialClient(settings).place_call(
+            settings.notify_number,
+            "You are the househunt calling assistant making a test call to the person who set "
+            "you up. Introduce yourself as an AI assistant, say this is a test call from "
+            "househunt, ask if they can hear you clearly, answer any questions briefly, then "
+            "say goodbye. Keep it under one minute.",
+            max_seconds=90,
+        )
+    except Exception as e:
+        return RedirectResponse(f"/connections?error={quote_plus(f'Dial call failed: {e}')}", 303)
+    return RedirectResponse(f"/connections?msg=Calling+you+now+(call+{call.id})", 303)
+
+
+# --- email drafts: nothing is sent without an explicit "Approve & send" --------
+
+EMAIL_ADDR = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
+
+
+@app.post("/searches/{search_id}/listings/{key}/email")
+def draft_listing_email(search_id: int, key: str):
+    from househunt.outreach.email_draft import draft_email
+
+    criteria, _ = db.get_search(search_id)
+    listing = db.get_listing(search_id, key)
+    if not listing:
+        raise HTTPException(404)
+    draft = draft_email(listing, criteria, settings.renter_name)
+    to = (listing.contact.email if listing.contact else None) or ""
+    email_id = db.create_email(search_id, key, to, draft.subject, draft.body)
+    return RedirectResponse(f"/emails/{email_id}", status_code=303)
+
+
+@app.get("/emails/{email_id}", response_class=HTMLResponse)
+def show_email(request: Request, email_id: int, error: str | None = None):
+    email = db.get_email(email_id)
+    if not email:
+        raise HTTPException(404)
+    return templates.TemplateResponse(request, "email.html", {
+        "settings": settings, "email": email, "error": error,
+        "listing": db.get_listing(email["search_id"], email["listing_key"]),
+        "google": google.connection(), "can_send": google.has_scope(google.SEND_SCOPE),
+    })
+
+
+@app.post("/emails/{email_id}")
+def update_email(email_id: int, action: str = Form(...), to_addr: str = Form(""),
+                 subject: str = Form(""), body: str = Form("")):
+    email = db.get_email(email_id)
+    if not email:
+        raise HTTPException(404)
+    back = f"/searches/{email['search_id']}"
+    if email["status"] != "draft":
+        return RedirectResponse(back, 303)
+    to_addr = to_addr.strip()
+
+    if action == "discard":
+        db.update_email(email_id, status="discarded")
+        return RedirectResponse(back, 303)
+
+    db.update_email(email_id, to_addr=to_addr, subject=subject, body=body)
+    if action != "send":
+        return RedirectResponse(f"/emails/{email_id}", 303)
+
+    if not EMAIL_ADDR.match(to_addr):
+        return RedirectResponse(f"/emails/{email_id}?error={quote_plus('Enter one valid To address')}", 303)
+    if not (subject.strip() and body.strip()):
+        return RedirectResponse(f"/emails/{email_id}?error={quote_plus('Subject and body are required')}", 303)
+    try:
+        sent = google.send_email(to_addr, subject, body)
+    except Exception as e:
+        db.update_email(email_id, error=str(e))
+        return RedirectResponse(f"/emails/{email_id}?error={quote_plus(f'Not sent: {e}')}", 303)
+    db.update_email(email_id, status="sent", sent_at=db.now(), error=None,
+                    gmail_message_id=sent.get("id"), gmail_thread_id=sent.get("threadId"))
+    return RedirectResponse(back, 303)

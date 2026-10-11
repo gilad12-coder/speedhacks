@@ -125,3 +125,93 @@ def test_viewing_booked_lands_on_board():
     pipeline.track_viewing(sid, l, "2026-10-15T18:00")
     (a,) = db.list_applications()
     assert a["stage"] == "viewing" and a["next_date"] == "2026-10-15T18:00"
+
+
+ZILLOW_ALERT = """
+<table>
+  <tr><td>
+    <a href="https://www.zillow.com/homedetails/123-Main-St-San-Francisco-CA-94110/15012345_zpid/?utm=x"><img src="p.jpg"></a>
+    <div>$2,950/mo</div><div>2 bds | 1 ba | 850 sqft</div>
+    <a href="https://www.zillow.com/homedetails/123-Main-St-San-Francisco-CA-94110/15012345_zpid/">123 Main St, San Francisco, CA 94110</a>
+  </td></tr>
+  <tr><td>
+    <a href="https://click.mail.zillow.com/x?url=https%3A%2F%2Fwww.zillow.com%2Fhomedetails%2FStudio%2F999_zpid%2F">View</a>
+    <div>$1,800/mo</div><div>Studio | 1 ba</div>
+  </td></tr>
+  <tr><td><a href="https://www.zillow.com/myzillow/">Manage alerts</a></td></tr>
+</table>
+"""
+
+
+def test_parse_zillow_alert():
+    from househunt.sources.email_alerts import parse_alert
+
+    out = {l.source_id: l for l in parse_alert(ZILLOW_ALERT, "Zillow <alerts@mail.zillow.com>",
+                                               resolve_redirects=False)}
+    assert set(out) == {"15012345", "999"}
+    a = out["15012345"]
+    assert (a.price, a.beds, a.baths, a.sqft) == (2950, 2, 1.0, 850)
+    assert a.address == "123 Main St, San Francisco, CA 94110"
+    assert out["999"].beds == 0 and out["999"].price == 1800
+    assert parse_alert(ZILLOW_ALERT, "someone@gmail.com") == []
+
+
+def test_connections_page():
+    from fastapi.testclient import TestClient
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        page = client.get("/connections")
+        assert page.status_code == 200
+        assert "isn't set up on this server" in page.text  # no GOOGLE_CLIENT_ID in tests
+        assert "/auth/google/callback" in page.text
+
+
+def test_email_requires_approval(monkeypatch):
+    from fastapi.testclient import TestClient
+    from househunt import db
+    from househunt.connectors import google
+    from househunt.web.app import app
+
+    sent = []
+    monkeypatch.setattr(google, "has_scope", lambda scope: True)
+    monkeypatch.setattr(google, "send_email",
+                        lambda to, subject, body: sent.append(to) or {"id": "m1", "threadId": "t1"})
+
+    with TestClient(app) as client:
+        r = client.post("/searches", data={"city": "sf", "max_price": 3000, "min_beds": 1})
+        sid = int(r.url.path.rsplit("/", 1)[-1])
+        r = client.post(f"/searches/{sid}/listings/zillow:z-1001/email", follow_redirects=False)
+        email_id = int(r.headers["location"].rsplit("/", 1)[-1])
+        draft = db.get_email(email_id)
+        assert draft["status"] == "draft" and "123 Main St" in draft["subject"]
+
+        # Saving never sends.
+        client.post(f"/emails/{email_id}", data={"action": "save", "to_addr": "a@b.com",
+                                                  "subject": "Hi", "body": "Edited"})
+        assert sent == [] and db.get_email(email_id)["body"] == "Edited"
+
+        # Sending without a valid address is refused.
+        client.post(f"/emails/{email_id}", data={"action": "send", "to_addr": "nope",
+                                                  "subject": "Hi", "body": "Edited"})
+        assert sent == [] and db.get_email(email_id)["status"] == "draft"
+
+        client.post(f"/emails/{email_id}", data={"action": "send", "to_addr": "agent@x.com",
+                                                  "subject": "Hi", "body": "Edited"})
+        assert sent == ["agent@x.com"]
+        e = db.get_email(email_id)
+        assert e["status"] == "sent" and e["gmail_thread_id"] == "t1"
+
+        # A sent email can't be sent again.
+        client.post(f"/emails/{email_id}", data={"action": "send", "to_addr": "agent@x.com",
+                                                  "subject": "Hi", "body": "Edited"})
+        assert sent == ["agent@x.com"]
+
+
+def test_email_extracted_from_description():
+    from househunt.collect import normalize
+    from househunt.models import Listing, Source
+
+    l = normalize(Listing(source=Source.CRAIGSLIST, source_id="1", url="u", title="t",
+                          description="Email jo.agent+rent@realty.co for showings"))
+    assert l.contact.email == "jo.agent+rent@realty.co"
