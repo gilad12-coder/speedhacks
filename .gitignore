@@ -49,6 +49,8 @@ next-env.d.ts
 !.env.example
 .playwright-mcp/
 
-# Python agent (househunt/)
+# Python agent (househunt/), private call data and standalone harness
 data/
 recordings/
+caller/data/
+caller/dist/

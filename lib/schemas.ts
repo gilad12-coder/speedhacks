@@ -29,9 +29,9 @@ const listingSchema = z.object({
   sourceUrl: z.url(),
   address: z.string().min(1),
   neighborhood: z.string(),
-  rentUsd: z.number().int().nonnegative(),
-  bedrooms: z.number().nonnegative(),
-  bathrooms: z.number().nonnegative(),
+  rentUsd: z.number().int().nonnegative().nullable(),
+  bedrooms: z.number().nonnegative().nullable(),
+  bathrooms: z.number().nonnegative().nullable(),
   photoUrls: z.array(z.url()),
   contact: z.object({
     name: z.string(),
@@ -42,6 +42,15 @@ const listingSchema = z.object({
   status: z.enum(["found", "called", "verified", "tour_offered", "ruled_out"]),
   ruledOutReason: z.enum(["scam", "taken", "wrong_tenant", "breaks_must_have", "no_answer"]).optional(),
   ruledOutNote: z.string().optional(),
+  research: z.object({
+    status: z.enum(["not_checked", "checking", "unconfirmed", "cross_referenced", "concerns_found", "error"]),
+    checkedAt: isoDateTime.nullable(),
+    findings: z.array(z.object({kind: z.string(), summary: z.string(), quote: z.string(), sourceUrl: z.url()})),
+    facts: z.array(z.object({field: z.string(), quote: z.string(), sourceUrl: z.url()})),
+    limitations: z.string(),
+    medianComparableRent: z.number().nullable(),
+    comparableCount: z.number().int().nonnegative(),
+  }).optional(),
 });
 
 const callSchema = z.object({
@@ -76,6 +85,8 @@ export const agentRunSchema = z
     calls: z.array(callSchema),
     checks: z.array(checkSchema),
     offeredWindows: z.array(z.object({ listingId: z.string(), start: isoDateTime, end: isoDateTime })),
+    progress: z.array(z.string()).optional(),
+    warnings: z.array(z.string()).optional(),
   })
   .superRefine((run, ctx) => {
     const listingIds = new Set(run.listings.map((l) => l.id));

@@ -44,7 +44,7 @@ export function shortlist(run: AgentRun): Listing[] {
       (a, b) =>
         Number(b.status === "tour_offered") - Number(a.status === "tour_offered") ||
         passed(b) - passed(a) ||
-        a.rentUsd - b.rentUsd,
+        (a.rentUsd ?? Infinity) - (b.rentUsd ?? Infinity),
     )
     .slice(0, 7);
 }

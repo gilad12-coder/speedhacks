@@ -23,6 +23,7 @@ import { intakeSchema } from "@/lib/schemas";
 import { getAccount, getHousemateId, setHousemateSession } from "@/lib/session";
 import { acceptTour, TourError } from "@/lib/tours";
 import { GoogleError } from "@/lib/google";
+import { workerRequest } from "@/lib/agent-worker";
 
 export interface FormState {
   error?: string;
@@ -137,4 +138,22 @@ export async function bookTour(householdId: string, listingId: string, start: st
     revalidatePath(`/h/${householdId}`);
   }
   return {};
+}
+
+export async function callRental(householdId: string, listingId: string): Promise<FormState> {
+  try {
+    await requireMember(householdId);
+    const run = await getAgentRun(householdId);
+    const listing = run?.listings.find((l) => l.id === listingId);
+    if (!listing || listing.status === "ruled_out" || !listing.contact.phone) return { error: "No callable listing contact." };
+    const response = await workerRequest(`/agent/households/${encodeURIComponent(householdId)}/listings/${encodeURIComponent(listingId)}/call`, { method: "POST" });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      return { error: typeof result.detail === "string" ? result.detail : "The saved call could not be started. Check the agent worker." };
+    }
+    revalidatePath(`/h/${householdId}`);
+    return {};
+  } catch {
+    return { error: "The calling worker is unavailable or not connected. Your call has not been confirmed." };
+  }
 }

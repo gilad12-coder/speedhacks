@@ -18,7 +18,7 @@
 <div class="page-head">
   <div>
     <h1>{{ "Edit search" if c else "New search" }}</h1>
-    <p class="muted">{% if c %}Change anything, then search again: listings you've already called, emailed, or marked interested keep their progress.{% else %}KeyHunt finds listings, calls the contacts with an AI voice agent, and books viewings in your free times.{% endif %}</p>
+    <p class="muted">{% if c %}Change anything, then search again: listings you've already called, emailed, or marked interested keep their progress.{% else %}Find rentals, cross-check public sources, then call to confirm details and collect viewing times.{% endif %}</p>
   </div>
 </div>
 
@@ -38,6 +38,7 @@
     <div class="fields">
     <label>Bedrooms (min) <input name="min_beds" type="number" min="0" value="{{ c.min_beds if c else 1 }}"></label>
     <label>Bathrooms (min) <input name="min_baths" type="number" min="0" step="0.5" value="{{ (c.min_baths | round(1) | replace('.0', '')) if c else 1 }}"></label>
+    <label>Household size <span class="hint">Optional; checked with the contact</span><input name="occupants" type="number" min="1" max="20" placeholder="3" value="{{ c.occupants if c and c.occupants else '' }}"></label>
     <label class="full">Must-haves <span class="hint">The agent asks about each one on the call</span>
       <input name="must_haves" placeholder="in-unit laundry, cats OK, parking" value="{{ c.must_haves | join(', ') if c else '' }}"></label>
     </div>
@@ -45,7 +46,9 @@
   <fieldset>
     <legend>Viewings</legend>
     <div class="fields">
-    <label class="full">When you're free <span class="hint">The agent offers these times when booking a viewing</span>
+    <label class="full">Your name <span class="hint">The caller introduces itself as your AI assistant</span>
+      <input name="renter_name" maxlength="80" placeholder="First name" value="{{ settings.renter_name if settings.renter_name != 'my client' else '' }}"></label>
+    <label class="full">When you're free <span class="hint">The agent asks about these times; you'll confirm the appointment separately</span>
       <input name="tour_availability" placeholder="weekdays after 6pm, Saturday morning" value="{{ c.tour_availability | join(', ') if c else '' }}"></label>
     </div>
   </fieldset>

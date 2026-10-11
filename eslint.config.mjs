@@ -18,6 +18,7 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      "caller/**", // Standalone harness has its own TypeScript/test checks.
     ],
   },
 ];

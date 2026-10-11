@@ -30,6 +30,16 @@ class Settings:
     google_client_id: str | None
     google_client_secret: str | None
     public_base_url: str | None      # e.g. https://househunt.onrender.com (for OAuth redirect)
+    openai_api_key: str | None
+    openai_model: str
+    dial_allowed_numbers: tuple[str, ...]
+    call_max_seconds: int
+    call_timezone: str
+    max_calls_per_number_per_day: int
+    web_research: bool
+    search_model: str
+    search_max_listings: int
+    screen_top_n: int
     firecrawl_api_key: str | None    # optional: parse pasted links from unsupported sites
 
 
@@ -51,6 +61,16 @@ def load() -> Settings:
         google_client_id=env("GOOGLE_CLIENT_ID"),
         google_client_secret=env("GOOGLE_CLIENT_SECRET"),
         public_base_url=env("PUBLIC_BASE_URL"),
+        openai_api_key=env("OPENAI_API_KEY"),
+        openai_model=env("OPENAI_MODEL", "gpt-4.1-mini"),
+        dial_allowed_numbers=tuple(n.strip() for n in env("DIAL_ALLOWED_NUMBERS", "").split(",") if n.strip()),
+        call_max_seconds=max(60, min(300, int(env("CALL_DURATION_SECONDS", "180")))),
+        call_timezone=env("CALLER_TIMEZONE", "America/Los_Angeles"),
+        max_calls_per_number_per_day=max(1, min(5, int(env("MAX_CALLS_PER_NUMBER_PER_DAY", "1")))),
+        web_research=env("WEB_RESEARCH", "1") == "1",
+        search_model=env("SEARCH_MODEL", "gpt-4.1"),
+        search_max_listings=max(1, min(15, int(env("SEARCH_MAX_LISTINGS", "10")))),
+        screen_top_n=max(1, min(10, int(env("SCREEN_TOP_N", "5")))),
         firecrawl_api_key=env("FIRECRAWL_API_KEY"),
     )
 

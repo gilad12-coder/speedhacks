@@ -1,0 +1,13 @@
+.git
+.env*
+!.env.example
+**/.env*
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+.next
+data
+caller/data
+codedb.snapshot
+.DS_Store

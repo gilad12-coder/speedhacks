@@ -6,13 +6,14 @@ import json
 import re
 import logging
 import secrets
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote_plus
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
@@ -32,6 +33,11 @@ security = HTTPBasic(auto_error=False)
 def require_auth(request: Request,
                  creds: HTTPBasicCredentials | None = Depends(security)) -> None:
     """Basic auth when APP_PASSWORD is set: the app can place real phone calls."""
+    if request.url.path.startswith('/agent/'):
+        key = os.environ.get('AGENT_API_KEY', '')
+        if not key or not secrets.compare_digest(request.headers.get('authorization',''), 'Bearer '+key):
+            raise HTTPException(401, 'Unauthorized agent request')
+        return
     if not settings.app_password or request.url.path == "/healthz":
         return
     if not (creds and secrets.compare_digest(creds.password, settings.app_password)):
@@ -41,6 +47,7 @@ def require_auth(request: Request,
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     db.init()
+    db.recover_calls()
     yield
 
 
@@ -121,12 +128,18 @@ def create_search(
     must_haves: str = Form(""),
     move_in_by: str = Form(""),
     tour_availability: str = Form(""),
+    occupants: int | None = Form(None, ge=1, le=20),
+    renter_name: str = Form("", max_length=80),
 ):
+    if max_price <= 0 or min_price < 0 or min_price > max_price or min_beds < 0 or min_baths < 0:
+        raise HTTPException(400, "Enter a positive budget and valid bedroom/bathroom minimums")
     criteria = SearchCriteria(
         city=city, max_price=max_price, min_price=min_price, min_beds=min_beds,
         min_baths=min_baths, neighborhoods=_split(neighborhoods),
         must_haves=_split(must_haves), move_in_by=move_in_by or None,
         tour_availability=_split(tour_availability),
+        occupants=occupants,
+        renter_name=renter_name.strip() or settings.renter_name,
     )
     search_id = db.create_search(criteria)
     background.add_task(pipeline.run_search, search_id)
@@ -147,8 +160,9 @@ def show_search(request: Request, search_id: int):
     place_notes = db.notes_for_search(search_id)
     chats = db.chats_for_search(search_id)
     emails = db.emails_for_search(search_id)
-    in_flight = row["status"] in ("pending", "sourcing", "calling") or any(
-        c["status"] in ("queued", "in_progress") for c in calls.values())
+    in_flight = row["status"] in ("pending", "sourcing", "screening", "calling") or any(
+        c["status"] in ("queued", "in_progress", "extracting") for c in calls.values()) or any(
+        l.screening.get("status") == "checking" for l in listings)
     order = [ListingStatus.TOUR_SCHEDULED, ListingStatus.VIABLE, ListingStatus.CONTACTED,
              ListingStatus.CANDIDATE, ListingStatus.NOT_VIABLE, ListingStatus.FILTERED_OUT]
     listings.sort(key=lambda l: (order.index(l.status) if l.status in order else 99, -l.score))
@@ -163,17 +177,67 @@ def show_search(request: Request, search_id: int):
         "outcomes": outcomes, "tours": tours, "emails": emails, "refresh": in_flight,
         "settings": settings, "pins": pins, "center": geo.cached(criteria.city),
         "counts": counts, "tracked": tracked, "stages": AppStage,
+        "research_events": db.search_events(search_id),
         "place_notes": place_notes, "chats": chats,
     })
 
 
 @app.post("/searches/{search_id}/listings/{key}/call")
 def call_listing(background: BackgroundTasks, search_id: int, key: str):
+    listing = db.get_listing(search_id, key)
+    if not listing:
+        raise HTTPException(404, "Listing not found")
+    if listing.status == ListingStatus.FILTERED_OUT:
+        raise HTTPException(400, "Listing is already ruled out")
     existing = db.calls_for_search(search_id).get(key)
-    if existing and existing["status"] in ("queued", "in_progress"):
-        raise HTTPException(409, "call already in progress")
+    if existing and existing["status"] not in ("attention", "failed"):
+        raise HTTPException(409, "Call already exists; no replacement call was started")
     background.add_task(pipeline.call_listing, search_id, key)
     return RedirectResponse(f"/searches/{search_id}", status_code=303)
+
+
+@app.post("/searches/{search_id}/listings/{key}/screen")
+def screen_listing(background: BackgroundTasks, search_id: int, key: str):
+    listing = db.get_listing(search_id, key)
+    if not listing:
+        raise HTTPException(404)
+    if settings.mock_sources:
+        raise HTTPException(400, "Switch to live sources to research a real listing")
+    if not settings.openai_api_key:
+        raise HTTPException(400, "Web research requires the server's OpenAI API key")
+    background.add_task(pipeline.screen_listing, search_id, key)
+    return RedirectResponse(f"/searches/{search_id}#{key}", status_code=303)
+
+
+@app.get("/calls/{call_id}/recording")
+def call_recording(call_id: int):
+    from househunt.outreach.recording import recording_path
+    path = recording_path(call_id)
+    if path is None or not path.is_file():
+        raise HTTPException(404, "Recording not imported")
+    return FileResponse(path, media_type="audio/wav", headers={"Cache-Control": "private, no-store"})
+
+
+@app.post('/agent/households/{household_id}/listings/{key}/call')
+def household_call(background: BackgroundTasks, household_id: str, key: str):
+    search_id = db.household_search(household_id)
+    if search_id is None:
+        raise HTTPException(404, 'Household search not found')
+    listing = db.get_listing(search_id, key)
+    if not listing or not listing.contact or not listing.contact.phone:
+        raise HTTPException(400, 'A listing contact phone is required')
+    if not settings.mock_sources and settings.call_mode.value != 'dry_run' and listing.contact.phone not in settings.dial_allowed_numbers:
+        raise HTTPException(400, 'This contact has not been enabled for calling by the operator')
+    call_listing(background, search_id, key)
+    return {'ok':True}
+
+
+@app.get('/agent/households/{household_id}/calls/{call_id}/recording')
+def household_recording(household_id: str, call_id: int):
+    search_id = db.household_search(household_id)
+    if search_id is None or not any(c['id'] == call_id for c in db.calls_for_search(search_id).values()):
+        raise HTTPException(404)
+    return call_recording(call_id)
 
 
 @app.post("/searches/{search_id}/listings/{key}/track")
@@ -622,17 +686,22 @@ def edit_search(background: BackgroundTasks, search_id: int, city: str = Form(..
                 max_price: int = Form(...), min_price: int = Form(0), min_beds: int = Form(0),
                 min_baths: float = Form(0), neighborhoods: str = Form(""),
                 must_haves: str = Form(""), tour_availability: str = Form(""),
-                rerun: str = Form("1")):
+                occupants: int | None = Form(None, ge=1, le=20),
+                renter_name: str = Form("", max_length=80), rerun: str = Form("1")):
+    import dataclasses
+
     found = db.get_search(search_id)
     if not found:
         raise HTTPException(404)
     old, row = found
     if row["status"] in ("pending", "sourcing", "calling"):
         raise HTTPException(409, "This search is still running; edit it when it's done")
-    criteria = SearchCriteria(
-        city=city, max_price=max_price, min_price=min_price, min_beds=min_beds,
+    # Fields the form doesn't show (deal-breakers, commute, ... from onboarding) carry over.
+    criteria = dataclasses.replace(
+        old, city=city, max_price=max_price, min_price=min_price, min_beds=min_beds,
         min_baths=min_baths, neighborhoods=_split(neighborhoods), must_haves=_split(must_haves),
-        move_in_by=old.move_in_by, tour_availability=_split(tour_availability))
+        tour_availability=_split(tour_availability), occupants=occupants,
+        renter_name=renter_name.strip() or old.renter_name)
     db.update_search_criteria(search_id, criteria)
     if rerun == "1":
         db.set_search_status(search_id, "pending")

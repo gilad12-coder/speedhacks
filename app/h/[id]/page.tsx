@@ -26,6 +26,7 @@ import {
 import { AutoRefresh } from "./auto-refresh";
 import { InviteLink } from "./invite-link";
 import { Shortlist } from "./shortlist";
+import { Candidates } from "./candidates";
 
 export const dynamic = "force-dynamic";
 
@@ -166,6 +167,8 @@ export default async function HouseholdPage({
                 </p>
               </div>
               {run && <Pipeline run={run} />}
+              {run?.progress?.length ? <details className="mt-4 text-sm text-ink-2"><summary>{run.progress.at(-1)}</summary><ol className="mt-2 space-y-1">{run.progress.map((step,i) => <li key={i}>{step}</li>)}</ol></details> : null}
+              {run?.warnings?.map((warning,i) => <p key={i} className="mt-3 text-sm text-ink-2">{warning}</p>)}
             </section>
           )}
 
@@ -225,6 +228,7 @@ export default async function HouseholdPage({
               )}
             </section>
           )}
+          {run && <Candidates householdId={id} run={run} callerConnected={Boolean(process.env.AGENT_WORKER_URL)} />}
         </main>
       </div>
     </div>
