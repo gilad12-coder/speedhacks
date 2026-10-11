@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
-from househunt import db, pipeline
+from househunt import db, geo, pipeline
 from househunt.config import settings
 from househunt.models import ListingStatus, SearchCriteria
 from househunt.tours import to_ics
@@ -41,6 +41,24 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="househunt", lifespan=lifespan, dependencies=[Depends(require_auth)])
 
+# Sidebar tabs: (path, label, icon). A tab shows up once its route exists.
+NAV = [("/", "Searches", "list"), ("/searches/new", "New search", "plus"),
+       ("/connections", "Connections", "plug")]
+
+
+def nav_items() -> list[tuple[str, str, str]]:
+    paths = {getattr(r, "path", None) for r in app.routes}
+    return [n for n in NAV if n[0] in paths]
+
+
+def recent_searches() -> list[tuple[int, str, str]]:
+    return [(r["id"], json.loads(r["criteria"])["city"], r["status"])
+            for r in db.list_searches()[:6]]
+
+
+templates.env.globals.update(nav_items=nav_items, recent_searches=recent_searches,
+                             settings=settings)
+
 
 def _split(s: str) -> list[str]:
     return [x.strip() for x in s.replace("\n", ",").split(",") if x.strip()]
@@ -53,10 +71,17 @@ def healthz():
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    searches = [(r, json.loads(r["criteria"])) for r in db.list_searches()]
+    counts = db.listing_counts()
+    searches = [(r, json.loads(r["criteria"]), counts.get(r["id"], {}))
+                for r in db.list_searches()]
     return templates.TemplateResponse(request, "index.html", {
         "searches": searches, "settings": settings,
     })
+
+
+@app.get("/searches/new", response_class=HTMLResponse)
+def new_search(request: Request):
+    return templates.TemplateResponse(request, "new.html", {"settings": settings})
 
 
 @app.post("/searches")
@@ -98,9 +123,16 @@ def show_search(request: Request, search_id: int):
     order = [ListingStatus.TOUR_SCHEDULED, ListingStatus.VIABLE, ListingStatus.CONTACTED,
              ListingStatus.CANDIDATE, ListingStatus.NOT_VIABLE, ListingStatus.FILTERED_OUT]
     listings.sort(key=lambda l: (order.index(l.status) if l.status in order else 99, -l.score))
+    pins = [{"key": l.key, "lat": l.lat, "lng": l.lng, "price": l.price, "title": l.title,
+             "status": l.status.value, "beds": l.beds, "baths": l.baths}
+            for l in listings if l.lat is not None and l.lng is not None]
+    counts = {s.value: 0 for s in ListingStatus}
+    for l in listings:
+        counts[l.status.value] += 1
     return templates.TemplateResponse(request, "search.html", {
         "search": row, "criteria": criteria, "listings": listings, "calls": calls,
         "outcomes": outcomes, "tours": tours, "refresh": in_flight, "settings": settings,
+        "pins": pins, "center": geo.cached(criteria.city), "counts": counts,
     })
 
 

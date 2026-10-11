@@ -8,12 +8,13 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("CALL_MODE", "dry_run")
     monkeypatch.setenv("MOCK_SOURCES", "1")
+    monkeypatch.setenv("GEOCODE", "0")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("APP_PASSWORD", raising=False)
     import importlib
     import househunt.config
     importlib.reload(househunt.config)
-    for mod in ["househunt.db", "househunt.pipeline", "househunt.web.app"]:
+    for mod in ["househunt.db", "househunt.geo", "househunt.pipeline", "househunt.web.app"]:
         import sys
         if mod in sys.modules:
             importlib.reload(sys.modules[mod])

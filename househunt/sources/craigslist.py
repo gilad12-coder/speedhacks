@@ -68,6 +68,8 @@ class CraigslistSource(ListingSource):
                     price=_money(price.get_text()) if price else None,
                     beds=item.get("numberOfBedrooms"),
                     baths=item.get("numberOfBathroomsTotal"),
+                    lat=_float(item.get("latitude")),
+                    lng=_float(item.get("longitude")),
                     neighborhood=(li.select_one(".location").get_text(strip=True)
                                   if li.select_one(".location") else None),
                 )
@@ -110,3 +112,10 @@ class CraigslistSource(ListingSource):
 def _money(s: str) -> int | None:
     digits = re.sub(r"[^\d]", "", s)
     return int(digits) if digits else None
+
+
+def _float(v) -> float | None:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None

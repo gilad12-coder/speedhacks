@@ -1,32 +1,58 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Searches · househunt{% endblock %}
+{% block style %}
+<style>
+  .grid-cards { display:grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+  a.search-card { display:flex; flex-direction:column; gap: 12px; color: inherit; margin: 0;
+    transition: border-color .15s, transform .15s; }
+  a.search-card:hover { text-decoration: none; border-color: var(--accent); transform: translateY(-1px); }
+  .search-card .top { display:flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .search-card .city { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+  .search-card .crit { font-size: 13px; color: var(--muted); }
+  .search-card .nums { display:grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    border-top: 1px solid var(--line); padding-top: 12px; }
+  .search-card .nums b { display:block; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .search-card .nums span { font-size: 12px; color: var(--muted); }
+  .search-card .when { font-size: 12px; color: var(--faint); }
+</style>
+{% endblock %}
 {% block content %}
-<h2>New search</h2>
-<form class="grid" method="post" action="/searches">
-  <label>City <input name="city" required placeholder="San Francisco"></label>
-  <label>Max rent ($/mo) <input name="max_price" type="number" required></label>
-  <label>Min rent ($/mo) <input name="min_price" type="number" value="0"></label>
-  <label>Min beds <input name="min_beds" type="number" value="1"></label>
-  <label>Min baths <input name="min_baths" type="number" step="0.5" value="1"></label>
-  <label>Move in by <input name="move_in_by" type="date"></label>
-  <label>Neighborhoods (comma separated) <input name="neighborhoods" placeholder="Mission, Noe Valley"></label>
-  <label>Must-haves (comma separated) <input name="must_haves" placeholder="laundry, cats"></label>
-  <label>Free for viewings <input name="tour_availability" placeholder="weekdays after 6pm, Sat morning"></label>
-  <div style="align-self:end"><button type="submit">Start search</button></div>
-</form>
+<div class="page-head">
+  <div>
+    <h1>Searches</h1>
+    <p class="muted">Each search sources listings, calls the promising ones, and books viewings.</p>
+  </div>
+  <a class="btn" href="/searches/new">{{ icon("plus", 16) }}New search</a>
+</div>
 
-<h2>Searches</h2>
 {% if searches %}
-<div class="wrap"><table>
-  <tr><th>#</th><th>City</th><th>Budget</th><th>Status</th><th>Created</th></tr>
-  {% for row, c in searches %}
-  <tr>
-    <td><a href="/searches/{{ row.id }}">{{ row.id }}</a></td>
-    <td>{{ c.city }}</td>
-    <td>${{ c.min_price }}–${{ c.max_price }}, {{ c.min_beds }}+ bd</td>
-    <td><span class="pill">{{ row.status }}</span></td>
-    <td class="muted">{{ row.created_at }}</td>
-  </tr>
+<div class="grid-cards">
+  {% for row, c, n in searches %}
+  {% set found = n.values() | sum %}
+  {% set good = n.get("viable", 0) + n.get("tour_scheduled", 0) %}
+  <a class="card search-card" href="/searches/{{ row.id }}">
+    <div class="top">
+      <div>
+        <div class="city">{{ c.city }}</div>
+        <div class="crit">${{ "{:,}".format(c.min_price) }}–${{ "{:,}".format(c.max_price) }} · {{ c.min_beds }}+ bd{% if c.neighborhoods %} · {{ c.neighborhoods | join(", ") }}{% endif %}</div>
+      </div>
+      <span class="pill {{ row.status }}">{{ row.status }}</span>
+    </div>
+    <div class="nums">
+      <div><b>{{ found }}</b><span>found</span></div>
+      <div><b>{{ good }}</b><span>viable</span></div>
+      <div><b>{{ n.get("tour_scheduled", 0) }}</b><span>viewings</span></div>
+    </div>
+    <div class="when">#{{ row.id }} · started {{ row.created_at[:16].replace("T", " ") }}</div>
+  </a>
   {% endfor %}
-</table></div>
-{% else %}<p class="muted">No searches yet.</p>{% endif %}
+</div>
+{% else %}
+<div class="card empty">
+  {{ icon("home", 36) }}
+  <p>No searches yet. Tell househunt what you're looking for and it takes it from there.</p>
+  <a class="btn" href="/searches/new">{{ icon("plus", 16) }}Start your first search</a>
+</div>
+{% endif %}
 {% endblock %}

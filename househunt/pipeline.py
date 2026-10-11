@@ -8,7 +8,7 @@ from datetime import datetime
 
 import httpx
 
-from househunt import db
+from househunt import db, geo
 from househunt.collect import collect
 from househunt.config import CallMode, settings
 from househunt.models import Listing, ListingStatus, SearchCriteria
@@ -51,6 +51,10 @@ def run_search(search_id: int) -> None:
         db.set_search_status(search_id, "sourcing")
         raw, errors = source_listings(criteria)
         listings = collect(raw, criteria)
+        try:
+            geo.locate(listings, criteria)
+        except Exception:  # the map is a nice-to-have; never fail the search over it
+            log.exception("geocoding failed")
         for l in listings:
             db.upsert_listing(search_id, l)
 

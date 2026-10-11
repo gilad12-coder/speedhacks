@@ -56,6 +56,8 @@ class Listing:
     sqft: int | None = None
     address: str | None = None
     neighborhood: str | None = None
+    lat: float | None = None
+    lng: float | None = None
     description: str = ""
     contact: Contact | None = None
     status: ListingStatus = ListingStatus.NEW

@@ -49,6 +49,12 @@ CREATE TABLE IF NOT EXISTS tours (
     contact_phone TEXT,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS geocache (
+    query TEXT PRIMARY KEY,
+    lat REAL,                                 -- NULL = looked up, no match
+    lng REAL,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -93,6 +99,18 @@ def get_search(search_id: int) -> tuple[SearchCriteria, sqlite3.Row] | None:
 def list_searches() -> list[sqlite3.Row]:
     with conn() as c:
         return c.execute("SELECT * FROM searches ORDER BY id DESC LIMIT 50").fetchall()
+
+
+def listing_counts() -> dict[int, dict[str, int]]:
+    """Listing count per status for every search, for the dashboard."""
+    with conn() as c:
+        rows = c.execute(
+            "SELECT search_id, status, COUNT(*) AS n FROM listings GROUP BY search_id, status"
+        ).fetchall()
+    out: dict[int, dict[str, int]] = {}
+    for r in rows:
+        out.setdefault(r["search_id"], {})[r["status"]] = r["n"]
+    return out
 
 
 def set_search_status(search_id: int, status: str, error: str | None = None) -> None:
@@ -180,3 +198,16 @@ def tours_for_search(search_id: int) -> dict[str, sqlite3.Row]:
     with conn() as c:
         rows = c.execute("SELECT * FROM tours WHERE search_id = ?", (search_id,)).fetchall()
     return {r["listing_key"]: r for r in rows}
+
+
+# --- geocode cache ----------------------------------------------------------
+
+def get_geocode(query: str) -> sqlite3.Row | None:
+    with conn() as c:
+        return c.execute("SELECT lat, lng FROM geocache WHERE query = ?", (query,)).fetchone()
+
+
+def save_geocode(query: str, lat: float | None, lng: float | None) -> None:
+    with conn() as c:
+        c.execute("INSERT OR REPLACE INTO geocache (query, lat, lng, created_at) VALUES (?, ?, ?, ?)",
+                  (query, lat, lng, now()))

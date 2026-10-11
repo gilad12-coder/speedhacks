@@ -26,6 +26,7 @@ class Settings:
     renter_name: str
     app_password: str | None         # HTTP basic auth for the deployed app
     claude_model: str
+    geocode: bool                    # place listings on the map via OpenStreetMap Nominatim
 
 
 def load() -> Settings:
@@ -42,6 +43,7 @@ def load() -> Settings:
         renter_name=env("RENTER_NAME", "my client"),
         app_password=env("APP_PASSWORD"),
         claude_model=env("CLAUDE_MODEL", "claude-opus-5-5"),
+        geocode=env("GEOCODE", "1") == "1",
     )
 
 
