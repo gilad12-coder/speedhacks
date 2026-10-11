@@ -58,7 +58,7 @@ export function InterviewChat({
   };
 
   return (
-    <div className="mt-6 flex min-h-0 flex-1 flex-col">
+    <div className="mt-8 flex min-h-0 w-full max-w-2xl flex-1 flex-col">
       <AgentThread className="pe-2 pb-2">
         {messages.map((m, i) => (m.role === "user" ? <UserBubble key={i} text={m.text} /> : <AgentText key={i} text={m.text} />))}
         {pending && <ThinkingIndicator />}
@@ -103,9 +103,6 @@ export function InterviewChat({
             disabled={pending}
             placeholder={choices.length ? "Or answer in your own words…" : "Type your answer…"}
           />
-          <p className="shrink-0 pt-2 text-xs text-ink-3">
-            Say &ldquo;that&rsquo;s all&rdquo; whenever you&rsquo;re done and Keyhunt will save what it learned.
-          </p>
         </>
       )}
     </div>

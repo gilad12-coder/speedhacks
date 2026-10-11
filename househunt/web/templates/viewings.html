@@ -25,7 +25,9 @@
     <div class="meta">{{ v.source }}</div>
   </div>
   <div class="acts">
-    {% if v.ics and not past %}<a class="btn secondary" href="{{ v.ics }}">{{ icon("calendar", 14) }}Add to calendar</a>{% endif %}
+    {% set g = gcal_link("Viewing: " ~ v.title, v.start, v.address, v.url) %}
+    {% if g and not past %}<a class="btn secondary" href="{{ g }}" target="_blank" rel="noopener">{{ icon("calendar", 14) }}Google Calendar</a>{% endif %}
+    {% if v.ics and not past %}<a class="btn secondary" href="{{ v.ics }}">{{ icon("calendar", 14) }}Other calendar (.ics)</a>{% endif %}
     {% if v.search_id and v.key %}<form method="post" action="/searches/{{ v.search_id }}/listings/{{ v.key }}/chat">
       <button type="submit" class="secondary">{{ icon("chat", 14) }}{{ "How did it go?" if past else "Prep with agent" }}</button></form>{% endif %}
     {% if v.app_id %}<a class="btn secondary" href="/applications#app-{{ v.app_id }}">On board</a>{% endif %}

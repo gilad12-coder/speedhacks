@@ -18,11 +18,12 @@ import {
   upsertHousemate,
 } from "@/lib/households";
 import { InterviewError, nextAgentStep, type InterviewMessage } from "@/lib/interview";
+import { areaFromText } from "@/lib/places";
 import { intakeSchema } from "@/lib/schemas";
 import { getAccount, getHousemateId, setHousemateSession } from "@/lib/session";
 import { acceptTour, TourError } from "@/lib/tours";
 import { GoogleError } from "@/lib/google";
-import { workerRequest } from "@/lib/agent-worker";
+import { mainAppUrl, workerRequest } from "@/lib/agent-worker";
 
 export interface FormState {
   error?: string;
@@ -45,8 +46,11 @@ export async function submitIntake(joinCode: string, _: FormState, form: FormDat
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
     for (const issue of parsed.error.issues) fieldErrors[String(issue.path[0])] ??= issue.message;
-    return { error: "A few answers need another look.", fieldErrors };
+    // Each field shows its own message and the form jumps to that step, so no banner on top.
+    return { fieldErrors };
   }
+
+  parsed.data.location = await areaFromText(parsed.data.location);
 
   const account = await getAccount();
   const existing =
@@ -117,6 +121,9 @@ export async function startSearch(householdId: string) {
   if (!state || state.household.housemates.length < state.household.expectedSize || !state.household.confirmed) return;
   await requestSearch(householdId);
   revalidatePath(`/h/${householdId}`);
+  // Onboarding is done: continue in the main KeyHunt app, which runs the search.
+  const next = mainAppUrl(householdId);
+  if (next) redirect(next);
 }
 
 export async function bookTour(householdId: string, listingId: string, start: string, end: string): Promise<FormState> {

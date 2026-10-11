@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from datetime import datetime, timezone
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
@@ -113,10 +114,17 @@ class PlatformClient:
         p = urlsplit(self.url)
         if not key or not p.hostname or p.username or p.password or (p.scheme != 'https' and not (p.scheme == 'http' and p.hostname in ('localhost','127.0.0.1'))):
             raise RuntimeError('Set APP_URL (HTTPS, or localhost) and the shared AGENT_API_KEY')
-        self.http = httpx.Client(base_url=self.url, headers={'Authorization':'Bearer '+key}, timeout=30, follow_redirects=False)
+        headers = {'Authorization':'Bearer '+key}
+        # Vercel Deployment Protection: the project's "Protection Bypass for Automation" secret.
+        bypass = os.environ.get('VERCEL_PROTECTION_BYPASS','').strip()
+        if bypass:
+            headers['x-vercel-protection-bypass'] = bypass
+        self.http = httpx.Client(base_url=self.url, headers=headers, timeout=30, follow_redirects=False)
 
     def briefs(self):
         r = self.http.get('/api/agent/briefs')
+        if r.is_redirect and 'vercel.com/sso' in r.headers.get('location',''):
+            raise RuntimeError('The app is behind Vercel Deployment Protection; set VERCEL_PROTECTION_BYPASS')
         if not r.is_success:
             raise RuntimeError(f'Household brief API returned HTTP {r.status_code}')
         return r.json()['briefs']
@@ -135,18 +143,54 @@ class PlatformClient:
             conn.execute('UPDATE household_jobs SET published_hash=? WHERE household_id=?',(digest,household_id))
 
 
+def ensure_search(client: PlatformClient, brief: dict) -> int:
+    """The search for a household's brief, created once. Safe to call from the web app
+    (when a housemate is handed over from onboarding) and from the worker loop."""
+    household_id = brief['householdId']
+    sid = db.household_search(household_id)
+    if sid is None:
+        criteria = criteria_from_brief(brief)
+        with _ensure_lock:
+            sid = db.household_search(household_id)
+            if sid is None:
+                sid = db.create_search(criteria)
+                with db.conn() as conn:
+                    conn.execute('INSERT INTO household_jobs(household_id,search_id) VALUES (?,?)',(household_id,sid))
+        client.publish(household_id,sid)
+    return sid
+
+
+_ensure_lock = threading.Lock()
+# Set to run the worker loop now instead of waiting for the next poll.
+wake = threading.Event()
+
+
+def start_background_worker(interval: float = 15) -> threading.Thread | None:
+    """Run the worker loop inside the web app (single-process deploys and local dev).
+    Enabled with RUN_PLATFORM_WORKER=1; otherwise run `python -m househunt.platform`."""
+    if os.environ.get('RUN_PLATFORM_WORKER') != '1':
+        return None
+    client = PlatformClient()
+
+    def loop():
+        while True:
+            try:
+                run_once(client)
+            except (RuntimeError, ValueError, httpx.HTTPError) as e:
+                print(f'Worker needs attention: {type(e).__name__}: {e}', flush=True)
+            wake.wait(interval)
+            wake.clear()
+
+    t = threading.Thread(target=loop, name='platform-worker', daemon=True)
+    t.start()
+    return t
+
+
 def run_once(client: PlatformClient) -> None:
     from househunt.pipeline import run_search
     for brief in client.briefs():
         household_id = brief['householdId']
-        sid = db.household_search(household_id)
-        if sid is None:
-            criteria = criteria_from_brief(brief)
-            # A single worker owns this queue; SQLite keeps restarts from duplicating searches.
-            sid = db.create_search(criteria)
-            with db.conn() as conn:
-                conn.execute('INSERT INTO household_jobs(household_id,search_id) VALUES (?,?)',(household_id,sid))
-            client.publish(household_id,sid)
+        sid = ensure_search(client, brief)
         _, row = db.get_search(sid)
         if row['status'] in ('pending','sourcing','screening','calling'):
             run_search(sid, on_update=lambda: client.publish(household_id,sid))

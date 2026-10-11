@@ -14,7 +14,7 @@ def env(tmp_path, monkeypatch):
     import importlib
     import househunt.config
     importlib.reload(househunt.config)
-    for mod in ["househunt.db", "househunt.geo", "househunt.pipeline", "househunt.web.app"]:
+    for mod in ["househunt.db", "househunt.geo", "househunt.chat", "househunt.briefing", "househunt.phone", "househunt.pipeline", "househunt.web.app"]:
         import sys
         if mod in sys.modules:
             importlib.reload(sys.modules[mod])
@@ -551,3 +551,301 @@ def test_calls_and_viewings_pages():
         assert client.get("/viewings").status_code == 200
         apps = client.get("/applications").text
         assert 'href="/calls"' in apps and 'href="/viewings"' in apps
+
+
+def test_next_step_rules():
+    import json as _json
+
+    from househunt.models import Contact, Listing, Source
+    from househunt.next_step import gcal_link, recommend
+
+    def l(**kw):
+        return Listing(source=kw.pop("source", Source.CRAIGSLIST), source_id="1", url="https://x/1",
+                       title="1BR", **kw)
+
+    assert recommend(l()).action == "reveal"
+    assert recommend(l(source=Source.FACEBOOK)).action == "message"
+    assert recommend(l(contact=Contact(phone="+14155550100"))).action == "call"
+    assert recommend(l(contact=Contact(email="a@b.co"))).action == "email"
+    assert recommend(l(tour_url="https://x/tour")).action == "book_online"
+
+    viable = {"status": "ended", "outcome": _json.dumps(
+        {"viable": True, "offered_times": ["Thu 6pm"], "summary": "ok"})}
+    assert recommend(l(contact=Contact(phone="+1")), call=viable).action == "log_viewing"
+    dead = {"status": "ended", "outcome": _json.dumps({"viable": False, "summary": "Rented."})}
+    ns = recommend(l(), call=dead)
+    assert ns.action == "move_on" and ns.why == "Rented."
+    assert recommend(l(), call={"status": "in_progress", "outcome": None}).action == "wait"
+    tour = {"start": "2026-10-15T18:30"}
+    ns = recommend(l(address="1 Main St"), tour=tour)
+    assert ns.action == "prepare" and "dates=20261015T183000%2F20261015T190000" in ns.href
+    assert gcal_link("x", "not a date", None, None) is None
+
+
+def test_edit_search_keeps_progress():
+    from fastapi.testclient import TestClient
+    from househunt import db
+    from househunt.models import ListingStatus
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        r = client.post("/searches", data={"city": "sf", "max_price": 3000, "min_beds": 1})
+        sid = int(r.url.path.rsplit("/", 1)[-1])
+        # Dry run already "called" the callable ones; add a contact + interest to another.
+        client.post(f"/searches/{sid}/listings/facebook:fb-42/contact", data={"pasted": "a@b.co"})
+        client.post(f"/searches/{sid}/listings/facebook:fb-42/track")
+        before = {l.key: l for l in db.list_listings(sid)}
+        called = [k for k, l in before.items() if l.status == ListingStatus.VIABLE]
+        assert called
+
+        assert client.get(f"/searches/{sid}/edit").status_code == 200
+        # Tighten to 3+ beds and re-run: unprogressed 1-2 bed places drop out, progress stays.
+        client.post(f"/searches/{sid}/edit", data={
+            "city": "sf", "max_price": 3000, "min_beds": 3, "rerun": "1"})
+        crit, row = db.get_search(sid)
+        assert crit.min_beds == 3 and row["status"] == "done"
+        after = {l.key: l for l in db.list_listings(sid)}
+        unprogressed = [k for k, l in before.items() if l.status == ListingStatus.CANDIDATE
+                        and k != "facebook:fb-42"]
+        for k in unprogressed:
+            assert after[k].status == ListingStatus.FILTERED_OUT
+            assert any("beds <" in n for n in after[k].notes)
+        for k in called:
+            assert after[k].status == ListingStatus.VIABLE                 # progress kept
+        assert after["facebook:fb-42"].contact.email == "a@b.co"
+        assert db.find_application(sid, "facebook:fb-42")
+
+
+def test_interested_next_step_and_log_viewing():
+    from fastapi.testclient import TestClient
+    from househunt import db
+    from househunt.models import ListingStatus
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        r = client.post("/searches", data={"city": "sf", "max_price": 3000, "min_beds": 1})
+        sid = int(r.url.path.rsplit("/", 1)[-1])
+        assert "I&#39;m interested" in client.get(f"/searches/{sid}").text \
+            or "I'm interested" in client.get(f"/searches/{sid}").text
+        client.post(f"/searches/{sid}/listings/facebook:fb-42/track")
+        card = client.get(f"/searches/{sid}").text.split('id="facebook:fb-42"')[1].split("</article>")[0]
+        assert "Recommended next step" in card and "Message the seller on Facebook" in card
+
+        client.post(f"/searches/{sid}/listings/facebook:fb-42/viewing", data={"start": "2026-10-20T18:30"})
+        assert db.get_listing(sid, "facebook:fb-42").status == ListingStatus.TOUR_SCHEDULED
+        assert db.tours_for_search(sid)["facebook:fb-42"]["start"] == "2026-10-20T18:30"
+        assert db.find_application(sid, "facebook:fb-42")["stage"] == "viewing"
+        page = client.get("/viewings").text
+        assert "calendar.google.com/calendar/render" in page
+
+
+def test_leads_track_outreach_and_can_be_removed():
+    from fastapi.testclient import TestClient
+
+    from househunt import db, leads, pipeline
+    from househunt.models import SearchCriteria
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        assert "No leads right now" in client.get("/leads").text
+        sid = db.create_search(SearchCriteria(city="sf", max_price=3000, min_beds=1))
+        pipeline.run_search(sid)
+        # Interested in a place nobody has called, and one the dry run already called.
+        client.post(f"/searches/{sid}/listings/facebook:fb-42/track")
+        client.post(f"/searches/{sid}/listings/zillow:z-1001/track")
+        assert leads.outreach(sid, "facebook:fb-42").status == "new"
+        called = leads.outreach(sid, "zillow:z-1001")
+        assert called.attempts and called.attempts[0].kind == "call"
+
+        page = client.get("/leads").text
+        assert "Room in 3BR" in page and "Sunny 2BR" in page and "Remove from leads" in page
+
+        # A failed call reads as "no response yet", with the API's message on the Calls page.
+        cid = db.create_call(sid, "facebook:fb-42")
+        db.update_call(cid, status="failed", error="""BadRequestError("Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low.'}}")""")
+        o = leads.outreach(sid, "facebook:fb-42")
+        assert o.status == "waiting" and "no response yet" in o.label
+        assert "Your credit balance is too low." in client.get("/calls").text
+
+        # Calling from Leads comes back to Leads.
+        # (fb-42's last call failed, so a new one is allowed.)
+        r = client.post(f"/searches/{sid}/listings/facebook:fb-42/call",
+                        data={"next": "/leads"}, follow_redirects=False)
+        assert r.headers["location"] == "/leads"
+        r = client.post(f"/searches/{sid}/listings/facebook:fb-42/call",
+                        data={"next": "https://evil.example"}, follow_redirects=False)
+        assert r.headers["location"] == f"/searches/{sid}"
+
+        app_id = db.find_application(sid, "facebook:fb-42")["id"]
+        client.post(f"/leads/{app_id}/remove", data={"reason": "no_response", "detail": "3 tries"})
+        row = db.get_application(app_id)
+        assert row["stage"] == "withdrawn" and "No response (3 tries)" in row["notes"]
+        page = client.get("/leads").text
+        assert "Removed leads (1)" in page and 'id="lead-%d"' % app_id not in page
+
+        client.post(f"/leads/{app_id}/restore")
+        assert db.get_application(app_id)["stage"] == "interested"
+
+
+class _FakeDialNumbers:
+    def __init__(self):
+        self.instruction = "Original greeting"
+        self.patches, self.placed = [], []
+        self.calls = []
+
+    def own_number(self):
+        return {"id": "pn_1", "number": "+14155550000", "inboundInstruction": self.instruction}
+
+    def set_inbound_instruction(self, number_id, instruction):
+        assert number_id == "pn_1"
+        self.instruction = instruction
+        self.patches.append(instruction)
+
+    def inbound_calls(self, number_id=None, since=None):
+        return self.calls
+
+    def place_call(self, to, instruction, **kw):
+        self.placed.append((to, instruction))
+        return type("C", (), {"id": "call_x"})()
+
+
+def test_flags_briefing_and_phone(monkeypatch):
+    import importlib
+
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("BRIEFING_PIN", "4821")
+    monkeypatch.setenv("NOTIFY_NUMBER", "+14155559999")
+    monkeypatch.setenv("DIAL_API_KEY", "test")
+    import househunt.config
+    importlib.reload(househunt.config)
+    import sys
+    for mod in ["househunt.db", "househunt.flags", "househunt.briefing", "househunt.phone",
+                "househunt.pipeline", "househunt.web.app"]:
+        if mod in sys.modules:
+            importlib.reload(sys.modules[mod])
+    from househunt import briefing, db, flags, phone, pipeline
+    from househunt.models import SearchCriteria
+    from househunt.web.app import app
+
+    fake = _FakeDialNumbers()
+    monkeypatch.setattr(phone, "_client", lambda: fake)
+
+    with TestClient(app) as client:
+        sid = db.create_search(SearchCriteria(city="sf", max_price=3000, min_beds=1))
+        pipeline.run_search(sid)
+        # Interested in a place the dry-run call confirmed is available, but with no viewing.
+        key = "craigslist:cl-7781"
+        client.post(f"/searches/{sid}/listings/{key}/track")
+        with db.conn() as c:
+            c.execute("DELETE FROM tours WHERE listing_key = ?", (key,))
+        client.post(f"/searches/{sid}/listings/zillow:z-1001/email")   # leaves a draft
+
+        titles = [f.title for f in flags.compute()]
+        assert any("is available: book a viewing" in t for t in titles)
+        assert any(t.startswith("Approve your email") for t in titles)
+        home = client.get("/").text
+        assert "Needs you" in home and "book a viewing" in home
+
+        facts = briefing.facts()
+        assert "Search in sf" in facts and "Leads:" in facts and "Needs the renter's attention" in facts
+
+        # Call me: an outbound call to the renter's phone with the briefing.
+        client.post("/phone/call-me")
+        assert fake.placed[0][0] == "+14155559999" and "FACTS:" in fake.placed[0][1]
+
+        # Call-in: the passcode guards the facts; landlords only get a message-taker.
+        client.post("/phone/enable")
+        assert phone.enabled() and "4 8 2 1" in fake.instruction and "FACTS" in fake.instruction
+        assert "take a message" in fake.instruction
+        n = len(fake.patches)
+        assert phone.sync() is False and len(fake.patches) == n   # unchanged facts, no re-push
+
+        # A landlord calls back from the listing's number: it becomes a flag.
+        listing = db.get_listing(sid, "zillow:z-1001")
+        fake.calls = [{"id": "in1", "from": listing.contact.phone, "createdAt": "2026-10-11T15:00:00",
+                       "transcript": "Caller: Hi, it's Jordan about 123 Main St, it's still available."},
+                      {"id": "in2", "from": "+14155559999", "createdAt": "2026-10-11T15:05:00",
+                       "transcript": "Renter checking in."}]
+        assert phone.poll_inbound() == 2
+        assert phone.poll_inbound() == 0                       # no duplicates
+        flag = next(f for f in flags.compute() if "called back" in f.title)
+        assert "Sunny 2BR" in flag.title and flag.href == "/phone#call-in1"
+        page = client.get("/phone").text
+        assert "about 123 Main St" in page and "Mark handled" in page
+        client.post("/phone/calls/in1/handled")
+        assert not any("called back" in f.title for f in flags.compute())
+
+        client.post("/phone/disable")
+        assert not phone.enabled() and fake.instruction == "Original greeting"
+
+
+def test_inbound_without_pin_only_takes_messages():
+    from househunt import briefing
+
+    assert briefing.settings.briefing_pin is None   # not set in the test env
+    text = briefing.inbound_instruction()
+    assert "take a message" in text and "FACTS" not in text
+
+
+def test_household_handoff_from_onboarding(monkeypatch):
+    from fastapi.testclient import TestClient
+    from househunt import db, platform
+    from househunt.web.app import app
+
+    brief = {"householdId": "hh_1", "occupants": 2, "location": "San Francisco",
+             "maxTotalRentUsd": 5200, "moveInFrom": "2026-11-01", "moveInTo": "2026-12-01",
+             "commute": {"destination": "SoMa", "mode": "bike", "modes": ["bike"], "maxMinutes": 30},
+             "mustHaves": ["laundry"], "dealBreakers": [], "niceToHaves": [],
+             "householdIncomeBandUsd": {"min": 150000, "max": 200000}, "wishes": []}
+    published = []
+
+    class FakeClient:
+        def briefs(self):
+            return [brief]
+
+        def publish(self, household_id, search_id):
+            published.append((household_id, search_id))
+
+    monkeypatch.setattr(platform, "PlatformClient", FakeClient)
+    with TestClient(app) as client:
+        r = client.get("/households/hh_1", follow_redirects=False)
+        assert r.status_code == 303
+        sid = int(r.headers["location"].rsplit("/", 1)[-1])
+        crit, row = db.get_search(sid)
+        assert (crit.city, crit.max_price, crit.min_beds, crit.must_haves) == (
+            "San Francisco", 5200, 2, ["laundry"])
+        assert row["status"] == "pending"            # the worker runs it, not the handoff
+        assert published == [("hh_1", sid)] and platform.wake.is_set()
+
+        # Coming back goes to the same search; no duplicate is created.
+        r2 = client.get("/households/hh_1", follow_redirects=False)
+        assert r2.headers["location"] == f"/searches/{sid}"
+        assert db.household_search("hh_1") == sid
+
+        # A household whose brief isn't requested yet gets a waiting page.
+        r3 = client.get("/households/hh_unknown", follow_redirects=False)
+        assert r3.status_code == 202 and "Starting your search" in r3.text
+
+
+def test_platform_client_vercel_bypass(monkeypatch):
+    import httpx
+    import pytest as _pytest
+    from househunt import platform
+
+    monkeypatch.setenv("APP_URL", "https://keyhunt.example.vercel.app")
+    monkeypatch.setenv("AGENT_API_KEY", "k")
+    monkeypatch.setenv("VERCEL_PROTECTION_BYPASS", "s3cret")
+    seen = {}
+
+    def handler(request):
+        seen.update(request.headers)
+        return httpx.Response(302, headers={"location": "https://vercel.com/sso-api?url=x"})
+
+    client = platform.PlatformClient()
+    assert client.http.headers["x-vercel-protection-bypass"] == "s3cret"
+    client.http = httpx.Client(base_url=client.url, headers=client.http.headers,
+                               transport=httpx.MockTransport(handler))
+    with _pytest.raises(RuntimeError, match="VERCEL_PROTECTION_BYPASS"):
+        client.briefs()
+    assert seen["x-vercel-protection-bypass"] == "s3cret"

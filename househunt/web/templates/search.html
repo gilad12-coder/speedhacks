@@ -106,6 +106,15 @@
   }
   .listing .actions .add-contact:not([open]) { flex-basis: auto; width: auto; }
   .add-contact[open] { width: 100%; order: 10; }
+  .next-step { border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px; margin: 10px 0 4px;
+    display: flex; flex-direction: column; gap: 4px; }
+  .next-step.move_on { border-color: var(--line); }
+  .next-step .ns-head { display: flex; gap: 6px; align-items: center; color: var(--accent); }
+  .next-step .ns-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; align-items: flex-start; }
+  .log-viewing summary { display: inline-flex; list-style: none; }
+  .log-viewing summary::-webkit-details-marker { display: none; }
+  .log-viewing form { display: flex; gap: 8px; margin-top: 8px; }
+  h1 .edit-search { font-size: 13px; padding: 4px 10px; vertical-align: middle; margin-left: 8px; }
   .get-contact { width: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
     padding: 10px 12px; border: 1px dashed var(--accent); border-radius: 10px; }
   .get-contact > .small { flex: 1 1 100%; }
@@ -136,7 +145,8 @@
 <div class="page-head">
   <div>
     <a class="crumb" href="/">Searches</a>
-    <h1>{{ criteria.city }}</h1>
+    <h1>{{ criteria.city }}
+      {% if search.status not in ("pending", "sourcing", "calling") %}<a class="btn secondary small edit-search" href="/searches/{{ search.id }}/edit">Edit search</a>{% endif %}</h1>
     <div class="chips">
       <span class="chip"><b>${{ "{:,}".format(criteria.min_price) }}–${{ "{:,}".format(criteria.max_price) }}</b>/mo</span>
       <span class="chip"><b>{{ criteria.min_beds }}+</b> bd · <b>{{ criteria.min_baths | round(1) | replace(".0", "") }}+</b> ba</span>
@@ -274,6 +284,35 @@
         <ul>{% for n in concerns %}<li>{{ n }}</li>{% endfor %}</ul></div>{% endif %}
       {% set can_call = l.contact and l.contact.phone and l.status.value in ("candidate", "contacted", "not_viable") and (not call or call.status in ("attention", "failed")) %}
       {% set app = tracked.get(l.key) %}
+      {% if app and app.stage not in ("rejected", "withdrawn", "lease_signed") %}
+        {% set ns = next_step(l, call, email, tour) %}
+        <div class="next-step {{ ns.action }}">
+          <div class="ns-head">{{ icon("arrow", 14) }}<span class="small muted">Recommended next step</span></div>
+          <b>{{ ns.label }}</b>
+          <div class="small muted">{{ ns.why }}</div>
+          <div class="ns-actions">
+            {% if ns.action == "call" and can_call %}
+              <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/call"><button type="submit">{{ icon("phone", 14) }}Call now</button></form>
+            {% elif ns.action == "email" %}
+              {% if email %}<a class="btn" href="/emails/{{ email.id }}">{{ icon("mail", 14) }}Open the email</a>
+              {% else %}<form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/email"><button type="submit">{{ icon("mail", 14) }}Draft the email</button></form>{% endif %}
+            {% elif ns.href and ns.action == "prepare" %}
+              <a class="btn" href="{{ ns.href }}" target="_blank" rel="noopener">{{ icon("calendar", 14) }}Add to Google Calendar</a>
+            {% elif ns.href %}
+              <a class="btn" href="{{ ns.href }}" target="_blank" rel="noopener">{{ icon("external", 14) }}{{ {"book_online": "Book on their site", "message": "Open on Facebook", "reveal": "Open the listing"}.get(ns.action, "Open") }}</a>
+            {% endif %}
+            {% if not tour and ns.action not in ("move_on", "wait") %}
+              <details class="log-viewing" data-id="v-{{ l.key }}">
+                <summary class="btn secondary">{{ icon("calendar", 14) }}I booked a viewing</summary>
+                <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/viewing">
+                  <input type="datetime-local" name="start" required>
+                  <button type="submit">Save viewing</button>
+                </form>
+              </details>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
       <div class="actions">
         <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/chat">
           <button type="submit" class="secondary" title="Ask your agent about this place">{{ icon("chat", 14) }}{{ "Continue chat" if chats.get(l.key) else "Chat" }}</button>
@@ -318,13 +357,13 @@
         {% endif %}
         {% if app %}
           <a class="pill viable" href="/applications#app-{{ app.id }}">{{ icon("bookmark", 12) }}{{ stages(app.stage).label }}</a>
-        {% elif l.status.value != "filtered" %}
+        {% else %}
           <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/track">
-            <button type="submit" class="secondary" title="Add to your applications board">{{ icon("bookmark", 14) }}Track</button>
+            <button type="submit" class="secondary" title="Your agent recommends the next step and it goes on your applications board">{{ icon("bookmark", 14) }}I'm interested</button>
           </form>
         {% endif %}
         {% if call %}<span class="pill {{ call.status }}">{{ icon("phone", 12) }}{{ call.status.replace("_", " ") }}</span>{% endif %}
-        {% if call and call.error %}<div class="err">{{ call.error }}</div>{% endif %}
+        {% if call and call.error %}<div class="err" title="{{ call.error }}">{{ call.error | short_error }}</div>{% endif %}
         {% if call and call.transcript %}<details data-id="t-{{ l.key }}"><summary>Call transcript{% if call.mode == 'dry_run' %} · synthetic{% endif %}</summary>
           {% if o and o.transcript_turns %}{% for line in o.transcript_turns %}<p id="call-{{ call.id }}-{{ line.t }}"><strong>{{ line.t }}s · {{ line.speaker }}</strong> {{ line.text }}</p>{% endfor %}
           {% else %}<pre>{{ call.transcript }}</pre>{% endif %}</details>{% endif %}

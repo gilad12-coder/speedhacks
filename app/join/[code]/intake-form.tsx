@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Route, TrainFront, UserRound, Wallet, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, MapPin, Route, TrainFront, UserRound, Wallet, type LucideIcon } from "lucide-react";
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { submitIntake, type FormState } from "@/app/actions";
 import { DateField, todayIso } from "@/components/date-field";
@@ -107,7 +107,7 @@ export function IntakeForm({
       hint: solo
         ? "Landlords often ask about income. Keyhunt only shares the range, never more."
         : "Housemates see your name. Income only counts toward the group total.",
-      fields: ["firstName", "lastName", "location", "incomeBand"],
+      fields: ["firstName", "lastName", "incomeBand"],
       body: (err) => (
         <div className="grid gap-6">
           <div className="grid grid-cols-2 gap-4">
@@ -139,22 +139,7 @@ export function IntakeForm({
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Where you want to live" htmlFor="q-location" error={err.location}>
-              <AddressField
-                id="q-location"
-                name="location"
-                kind="area"
-                data-field="location"
-                data-required="Where do you want to live?"
-                defaultValue={me?.location}
-                placeholder="US city or neighborhood"
-                maxLength={120}
-                aria-invalid={!!err.location}
-              />
-            </Field>
-            <Field label="Yearly income, roughly" htmlFor="q-income"
-              error={err.incomeBand}
-            >
+            <Field label="Yearly income, roughly" htmlFor="q-income" error={err.incomeBand}>
               <SelectField
                 id="q-income"
                 name="incomeBand"
@@ -167,6 +152,29 @@ export function IntakeForm({
       ),
     },
     {
+      key: "where",
+      icon: MapPin,
+      title: "Where you want to live",
+      hint: "Keyhunt looks for places in this one area. Any address works too; we keep just its city.",
+      fields: ["location"],
+      body: (err) => (
+        <Field label="City, neighborhood or address" htmlFor="q-location" error={err.location}>
+          <AddressField
+            id="q-location"
+            name="location"
+            kind="area"
+            data-field="location"
+            data-required="Where do you want to live?"
+            defaultValue={me?.location}
+            placeholder="Search a US city, neighborhood or address"
+            maxLength={120}
+            aria-invalid={!!err.location}
+            className={inputClass}
+          />
+        </Field>
+      ),
+    },
+    {
       key: "rent",
       icon: Wallet,
       title: "Rent and move-in",
@@ -174,19 +182,21 @@ export function IntakeForm({
       fields: ["maxBudgetUsd", "moveInFrom", "moveInTo"],
       body: (err) => (
         <div className="grid gap-6">
-          <Field label={solo ? "Most you'd pay per month" : "Most you'd pay, your share per month"} htmlFor="q-budget" error={err.maxBudgetUsd}>
-            <NumberStepper
-              id="q-budget"
-              name="maxBudgetUsd"
-              label="Rent"
-              prefix="$"
-              min={300}
-              max={20000}
-              step={50}
-              defaultValue={me?.maxBudgetUsd ?? 1500}
-              invalid={!!err.maxBudgetUsd}
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label={solo ? "Most you'd pay per month" : "Most you'd pay, your share per month"} htmlFor="q-budget" error={err.maxBudgetUsd}>
+              <NumberStepper
+                id="q-budget"
+                name="maxBudgetUsd"
+                label="Rent"
+                prefix="$"
+                min={300}
+                max={20000}
+                step={50}
+                defaultValue={me?.maxBudgetUsd ?? 1500}
+                invalid={!!err.maxBudgetUsd}
+              />
+            </Field>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Earliest move-in" htmlFor="q-from" error={err.moveInFrom}>
               <DateField
@@ -237,19 +247,21 @@ export function IntakeForm({
               className={inputClass}
             />
           </Field>
-          <Field label="Longest trip, one way" htmlFor="q-minutes" error={err.maxCommuteMinutes}>
-            <NumberStepper
-              id="q-minutes"
-              name="maxCommuteMinutes"
-              label="Minutes"
-              suffix="min"
-              min={5}
-              max={180}
-              step={5}
-              defaultValue={me?.commute.maxMinutes ?? 45}
-              invalid={!!err.maxCommuteMinutes}
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Longest trip, one way" htmlFor="q-minutes" error={err.maxCommuteMinutes}>
+              <NumberStepper
+                id="q-minutes"
+                name="maxCommuteMinutes"
+                label="Minutes"
+                suffix="min"
+                min={5}
+                max={180}
+                step={5}
+                defaultValue={me?.commute.maxMinutes ?? 45}
+                invalid={!!err.maxCommuteMinutes}
+              />
+            </Field>
+          </div>
         </div>
       ),
     },
@@ -415,7 +427,7 @@ export function IntakeForm({
                       {s.hint}
                     </p>
                   )}
-                  <div className="mt-6">{s.body(err)}</div>
+                  <div className="mt-8">{s.body(err)}</div>
                 </div>
               ))}
             </div>
@@ -440,8 +452,11 @@ export function IntakeForm({
               >
                 <ArrowLeft aria-hidden className="size-4 shrink-0" />
               </Button>
+              {/* Distinct keys: if React reused the Next button as the submit button, the click
+                  that reaches the last step would finish as a submit and send the form early. */}
               {index < last ? (
                 <Button
+                  key="next"
                   type="button"
                   aria-label="Next"
                   onClick={next}
@@ -450,7 +465,7 @@ export function IntakeForm({
                   <ArrowRight aria-hidden className="size-4 shrink-0" />
                 </Button>
               ) : (
-                <Button type="submit" disabled={pending}>
+                <Button key="submit" type="submit" disabled={pending}>
                   {pending ? "Saving…" : "Next: the interview"}
                 </Button>
               )}

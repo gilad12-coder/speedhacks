@@ -46,16 +46,23 @@ def require_auth(request: Request,
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    from househunt import phone
+
     db.init()
     db.recover_calls()
+    from househunt import platform
+    platform.start_background_worker()
+    stop = phone.start_background()   # keeps the call-in briefing fresh, when switched on
     yield
+    stop.set()
 
 
 app = FastAPI(title="KeyHunt", lifespan=lifespan, dependencies=[Depends(require_auth)])
 
 # Sidebar tabs: (path, label, icon). A tab shows up once its route exists.
-NAV = [("/", "Searches", "list"), ("/calls", "Calls", "phone"), ("/viewings", "Viewings", "calendar"),
+NAV = [("/", "Searches", "list"), ("/leads", "Leads", "star"), ("/calls", "Calls", "phone"), ("/viewings", "Viewings", "calendar"),
        ("/applications", "Applications", "clipboard"), ("/chats/agent", "Ask your agent", "chat"),
+       ("/phone", "Phone briefing", "mic"),
        ("/connections", "Connections", "plug")]
 
 
@@ -84,10 +91,34 @@ def when(value: str | None, fmt: str | None = None) -> str:
 
 
 templates.env.filters["when"] = when
+
+
+def short_error(value: str | None) -> str:
+    """Turn a stored exception repr into the API's own message, when there is one."""
+    import re
+
+    if not value:
+        return ""
+    m = re.search(r"'message': ['\"](.+?)['\"][,}]", value)
+    return m.group(1) if m else value
+
+
+templates.env.filters["short_error"] = short_error
 def recent_chats() -> list:
     return [c for c in db.list_chats(8) if c["listing_key"]][:5]
 
 
+def needs_you_count() -> int:
+    from househunt import flags
+
+    try:
+        return sum(1 for f in flags.compute() if f.severity in ("urgent", "todo"))
+    except Exception:  # never let a flag bug break every page's sidebar
+        logging.getLogger(__name__).exception("computing flags failed")
+        return 0
+
+
+templates.env.globals["needs_you_count"] = needs_you_count
 templates.env.globals.update(nav_items=nav_items, recent_searches=recent_searches,
                              recent_chats=recent_chats, settings=settings)
 
@@ -106,8 +137,10 @@ def index(request: Request):
     counts = db.listing_counts()
     searches = [(r, json.loads(r["criteria"]), counts.get(r["id"], {}))
                 for r in db.list_searches()]
+    from househunt import flags
+
     return templates.TemplateResponse(request, "index.html", {
-        "searches": searches, "settings": settings,
+        "searches": searches, "settings": settings, "flags": flags.compute(),
     })
 
 
@@ -183,7 +216,7 @@ def show_search(request: Request, search_id: int):
 
 
 @app.post("/searches/{search_id}/listings/{key}/call")
-def call_listing(background: BackgroundTasks, search_id: int, key: str):
+def call_listing(background: BackgroundTasks, search_id: int, key: str, next: str = Form("")):
     listing = db.get_listing(search_id, key)
     if not listing:
         raise HTTPException(404, "Listing not found")
@@ -193,7 +226,9 @@ def call_listing(background: BackgroundTasks, search_id: int, key: str):
     if existing and existing["status"] not in ("attention", "failed"):
         raise HTTPException(409, "Call already exists; no replacement call was started")
     background.add_task(pipeline.call_listing, search_id, key)
-    return RedirectResponse(f"/searches/{search_id}", status_code=303)
+    # Only same-site paths, so the form can't bounce anyone to another site.
+    back = next if next.startswith("/") and not next.startswith("//") else f"/searches/{search_id}"
+    return RedirectResponse(back, status_code=303)
 
 
 @app.post("/searches/{search_id}/listings/{key}/screen")
@@ -303,6 +338,118 @@ def viewings_page(request: Request):
         "settings": settings, "upcoming": [i for i in items if i["start"] >= now],
         "past": [i for i in items if i["start"] < now][::-1],
     })
+
+
+# --- leads ------------------------------------------------------------------
+
+@app.get("/leads", response_class=HTMLResponse)
+def leads_page(request: Request):
+    from househunt import leads, next_step
+
+    items, removed = [], []
+    for a in db.list_applications():
+        if a["stage"] == AppStage.WITHDRAWN.value and "Removed from leads" in (a["notes"] or ""):
+            removed.append(a)
+        if a["stage"] != AppStage.INTERESTED.value:
+            continue
+        sid, key = a["search_id"], a["listing_key"]
+        listing = db.get_listing(sid, key) if sid else None
+        call = db.calls_for_search(sid).get(key) if listing else None
+        email = db.emails_for_search(sid).get(key) if listing else None
+        items.append({
+            "app": a, "listing": listing, "outreach": leads.outreach(sid, key),
+            "notes": db.place_notes(sid, key) if listing else [],
+            "step": next_step.recommend(listing, call, email) if listing else None,
+            "can_call": bool(listing and listing.contact and listing.contact.phone
+                             and not (call and call["status"] in ("queued", "in_progress"))),
+            "email": email,
+        })
+    order = {"action": 0, "new": 1, "waiting": 2}
+    items.sort(key=lambda i: (order[i["outreach"].status], -(i["outreach"].days_since or 0)))
+    return templates.TemplateResponse(request, "leads.html", {
+        "settings": settings, "items": items, "removed": removed[:10],
+        "reasons": leads.DROP_REASONS,
+    })
+
+
+@app.post("/leads/{app_id}/remove")
+def remove_lead(app_id: int, reason: str = Form("no_response"), detail: str = Form("")):
+    from househunt import leads
+
+    if not db.get_application(app_id):
+        raise HTTPException(404)
+    leads.drop(app_id, reason, detail)
+    return RedirectResponse("/leads", status_code=303)
+
+
+@app.post("/leads/{app_id}/restore")
+def restore_lead(app_id: int):
+    from househunt import leads
+
+    if not db.get_application(app_id):
+        raise HTTPException(404)
+    leads.restore(app_id)
+    return RedirectResponse(f"/leads#lead-{app_id}", status_code=303)
+
+
+# --- phone briefing -----------------------------------------------------------
+
+@app.get("/phone", response_class=HTMLResponse)
+def phone_page(request: Request, msg: str | None = None, error: str | None = None):
+    from househunt import briefing, flags, phone
+
+    return templates.TemplateResponse(request, "phone.html", {
+        "settings": settings, "msg": msg, "error": error, "configured": phone.configured(),
+        "enabled": phone.enabled(), "number": db.get_state("phone_number"),
+        "synced_at": db.get_state("inbound_synced_at"), "facts": briefing.facts(),
+        "flags": flags.compute(), "inbound": db.inbound_calls(),
+    })
+
+
+def _phone_action(fn, ok: str):
+    try:
+        fn()
+    except Exception as e:  # surface Dial errors on the page instead of a 500
+        logging.getLogger(__name__).exception("phone action failed")
+        return RedirectResponse(f"/phone?error={quote_plus(f'{ok.split()[0]} failed: {e}')}", 303)
+    return RedirectResponse(f"/phone?msg={quote_plus(ok)}", 303)
+
+
+@app.post("/phone/call-me")
+def phone_call_me():
+    from househunt import phone
+
+    return _phone_action(phone.call_me, "Calling you now with your update")
+
+
+@app.post("/phone/enable")
+def phone_enable():
+    from househunt import phone
+
+    return _phone_action(phone.enable, "Your KeyHunt number now answers with your briefing")
+
+
+@app.post("/phone/disable")
+def phone_disable():
+    from househunt import phone
+
+    return _phone_action(phone.disable, "Call-in briefings are off; your number's old greeting is back")
+
+
+@app.post("/phone/sync")
+def phone_sync():
+    from househunt import phone
+
+    def run():
+        phone.sync(force=True)
+        phone.poll_inbound()
+    return _phone_action(run, "Briefing refreshed and new calls checked")
+
+
+@app.post("/phone/calls/{call_id}/handled")
+def phone_call_handled(call_id: str):
+    db.mark_inbound_handled(call_id)
+    return RedirectResponse("/phone", 303)
 
 
 # --- agent chats & place notes ----------------------------------------------
@@ -669,3 +816,107 @@ from househunt import facebook as _facebook  # noqa: E402
 
 templates.env.globals["facebook_links"] = _facebook.links
 templates.env.globals["zillow_links"] = _facebook.zillow_links
+
+
+# --- editing a search ---------------------------------------------------------
+
+@app.get("/searches/{search_id}/edit", response_class=HTMLResponse)
+def edit_search_form(request: Request, search_id: int):
+    found = db.get_search(search_id)
+    if not found:
+        raise HTTPException(404)
+    return templates.TemplateResponse(request, "new.html", {
+        "settings": settings, "c": found[0], "edit_id": search_id})
+
+
+@app.post("/searches/{search_id}/edit")
+def edit_search(background: BackgroundTasks, search_id: int, city: str = Form(...),
+                max_price: int = Form(...), min_price: int = Form(0), min_beds: int = Form(0),
+                min_baths: float = Form(0), neighborhoods: str = Form(""),
+                must_haves: str = Form(""), tour_availability: str = Form(""),
+                occupants: int | None = Form(None, ge=1, le=20),
+                renter_name: str = Form("", max_length=80), rerun: str = Form("1")):
+    import dataclasses
+
+    found = db.get_search(search_id)
+    if not found:
+        raise HTTPException(404)
+    old, row = found
+    if row["status"] in ("pending", "sourcing", "calling"):
+        raise HTTPException(409, "This search is still running; edit it when it's done")
+    # Fields the form doesn't show (deal-breakers, commute, ... from onboarding) carry over.
+    criteria = dataclasses.replace(
+        old, city=city, max_price=max_price, min_price=min_price, min_beds=min_beds,
+        min_baths=min_baths, neighborhoods=_split(neighborhoods), must_haves=_split(must_haves),
+        tour_availability=_split(tour_availability), occupants=occupants,
+        renter_name=renter_name.strip() or old.renter_name)
+    db.update_search_criteria(search_id, criteria)
+    if rerun == "1":
+        db.set_search_status(search_id, "pending")
+        background.add_task(pipeline.run_search, search_id)
+    return RedirectResponse(f"/searches/{search_id}", status_code=303)
+
+
+# --- next steps & viewings you book yourself ------------------------------------
+
+from househunt import next_step as _next_step  # noqa: E402
+
+templates.env.globals["next_step"] = _next_step.recommend
+templates.env.globals["gcal_link"] = _next_step.gcal_link
+
+
+@app.post("/searches/{search_id}/listings/{key}/viewing")
+def log_viewing(search_id: int, key: str, start: str = Form(...)):
+    """A viewing the renter booked themselves (on the listing's site, by phone, ...)."""
+    listing = db.get_listing(search_id, key)
+    if not listing:
+        raise HTTPException(404)
+    try:
+        start = datetime.fromisoformat(start).isoformat(timespec="minutes")
+    except ValueError:
+        raise HTTPException(400, "Pick a date and time")
+    contact = listing.contact
+    db.create_tour(search_id, key, start, listing.address,
+                   contact.name if contact else None, contact.phone if contact else None)
+    listing.status = ListingStatus.TOUR_SCHEDULED
+    pipeline.track_viewing(search_id, listing, start)
+    if google.connection():
+        try:
+            link = google.add_event(start, f"Viewing: {listing.title}", listing.address,
+                                    "\n".join(x for x in [listing.url, contact.phone if contact else None] if x))
+            listing.notes.append(f"added to Google Calendar: {link}")
+        except Exception:
+            logging.getLogger(__name__).exception("calendar add failed")
+            listing.notes.append("could not add viewing to Google Calendar")
+    db.upsert_listing(search_id, listing)
+    return RedirectResponse(f"/searches/{search_id}#{key}", 303)
+
+
+
+# --- handoff from onboarding (the Next.js app) ----------------------------------
+
+@app.get("/households/{household_id}", response_class=HTMLResponse)
+def open_household(request: Request, household_id: str):
+    """Where "Start search" in onboarding sends the household: their search in KeyHunt."""
+    from househunt import platform
+
+    sid = db.household_search(household_id)
+    if sid is None:
+        try:
+            client = platform.PlatformClient()
+            brief = next((b for b in client.briefs() if b["householdId"] == household_id), None)
+            if brief:
+                sid = platform.ensure_search(client, brief)
+                platform.wake.set()  # start sourcing now rather than at the next poll
+        except (RuntimeError, ValueError) as e:
+            logging.getLogger(__name__).warning("household handoff failed: %s", e)
+    if sid is not None:
+        return RedirectResponse(f"/searches/{sid}", status_code=303)
+    return HTMLResponse(
+        "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
+        "<meta http-equiv=refresh content=5><title>Starting your search · KeyHunt</title>"
+        "<body style='font:16px system-ui;max-width:520px;margin:15vh auto;padding:0 16px'>"
+        "<h1 style='font-size:22px'>Starting your search…</h1><p>KeyHunt is picking up your "
+        "household's brief. This page refreshes on its own.</p><p style='color:#666;font-size:14px'>"
+        "If it doesn't start, make sure everyone confirmed the brief and clicked Start search.</p>",
+        status_code=202)

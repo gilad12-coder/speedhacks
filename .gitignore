@@ -49,12 +49,8 @@ next-env.d.ts
 !.env.example
 .playwright-mcp/
 
-# Python worker, private call data and standalone harness
-__pycache__/
-*.pyc
-.venv/
-node_modules/
+# Python agent (househunt/), private call data and standalone harness
 data/
+recordings/
 caller/data/
 caller/dist/
-codedb.snapshot

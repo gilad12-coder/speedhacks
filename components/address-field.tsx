@@ -1,9 +1,9 @@
 "use client";
 
-import { LoaderCircle, MapPin, Search } from "lucide-react";
+import { LoaderCircle, LocateFixed, MapPin, Search } from "lucide-react";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Place } from "@/app/api/places/route";
+import type { Place } from "@/lib/places";
 
 const OPTION_H = 56;
 
@@ -32,6 +32,7 @@ export function AddressField({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
+  const [locating, setLocating] = useState<"idle" | "busy" | string>("idle");
 
   useEffect(() => {
     const q = query.trim();
@@ -96,10 +97,39 @@ export function AddressField({
     if (active >= 0) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: "nearest" });
   }, [active, listId]);
 
+  // Where someone wants to live is a city, so a picked address keeps only the city it's in.
   const choose = (p: Place) => {
-    setQuery(p.label);
+    setQuery(kind === "area" ? (p.area ?? p.label) : p.label);
     setOpen(false);
     inputRef.current?.focus({ preventScroll: true });
+  };
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) return setLocating("Your browser can't share a location. Type the place instead.");
+    setLocating("busy");
+    setOpen(false);
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        try {
+          const res = await fetch(`/api/places?${new URLSearchParams({ lat: String(coords.latitude), lng: String(coords.longitude) })}`);
+          const here = ((await res.json()) as { places: Place[] }).places[0];
+          const found = here && (kind === "area" ? here.area : here.label);
+          if (!found) return setLocating("Couldn't find a US place where you are. Type it instead.");
+          setQuery(found);
+          setLocating("idle");
+          inputRef.current?.focus({ preventScroll: true });
+        } catch {
+          setLocating("Couldn't look up where you are. Type the place instead.");
+        }
+      },
+      (e) =>
+        setLocating(
+          e.code === e.PERMISSION_DENIED
+            ? "Location is blocked for this site. Allow it in your browser, or type the place."
+            : "Couldn't get your location. Type the place instead.",
+        ),
+      { timeout: 10000, maximumAge: 300000 },
+    );
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -142,10 +172,26 @@ export function AddressField({
           onKeyDown={onKeyDown}
           className={`${className} pl-10`}
         />
-        {status === "loading" && (
+        {(status === "loading" || locating === "busy") && (
           <LoaderCircle aria-hidden className="absolute top-1/2 right-4 size-4 -translate-y-1/2 animate-spin text-ink-3" />
         )}
       </div>
+      {kind === "area" && (
+        <div className="mt-2 flex flex-col items-start gap-1">
+          <button
+            type="button"
+            onClick={useMyLocation}
+            disabled={locating === "busy"}
+            className="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-1 text-sm font-medium text-green-ink transition-colors duration-150 hover:text-green disabled:opacity-50"
+          >
+            <LocateFixed aria-hidden className="size-4" />
+            {locating === "busy" ? "Finding where you are…" : "Use my current location"}
+          </button>
+          {locating !== "idle" && locating !== "busy" && (
+            <p role="status" className="text-sm text-ink-3">{locating}</p>
+          )}
+        </div>
+      )}
       {showList &&
         createPortal(
           <ul
