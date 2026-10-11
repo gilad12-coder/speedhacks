@@ -356,3 +356,34 @@ h3 {
 @media (prefers-reduced-motion: reduce) {
   .halo-chip, .signin-panel { animation: none; }
 }
+
+/* Logo: the white wordmark sits on the cream ground like a sticker, so it gets a soft green lift. */
+.logo-stacked .logo-word { filter: drop-shadow(0 3px 0 color-mix(in oklab, var(--green) 22%, transparent)); }
+.logo-stacked .logo-key { filter: drop-shadow(0 4px 6px color-mix(in oklab, var(--green) 18%, transparent)); }
+
+/* Sign-in: the key swings in from its bow as if turning in a lock, the house lights up, then the name settles. */
+@keyframes logo-key-turn {
+  from { opacity: 0; transform: translateX(-28px) rotate(-38deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes logo-house-light {
+  from { opacity: 0; transform: scale(0.55); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes logo-word-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.signin-panel .logo-key {
+  transform-origin: 28.6% 50%;
+  animation: logo-key-turn 820ms var(--ease-out-expo) 180ms both;
+}
+.signin-panel .logo-house {
+  transform-box: fill-box;
+  transform-origin: 50% 80%;
+  animation: logo-house-light 520ms var(--ease-out-expo) 760ms both;
+}
+.signin-panel .logo-word { animation: logo-word-rise 560ms var(--ease-out-expo) 520ms both; }
+@media (prefers-reduced-motion: reduce) {
+  .signin-panel .logo-key, .signin-panel .logo-house, .signin-panel .logo-word { animation: none; }
+}

@@ -1,16 +1,10 @@
 import Link from "next/link";
-import { KeyRound } from "lucide-react";
+import { Logo } from "./logo";
 
 export function Wordmark({ tone = "ink", size = "md" }: { tone?: "ink" | "light"; size?: "md" | "lg" | "xl" }) {
   return (
-    <Link
-      href="/"
-      className={`inline-flex items-center font-display font-semibold tracking-tight ${
-        size === "xl" ? "gap-4 text-7xl" : size === "lg" ? "gap-3 text-4xl" : "gap-2 text-lg"
-      } ${tone === "light" ? "text-on-green" : "text-green"}`}
-    >
-      {size !== "xl" && <KeyRound aria-hidden className={size === "lg" ? "size-9" : "size-5"} strokeWidth={2} />}
-      Keyhunt
+    <Link href="/" className="inline-flex">
+      <Logo light={tone === "light"} stacked={size === "xl"} size={size === "lg" ? "h-12" : "h-8"} />
     </Link>
   );
 }
