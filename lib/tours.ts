@@ -100,7 +100,7 @@ export async function acceptTour(household: Household, run: AgentRun, listingId:
         eventIds[housemate.id] = await createEvent(housemate.id, {
           summary: `Tour: ${listing.address}`,
           location: listing.address,
-          description: `${listing.neighborhood} · $${listing.rentUsd.toLocaleString("en-US")}/mo\nMeet ${listing.contact.name} (${listing.contact.phone}).\nBooked with Keyhunt for ${household.housemates.map((h) => h.name).join(", ")}.`,
+          description: `${listing.neighborhood} · ${listing.rentUsd === null ? "Rent not confirmed" : `$${listing.rentUsd.toLocaleString("en-US")}/mo`}\nMeet ${listing.contact.name} (${listing.contact.phone}).\nBooked with Keyhunt for ${household.housemates.map((h) => h.name).join(", ")}.`,
           start: new Date(start),
           end: new Date(end),
         });

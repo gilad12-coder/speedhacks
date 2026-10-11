@@ -1,0 +1,136 @@
+{
+  "householdId": "demo-household",
+  "startedAt": "2026-10-11T20:00:00Z",
+  "finishedAt": "2026-10-11T20:02:00Z",
+  "listings": [
+    {
+      "id": "demo-flat",
+      "source": "curated",
+      "sourceUrl": "https://example.com/fictional-rental",
+      "address": "123 Example Street, San Francisco (fictional test listing)",
+      "neighborhood": "Mission Bay",
+      "rentUsd": 4500,
+      "bedrooms": 2,
+      "bathrooms": 1,
+      "photoUrls": [],
+      "contact": {
+        "name": "Test landlord",
+        "role": "property_manager",
+        "phone": "+14155550123"
+      },
+      "commuteMinutes": 15,
+      "status": "tour_offered"
+    }
+  ],
+  "calls": [
+    {
+      "id": "call-synthetic-example",
+      "listingId": "demo-flat",
+      "dialCallId": "synthetic-example",
+      "startedAt": "2026-10-11T20:00:00Z",
+      "durationSec": 100,
+      "outcome": "answered",
+      "audioUrl": null,
+      "transcript": [
+        {
+          "t": 10,
+          "speaker": "contact",
+          "text": "I'm the property manager and that exact apartment is still available."
+        },
+        {
+          "t": 20,
+          "speaker": "contact",
+          "text": "The monthly rent is $4500."
+        },
+        {
+          "t": 30,
+          "speaker": "contact",
+          "text": "November 1 through November 15 works for move-in."
+        },
+        {
+          "t": 40,
+          "speaker": "contact",
+          "text": "Three housemates can live there."
+        },
+        {
+          "t": 50,
+          "speaker": "contact",
+          "text": "All three housemates are eligible to apply; there are no additional screening thresholds for this rental."
+        },
+        {
+          "t": 60,
+          "speaker": "contact",
+          "text": "It has in-unit laundry."
+        },
+        {
+          "t": 70,
+          "speaker": "contact",
+          "text": "Pets are allowed."
+        },
+        {
+          "t": 80,
+          "speaker": "contact",
+          "text": "I can offer October 15, 2026 from 6 to 6:30 PM Pacific for a viewing. Please confirm with your group first."
+        },
+        {
+          "t": 90,
+          "speaker": "contact",
+          "text": "The refundable deposit is $4500 and the lease term is 12 months."
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "listingId": "demo-flat",
+      "kind": "real",
+      "passed": true,
+      "summary": "I'm the property manager and that exact apartment is still available.",
+      "evidence": {
+        "callId": "call-synthetic-example",
+        "t": 10,
+        "quote": "I'm the property manager and that exact apartment is still available."
+      }
+    },
+    {
+      "listingId": "demo-flat",
+      "kind": "matches",
+      "passed": true,
+      "summary": "Contact stated $4500/month; ceiling $5000; November 1 through November 15 works for move-in.; It has in-unit laundry.; Pets are allowed.",
+      "evidence": {
+        "callId": "call-synthetic-example",
+        "t": 20,
+        "quote": "The monthly rent is $4500."
+      }
+    },
+    {
+      "listingId": "demo-flat",
+      "kind": "fit",
+      "passed": true,
+      "summary": "Three housemates can live there.; All three housemates are eligible to apply; there are no additional screening thresholds for this rental.",
+      "evidence": {
+        "callId": "call-synthetic-example",
+        "t": 40,
+        "quote": "Three housemates can live there."
+      }
+    },
+    {
+      "listingId": "demo-flat",
+      "kind": "tour",
+      "passed": true,
+      "summary": "Contact offered a viewing window; household has not confirmed",
+      "evidence": {
+        "callId": "call-synthetic-example",
+        "t": 80,
+        "quote": "I can offer October 15, 2026 from 6 to 6:30 PM Pacific for a viewing. Please confirm with your group first."
+      }
+    }
+  ],
+  "offeredWindows": [
+    {
+      "listingId": "demo-flat",
+      "start": "2026-10-15T18:00:00-07:00",
+      "end": "2026-10-15T18:30:00-07:00"
+    }
+  ]
+}

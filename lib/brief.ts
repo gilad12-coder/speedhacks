@@ -118,6 +118,7 @@ export function buildSearchBrief(householdId: string, housemates: Housemate[], o
 
   return {
     householdId,
+    renterName: housemates[0]?.name.split(" ")[0] || undefined,
     occupants,
     location: preferredLocation(housemates).main,
     maxTotalRentUsd: housemates.reduce((sum, h) => sum + h.maxBudgetUsd, 0),

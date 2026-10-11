@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Listings from alert emails (last {{ days }} days)</h2>
+<p><a href="/connections">← Connections</a></p>
+{% if error %}<p class="flash error">{{ error }}</p>{% endif %}
+<div class="wrap"><table>
+  <tr><th>Listing</th><th>Rent</th><th>Beds/Baths</th><th>Sqft</th></tr>
+  {% for l in listings %}
+  <tr>
+    <td><a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.title }}</a>
+      <div class="muted">{{ l.source.value }}{% if l.address %} · {{ l.address }}{% endif %}</div>
+      {% for n in l.notes %}<div class="muted">{{ n }}</div>{% endfor %}</td>
+    <td>{% if l.price %}${{ l.price }}{% endif %}</td>
+    <td>{{ l.beds if l.beds is not none else "?" }} / {{ l.baths if l.baths is not none else "?" }}</td>
+    <td>{{ l.sqft or "" }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="4" class="muted">No alert emails found. Set up saved searches with email alerts (see Connections).</td></tr>
+  {% endfor %}
+</table></div>
+{% endblock %}

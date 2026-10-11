@@ -6,6 +6,7 @@ import { bookTour } from "@/app/actions";
 import { Button } from "@/components/shell";
 import type { AgentRun, Call, Check, Listing, TourSlot } from "@/lib/types";
 import { CHECK_LABELS, CHECK_ORDER, checksFor, formatClock, formatSlot, primaryCall, usd } from "@/lib/view";
+import { ResearchEvidence } from "./candidates";
 
 interface Props {
   householdId: string;
@@ -127,8 +128,8 @@ function Row({
           <span className="text-sm text-ink-2">{listing.neighborhood}</span>
         </div>
         <p className="font-mono tabular mt-1 text-sm text-ink-2">
-          <span className="font-medium text-ink">{usd(listing.rentUsd)}/mo</span> · {usd(Math.round(listing.rentUsd / occupants))}{" "}
-          each · {listing.bedrooms} bd · {listing.bathrooms} ba
+          <span className="font-medium text-ink">{listing.rentUsd === null ? "Rent unknown" : `${usd(listing.rentUsd)}/mo`}</span> · {listing.rentUsd === null ? "?" : usd(Math.round(listing.rentUsd / occupants))}{" "}
+          each · {listing.bedrooms ?? "?"} bd · {listing.bathrooms ?? "?"} ba
           {listing.commuteMinutes !== null && <> · {listing.commuteMinutes} min commute</>}
         </p>
 
@@ -143,6 +144,7 @@ function Row({
             </li>
           ))}
         </ul>
+        <ResearchEvidence listing={listing} />
 
         {call && call.durationSec > 0 && (
           <CallStrip call={call} checks={CHECK_ORDER.map((k) => checks[k])} onPick={(t, el) => onOpen(listing.id, t, el)} />

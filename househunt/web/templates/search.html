@@ -1,0 +1,546 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ criteria.city }} · KeyHunt{% endblock %}
+{% block page_class %}wide{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+{% endblock %}
+{% block style %}
+<style>
+  .crumb { font-size: 13px; color: var(--muted); display:inline-flex; gap: 6px; margin-bottom: 6px; }
+  .chips { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip { font-size: 12.5px; padding: 3px 10px; border-radius: 99px; background: var(--surface);
+    border: 1px solid var(--line); color: var(--muted); }
+  .chip b { color: var(--fg); font-weight: 500; }
+
+  .steps { display:flex; align-items:center; gap: 10px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .step { display:flex; align-items:center; gap: 7px; }
+  .step i { width: 20px; height: 20px; border-radius: 99px; border: 2px solid var(--line); display:grid;
+    place-items:center; font-style: normal; font-size: 11px; font-weight: 600; }
+  .step.done i { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .step.now { color: var(--fg); font-weight: 500; }
+  .step.now i { border-color: var(--amber); animation: pulse 1.6s ease-in-out infinite; }
+  .step.err i { border-color: var(--warn); background: var(--warn); color: #fff; }
+  .steps .bar { width: 28px; height: 2px; background: var(--line); }
+
+  .stats { display:grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .stat b { display:block; font-size: 22px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .stat.good b { color: var(--accent); }
+
+  .split { display:grid; grid-template-columns: minmax(380px, 1fr) minmax(0, 1.15fr); gap: 20px; align-items: start; }
+  .mapbox { position: sticky; top: 20px; height: calc(100vh - 40px); min-height: 420px; border-radius: var(--radius);
+    overflow: hidden; border: 1px solid var(--line); background: var(--sunken); }
+  #map { position:absolute; inset: 0; }
+  .map-empty[hidden] { display: none; }
+  .map-empty { position:absolute; inset: 0; display:grid; place-items:center; text-align:center; color: var(--muted);
+    font-size: 13px; padding: 24px; z-index: 500; pointer-events: none; }
+
+  .listing { margin: 0 0 12px; padding: 16px 18px; scroll-margin-top: 20px; transition: border-color .15s, box-shadow .15s; }
+  .listing.hot { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .listing .row1 { display:flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .listing .price { font-size: 19px; font-weight: 600; letter-spacing: -.02em; }
+  .listing .facts { color: var(--muted); font-size: 13px; margin-left: 8px; }
+  .listing .title { font-weight: 500; color: var(--fg); display:inline-flex; gap: 6px; align-items:center; margin-top: 2px; }
+  .listing .title .icon { color: var(--faint); }
+  .listing .where { font-size: 13px; color: var(--muted); display:flex; gap: 5px; align-items:center; margin-top: 2px; }
+  .src { text-transform: capitalize; }
+  .tour { display:flex; align-items:center; gap: 8px; margin-top: 12px; padding: 9px 12px; border-radius: 8px;
+    background: var(--accent-soft); color: var(--accent); font-size: 13.5px; }
+  .tour a { margin-left: auto; font-weight: 500; }
+  .outcome { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--line); background: var(--sunken);
+    border-radius: 0 8px 8px 0; font-size: 13.5px; }
+  .outcome.good { border-color: var(--accent); } .outcome.bad { border-color: var(--warn); }
+  .outcome .tradeoffs { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  .concerns { margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: var(--amber-soft); font-size: 13px; }
+  .concerns b { color: var(--amber); font-weight: 600; display:inline-flex; gap: 4px; align-items:center; }
+  .concerns ul { margin: 4px 0 0; padding-left: 18px; }
+  .notes { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  .listing .actions { display:flex; align-items:center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .listing .actions form { margin: 0; }
+  .listing .actions .err { color: var(--warn); font-size: 12px; flex-basis: 100%; }
+  .listing details { flex-basis: 100%; }
+  .ruled-out { margin-top: 20px; }
+  .ruled-out > summary { font-size: 13.5px; font-weight: 500; padding: 6px 0; }
+  .ruled-out .listing { opacity: .75; }
+
+  /* map pins: the wrapper is positioned by MapLibre, the pill inside is ours to style */
+  .pin-wrap { cursor: pointer; }
+  .pin { display:inline-block; padding: 4px 9px; border-radius: 99px; background: var(--surface); color: var(--fg);
+    border: 1.5px solid var(--muted); font: 600 12px/1.3 Inter, system-ui, sans-serif; white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,.22); position: relative; transform-origin: 50% 100%;
+    transition: transform .12s, background .12s; margin-bottom: 6px; }
+  .pin::after { content:""; position:absolute; left: 50%; bottom: -5px; width: 8px; height: 8px; background: inherit;
+    border-right: inherit; border-bottom: inherit; transform: translateX(-50%) rotate(45deg); }
+  .pin.candidate { border-color: var(--blue); }
+  .pin.contacted { border-color: var(--amber); }
+  .pin.viable, .pin.tour_scheduled { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .pin.filtered, .pin.not_viable { opacity: .6; border-color: var(--line); color: var(--muted); font-weight: 500; }
+  .pin.hot { transform: scale(1.15); border-color: var(--fg); opacity: 1; }
+  .maplibregl-map { font-family: Inter, system-ui, sans-serif; }
+  .maplibregl-popup-content { background: var(--surface); color: var(--fg); border-radius: 10px; padding: 8px 11px;
+    font-size: 12.5px; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
+  .maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--surface); }
+  .maplibregl-ctrl-group { border-radius: 10px !important; box-shadow: var(--shadow) !important; }
+  .styles { position:absolute; top: 10px; right: 10px; z-index: 600; display:flex; gap: 2px; padding: 3px;
+    background: var(--surface); border-radius: 10px; box-shadow: var(--shadow); border: 1px solid var(--line); }
+  .styles button { background: transparent; border: 0; color: var(--muted); padding: 5px 10px; font-size: 12.5px;
+    border-radius: 7px; }
+  .styles button:hover { background: var(--sunken); filter: none; color: var(--fg); }
+  .styles button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+  .legend { position:absolute; left: 10px; bottom: 10px; z-index: 600; background: var(--surface); border-radius: 8px;
+    padding: 6px 10px; font-size: 12px; display:flex; gap: 10px; box-shadow: var(--shadow); border: 1px solid var(--line); }
+  .legend span { display:flex; align-items:center; gap: 5px; color: var(--muted); }
+  .legend i { width: 10px; height: 10px; border-radius: 99px; border: 2px solid; }
+
+  @media (max-width: 1100px) {
+    .split { grid-template-columns: minmax(0, 1fr); }
+    .mapbox { position: relative; top: 0; height: 340px; min-height: 0; order: -1; }
+  }
+  @media (max-width: 640px) {
+    .steps .bar { display: none; }
+    .stats { gap: 6px; }
+    .stat { padding: 8px 10px; } .stat b { font-size: 18px; } .stat span { font-size: 11px; }
+  }
+  .listing .actions .add-contact:not([open]) { flex-basis: auto; width: auto; }
+  .add-contact[open] { width: 100%; order: 10; }
+  .next-step { border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px; margin: 10px 0 4px;
+    display: flex; flex-direction: column; gap: 4px; }
+  .next-step.move_on { border-color: var(--line); }
+  .next-step .ns-head { display: flex; gap: 6px; align-items: center; color: var(--accent); }
+  .next-step .ns-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; align-items: flex-start; }
+  .log-viewing summary { display: inline-flex; list-style: none; }
+  .log-viewing summary::-webkit-details-marker { display: none; }
+  .log-viewing form { display: flex; gap: 8px; margin-top: 8px; }
+  h1 .edit-search { font-size: 13px; padding: 4px 10px; vertical-align: middle; margin-left: 8px; }
+  .get-contact { width: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 10px 12px; border: 1px dashed var(--accent); border-radius: 10px; }
+  .get-contact > .small { flex: 1 1 100%; }
+  .get-contact form { display: flex; gap: 8px; flex: 1 1 260px; }
+  .get-contact form input { flex: 1; min-width: 0; }
+  .add-contact summary { display: inline-flex; list-style: none; }
+  .add-contact summary::-webkit-details-marker { display: none; }
+  .add-contact form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+  .add-contact form p { grid-column: 1 / -1; margin: 0; }
+  .add-listing { margin: 0 0 16px; }
+  .fb-links { margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .add-listing summary { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: inherit; font-size: 14px; }
+  .add-listing form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 12px; }
+  .add-listing .wide { grid-column: 1 / -1; }
+  .listing .contact { display: flex; gap: 6px; align-items: center; }
+</style>
+{% endblock %}
+{% block content %}
+{% set step_names = ["Find listings", "Cross-check", "Call contacts", "Results"] %}
+{% set step_of = {"pending": 0, "sourcing": 0, "screening": 1, "calling": 2, "done": 4, "error": -1} %}
+{% set cur = step_of.get(search.status, 0) %}
+{% set good = counts.viable + counts.tour_scheduled %}
+{% set called = calls | length %}
+{% set active = listings | rejectattr("status.value", "in", ["filtered", "not_viable"]) | list %}
+{% set ruled = listings | selectattr("status.value", "in", ["filtered", "not_viable"]) | list %}
+
+<div id="live" {% if refresh %}data-refresh="1"{% endif %}>
+<div class="page-head">
+  <div>
+    <a class="crumb" href="/">Searches</a>
+    <h1>{{ criteria.city }}
+      {% if search.status not in ("pending", "sourcing", "calling") %}<a class="btn secondary small edit-search" href="/searches/{{ search.id }}/edit">Edit search</a>{% endif %}</h1>
+    <div class="chips">
+      <span class="chip"><b>${{ "{:,}".format(criteria.min_price) }}–${{ "{:,}".format(criteria.max_price) }}</b>/mo</span>
+      <span class="chip"><b>{{ criteria.min_beds }}+</b> bd · <b>{{ criteria.min_baths | round(1) | replace(".0", "") }}+</b> ba</span>
+      {% for n in criteria.neighborhoods %}<span class="chip">{{ n }}</span>{% endfor %}
+      {% for m in criteria.must_haves %}<span class="chip">✓ {{ m }}</span>{% endfor %}
+      {% if criteria.move_in_by %}<span class="chip">Move in by <b>{{ criteria.move_in_by }}</b></span>{% endif %}
+    </div>
+  </div>
+  <div class="steps" aria-label="Progress">
+    {% for name in step_names %}
+      {% if not loop.first %}<span class="bar"></span>{% endif %}
+      {% if search.status == "error" and loop.first %}
+        <span class="step err"><i>!</i>Error</span>
+      {% else %}
+        <span class="step {{ 'done' if loop.index0 < cur else ('now' if loop.index0 == cur else '') }}">
+          <i>{{ "✓" if loop.index0 < cur else loop.index }}</i>{{ name }}</span>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+{% if search.error %}<div class="flash error small">{{ search.error }}</div>{% endif %}
+{% if research_events %}<details class="card" data-id="research-progress" {% if refresh %}open{% endif %} style="padding:12px 16px;margin-bottom:14px">
+  <summary>Search activity · {{ research_events[-1].message }}</summary>
+  {% for event in research_events %}<div class="small muted">{{ event.created_at[11:19] }} · {{ event.message }}</div>{% endfor %}
+</details>{% endif %}
+
+<div class="stats">
+  <div class="stat"><b>{{ listings | length }}</b><span>found</span></div>
+  <div class="stat"><b>{{ active | length }}</b><span>candidates</span></div>
+  <div class="stat"><b>{{ called }}</b><span>called</span></div>
+  <div class="stat good"><b>{{ good }}</b><span>viable</span></div>
+  <div class="stat good"><b>{{ counts.tour_scheduled }}</b><span>viewings</span></div>
+</div>
+
+<script type="application/json" id="pins">{{ pins | tojson }}</script>
+<script type="application/json" id="center">{{ center | tojson }}</script>
+</div>
+
+<div class="fb-links small muted">{{ icon("external", 13) }} Find more on Zillow
+  <span title="Open it, click Save search, and choose instant email alerts; new listings then show up in your searches via Gmail">(save the search for instant alerts)</span>:
+  {% for label, href in zillow_links(criteria) %}<a href="{{ href }}" target="_blank" rel="noopener">{{ label }}</a>{{ " · " if not loop.last }}{% endfor %}
+</div>
+<div class="fb-links small muted">{{ icon("external", 13) }} Find more on Facebook:
+  {% for label, href in facebook_links(criteria) %}<a href="{{ href }}" target="_blank" rel="noopener">{{ label }}</a>{{ " · " if not loop.last }}{% endfor %}
+</div>
+<details class="card add-listing" data-id="add-listing">
+  <summary>{{ icon("plus", 16) }}<b>Add a listing you found</b>
+    <span class="muted small">Zillow, Facebook Marketplace, Craigslist, anywhere. Paste the link and the contact if you have it.</span></summary>
+  <form method="post" action="/searches/{{ search.id }}/listings">
+    <input class="wide" name="url" type="url" required placeholder="https://www.zillow.com/homedetails/…">
+    <input name="price" inputmode="numeric" placeholder="Rent $/mo">
+    <input name="beds" inputmode="numeric" placeholder="Beds">
+    <input name="baths" inputmode="decimal" placeholder="Baths">
+    <input class="wide" name="address" placeholder="Address">
+    <input name="phone" type="tel" placeholder="Contact phone">
+    <input name="email" type="email" placeholder="Contact email">
+    <input name="contact_name" placeholder="Contact name">
+    <input class="wide" name="title" placeholder="Title (optional)">
+    <textarea class="wide" name="description" rows="2" placeholder="Notes or description (optional)"></textarea>
+    <div class="wide"><button type="submit">{{ icon("plus", 14) }}Add listing</button>
+      <span class="muted small">Craigslist links fill in automatically; for other sites, add what you can see.</span></div>
+  </form>
+</details>
+
+<div class="split">
+  <div id="listings">
+    {% macro listing_card(l) %}
+    {% set call = calls.get(l.key) %}{% set o = outcomes.get(l.key) %}{% set tour = tours.get(l.key) %}{% set email = emails.get(l.key) %}
+    <article class="card listing" id="{{ l.key }}" data-key="{{ l.key }}">
+      <div class="row1">
+        <div>
+          <span class="price">{% if l.price %}${{ "{:,}".format(l.price) }}{% else %}—{% endif %}</span>
+          <span class="facts">{{ l.beds if l.beds is not none else "?" }} bd · {{ l.baths if l.baths is not none else "?" }} ba{% if l.sqft %} · {{ "{:,}".format(l.sqft) }} ft²{% endif %}</span>
+        </div>
+        <span class="pill {{ l.status.value }}">{{ l.status.value.replace("_", " ") }}</span>
+      </div>
+      <a class="title" href="{{ l.url }}" target="_blank" rel="noopener">{{ l.title }} {{ icon("external", 13) }}</a>
+      <div class="where">
+        <span class="src">{{ l.source.value }}</span>
+        {% if l.address or l.neighborhood %}· {{ l.address or l.neighborhood }}{% endif %}
+        {% if l.address and l.neighborhood %} · {{ l.neighborhood }}{% endif %}
+      </div>
+      {% if l.contact and (l.contact.phone or l.contact.email) %}
+        <div class="contact small muted">{{ icon("phone", 12) }}
+          {{ [l.contact.name, l.contact.phone, l.contact.email] | select | join(" · ") }}</div>
+      {% endif %}
+      {% if l.research %}
+      <details style="margin-top:10px" data-id="sources-{{ l.key }}"><summary class="small">Listing evidence · checked {{ l.research.checked_at[:16] if l.research.checked_at else '' }}</summary>
+        {% for fact in l.research.evidence or [] %}<p class="small"><b>{{ fact.field | capitalize }}</b> · “{{ fact.quote }}” <a href="{{ fact.url }}" target="_blank" rel="noopener noreferrer">Source ↗</a></p>{% endfor %}
+        {% for match in l.research.requirements or [] %}<p class="small"><b>{{ match.requirement }}</b>: {{ 'Advertised' if match.matched == true else ('Does not match' if match.matched == false else 'Unknown — ask on call') }}{% if match.quote %} · “{{ match.quote }}”{% endif %}</p>{% endfor %}
+        <p class="small muted">{{ l.research.limitations }}</p>
+      </details>
+      {% endif %}
+      {% set risk = l.screening %}
+      <div class="outcome {{ 'bad' if risk.get('status') == 'concerns_found' else '' }}" style="margin-top:10px">
+        <strong>Rental screening · {{ {'cross_referenced': 'Address and contact cross-referenced', 'concerns_found': 'Concerns to review', 'unconfirmed': 'Unconfirmed', 'checking': 'Checking sources…', 'error': 'Check incomplete'}.get(risk.get('status'), 'Not checked') }}</strong>
+        {% if risk.get('findings') %}<details data-id="risk-{{ l.key }}" {% if risk.status == 'concerns_found' %}open{% endif %}><summary>Evidence and concerns</summary>
+          {% for finding in risk.findings %}<p class="small"><b>{{ finding.kind.replace('_', ' ') | capitalize }}</b> · {{ finding.explanation }}
+            {% if finding.quote %}<br>“{{ finding.quote }}”{% endif %} <a href="{{ finding.url }}" target="_blank" rel="noopener noreferrer">Source ↗</a></p>{% endfor %}
+        </details>{% endif %}
+        {% if risk.get('market') %}<p class="small">Comparable rents: {{ risk.market.sample_size }} units{% if risk.market.median_rent %} · median ${{ '{:,.0f}'.format(risk.market.median_rent) }}/mo{% endif %}. {{ risk.market.note }}</p>
+          {% if risk.market.comparables %}<details><summary class="small">Comparable sources</summary>{% for comp in risk.market.comparables %}<p class="small"><a href="{{ comp.url }}" target="_blank" rel="noopener noreferrer">{{ comp.address }}</a> · ${{ comp.price }}/mo · {{ comp.beds }} bd<br>“{{ comp.price_quote }}”</p>{% endfor %}</details>{% endif %}
+        {% endif %}
+        <p class="small muted">{{ risk.get('limitations', 'Public-source screening has not run. A phone answer alone does not verify ownership.') }}</p>
+        {% if not settings.mock_sources and risk.get('status') != 'checking' %}<form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/screen"><button class="secondary" type="submit">{{ 'Recheck sources' if risk else 'Check sources' }}</button></form>{% endif %}
+      </div>
+      {% if tour %}
+        <div class="tour">{{ icon("calendar", 16) }} Viewing <strong>{{ tour.start.replace("T", " ")[:16] }}</strong>
+          <a href="/tours/{{ tour.id }}.ics">Add to calendar</a></div>
+      {% endif %}
+      {% if o %}
+        <div class="outcome {{ 'good' if o.viable else ('bad' if o.verification_status == 'ruled_out' else '') }}">{{ o.summary }}
+          {% if o.tradeoffs %}<div class="tradeoffs">Tradeoffs: {{ o.tradeoffs | join("; ") }}</div>{% endif %}
+          {% for check in o.checks or [] %}
+          <div style="margin-top:8px"><strong>{{ check.kind | capitalize }} · {{ 'Confirmed' if check.passed == true else ('Does not match' if check.passed == false else 'Unknown') }}</strong>: {{ check.summary }}
+            {% if check.evidence %}<div class="muted small"><a href="#call-{{ call.id }}-{{ check.evidence.t }}" data-call-audio="audio-{{ call.id }}" data-seek="{{ check.evidence.t }}">{{ check.evidence.t }}s</a> · “{{ check.evidence.quote }}”</div>{% endif %}
+          </div>
+          {% endfor %}
+          {% if o.confirmed_facts %}<details><summary>Facts confirmed on this call</summary>
+            {% for fact in o.confirmed_facts %}<p>{{ fact.summary }}
+              {% for evidence in fact.evidence %}<span class="muted small"> · <a href="#call-{{ call.id }}-{{ evidence.t }}" data-call-audio="audio-{{ call.id }}" data-seek="{{ evidence.t }}">{{ evidence.t }}s</a>: “{{ evidence.quote }}”</span>{% endfor %}
+            </p>{% endfor %}
+          </details>{% endif %}
+          {% for window in o.offered_windows or [] %}
+          <div class="tour">{{ icon("calendar", 16) }} Offered: {{ window.start | when }} – {{ window.end | when }} · confirmation needed</div>
+          {% endfor %}
+          {% if o.audio_url %}<p class="small">Hear the call</p><audio id="audio-{{ call.id }}" controls preload="none" src="{{ o.audio_url }}" style="width:100%"></audio>{% endif %}
+        </div>
+      {% endif %}
+      {% set notes = l.notes | reject("equalto", o.summary if o else None) | select | list %}
+      {% if notes %}<div class="notes">{% for n in notes %}<div>{{ n }}</div>{% endfor %}</div>{% endif %}
+      {% set concerns = place_notes.get(l.key, []) %}
+      {% if concerns %}<div class="concerns"><b>{{ icon("bookmark", 12) }} Your notes</b> <span class="muted">· raised on the next call</span>
+        <ul>{% for n in concerns %}<li>{{ n }}</li>{% endfor %}</ul></div>{% endif %}
+      {% set can_call = l.contact and l.contact.phone and l.status.value in ("candidate", "contacted", "not_viable") and (not call or call.status in ("attention", "failed")) %}
+      {% set app = tracked.get(l.key) %}
+      {% if app and app.stage not in ("rejected", "withdrawn", "lease_signed") %}
+        {% set ns = next_step(l, call, email, tour) %}
+        <div class="next-step {{ ns.action }}">
+          <div class="ns-head">{{ icon("arrow", 14) }}<span class="small muted">Recommended next step</span></div>
+          <b>{{ ns.label }}</b>
+          <div class="small muted">{{ ns.why }}</div>
+          <div class="ns-actions">
+            {% if ns.action == "call" and can_call %}
+              <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/call"><button type="submit">{{ icon("phone", 14) }}Call now</button></form>
+            {% elif ns.action == "email" %}
+              {% if email %}<a class="btn" href="/emails/{{ email.id }}">{{ icon("mail", 14) }}Open the email</a>
+              {% else %}<form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/email"><button type="submit">{{ icon("mail", 14) }}Draft the email</button></form>{% endif %}
+            {% elif ns.href and ns.action == "prepare" %}
+              <a class="btn" href="{{ ns.href }}" target="_blank" rel="noopener">{{ icon("calendar", 14) }}Add to Google Calendar</a>
+            {% elif ns.href %}
+              <a class="btn" href="{{ ns.href }}" target="_blank" rel="noopener">{{ icon("external", 14) }}{{ {"book_online": "Book on their site", "message": "Open on Facebook", "reveal": "Open the listing"}.get(ns.action, "Open") }}</a>
+            {% endif %}
+            {% if not tour and ns.action not in ("move_on", "wait") %}
+              <details class="log-viewing" data-id="v-{{ l.key }}">
+                <summary class="btn secondary">{{ icon("calendar", 14) }}I booked a viewing</summary>
+                <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/viewing">
+                  <input type="datetime-local" name="start" required>
+                  <button type="submit">Save viewing</button>
+                </form>
+              </details>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+      <div class="actions">
+        <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/chat">
+          <button type="submit" class="secondary" title="Ask your agent about this place">{{ icon("chat", 14) }}{{ "Continue chat" if chats.get(l.key) else "Chat" }}</button>
+        </form>
+        {% if can_call %}
+          <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/call">
+            <button type="submit" class="{{ 'secondary' if call }}" title="{{ l.contact.phone }}">{{ icon("phone", 14) }}{{ "Resume saved call" if call else "Call" }}</button>
+          </form>
+        {% endif %}
+        {% if not (l.contact and l.contact.phone) and l.status.value in ("candidate", "contacted", "not_viable") %}
+          {# Sites hide contacts from bots; the renter reveals it in their own browser and pastes it. #}
+          <div class="get-contact">
+            <div class="small"><b>Get the number to call.</b>
+              {% if l.contact_hint == "show_contact" %}Open the post and click <b>show contact info</b> in the description.
+              {% elif l.source.value == "craigslist" %}Open the post, click <b>reply</b>, and copy the phone or email it shows.
+              {% else %}Open the listing and copy the agent's phone or email.{% endif %}</div>
+            <a class="btn" href="{{ l.url }}" target="_blank" rel="noopener">{{ icon("external", 14) }}Reveal on {{ l.source.value | capitalize }}</a>
+            <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/contact">
+              <input name="pasted" required placeholder="Paste the phone or email here">
+              <button type="submit" class="secondary">Save</button>
+            </form>
+          </div>
+        {% elif l.status.value != "filtered" or l.contact %}
+          <details class="add-contact" data-id="c-{{ l.key }}">
+            <summary class="btn secondary">{{ icon("plus", 14) }}{{ "Add contact" if not l.contact else "Edit contact" }}</summary>
+            <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/contact">
+              <input name="phone" type="tel" placeholder="Phone, e.g. (415) 555-0199" value="{{ l.contact.phone if l.contact and l.contact.phone else '' }}">
+              <input name="email" type="email" placeholder="Email" value="{{ l.contact.email if l.contact and l.contact.email else '' }}">
+              <input name="name" placeholder="Name (optional)" value="{{ l.contact.name if l.contact and l.contact.name else '' }}">
+              <button type="submit">Save contact</button>
+            </form>
+          </details>
+        {% endif %}
+        {% if email and email.status == "sent" %}
+          <a class="pill viable" href="/emails/{{ email.id }}">{{ icon("mail", 12) }}Email sent</a>
+        {% elif email %}
+          <a class="btn secondary" href="/emails/{{ email.id }}">{{ icon("mail", 14) }}Review email draft</a>
+        {% elif l.status.value != "filtered" %}
+          <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/email">
+            <button type="submit" class="secondary" title="Claude drafts it; nothing sends until you approve">{{ icon("mail", 14) }}Draft email</button>
+          </form>
+        {% endif %}
+        {% if app %}
+          <a class="pill viable" href="/applications#app-{{ app.id }}">{{ icon("bookmark", 12) }}{{ stages(app.stage).label }}</a>
+        {% else %}
+          <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/track">
+            <button type="submit" class="secondary" title="Your agent recommends the next step and it goes on your applications board">{{ icon("bookmark", 14) }}I'm interested</button>
+          </form>
+        {% endif %}
+        {% if call %}<span class="pill {{ call.status }}">{{ icon("phone", 12) }}{{ call.status.replace("_", " ") }}</span>{% endif %}
+        {% if call and call.error %}<div class="err">{{ call.error }}</div>{% endif %}
+        {% if call and call.transcript %}<details data-id="t-{{ l.key }}"><summary>Call transcript{% if call.mode == 'dry_run' %} · synthetic{% endif %}</summary>
+          {% if o and o.transcript_turns %}{% for line in o.transcript_turns %}<p id="call-{{ call.id }}-{{ line.t }}"><strong>{{ line.t }}s · {{ line.speaker }}</strong> {{ line.text }}</p>{% endfor %}
+          {% else %}<pre>{{ call.transcript }}</pre>{% endif %}</details>{% endif %}
+      </div>
+    </article>
+    {% endmacro %}
+
+    {% for l in active %}{{ listing_card(l) }}
+    {% else %}
+      <div class="card empty">
+        {% if refresh %}<p>Looking for listings…</p>{% else %}<p>No listings matched this search.</p>{% endif %}
+      </div>
+    {% endfor %}
+    {% if ruled %}
+      <details class="ruled-out" data-id="ruled-out">
+        <summary>{{ ruled | length }} ruled out (over budget, missing must-haves, or not available)</summary>
+        {% for l in ruled %}{{ listing_card(l) }}{% endfor %}
+      </details>
+    {% endif %}
+  </div>
+
+  <div class="mapbox">
+    <div id="map"></div>
+    <div class="styles" role="group" aria-label="Map style">
+      <button type="button" data-style="light">Light</button>
+      <button type="button" data-style="streets">Streets</button>
+      <button type="button" data-style="dark">Dark</button>
+      <button type="button" data-style="satellite">Satellite</button>
+    </div>
+    <div class="map-empty" id="map-empty" hidden>{{ icon("pin", 28) }}<br>Listings will appear here once they're located.</div>
+    <div class="legend">
+      <span><i style="border-color: var(--blue)"></i>To call</span>
+      <span><i style="border-color: var(--amber)"></i>Called</span>
+      <span><i style="border-color: var(--accent); background: var(--accent)"></i>Viable</span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  // Vector basemaps from OpenFreeMap and Esri imagery: no API keys needed.
+  const STYLES = {
+    light: "https://tiles.openfreemap.org/styles/positron",
+    streets: "https://tiles.openfreemap.org/styles/liberty",
+    dark: "https://tiles.openfreemap.org/styles/dark",
+    satellite: {
+      version: 8,
+      sources: { esri: { type: "raster", tileSize: 256, maxzoom: 19,
+        tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+        attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics" } },
+      layers: [{ id: "esri", type: "raster", source: "esri" }],
+    },
+  };
+  const saved = (() => { try { return localStorage.getItem("mapStyle"); } catch { return null; } })();
+  let style = STYLES[saved] ? saved : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+
+  const map = new maplibregl.Map({
+    container: "map", style: STYLES[style], center: [-98.35, 39.5], zoom: 3,
+    attributionControl: { compact: true }, cooperativeGestures: false,
+  });
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-left");
+
+  function setStyle(name) {
+    style = name;
+    map.setStyle(STYLES[name]);   // DOM markers survive style swaps
+    document.querySelectorAll(".styles button").forEach(b => b.setAttribute("aria-pressed", b.dataset.style === name));
+    try { localStorage.setItem("mapStyle", name); } catch {}
+  }
+  document.querySelectorAll(".styles button").forEach(b => b.addEventListener("click", () => setStyle(b.dataset.style)));
+  document.querySelectorAll(".styles button").forEach(b => b.setAttribute("aria-pressed", b.dataset.style === style));
+
+  const markers = new Map();   // listing key -> { marker, el, pin }
+  const tip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 34, maxWidth: "260px" });
+  let fitted = false;
+  const money = p => p == null ? "?" : p >= 1000 ? `$${(p / 1000).toFixed(p % 1000 ? 1 : 0)}k` : `$${p}`;
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
+  const card = key => document.querySelector(`.listing[data-key="${CSS.escape(key)}"]`);
+
+  function highlight(key, on) {
+    const m = markers.get(key);
+    if (m) {
+      m.el.firstChild.classList.toggle("hot", on);
+      m.el.style.zIndex = on ? 10 : "";
+      if (on) tip.setLngLat([m.pin.lng, m.pin.lat]).setHTML(
+        `<b>${esc(m.pin.title)}</b><br>${esc(money(m.pin.price))}/mo · ${m.pin.beds ?? "?"} bd · ${m.pin.baths ?? "?"} ba`).addTo(map);
+      else tip.remove();
+    }
+    card(key)?.classList.toggle("hot", on);
+  }
+
+  function render() {
+    const pins = JSON.parse(document.getElementById("pins").textContent);
+    const center = JSON.parse(document.getElementById("center").textContent);
+    const seen = new Set();
+    for (const p of pins) {
+      seen.add(p.key);
+      let m = markers.get(p.key);
+      if (!m) {
+        const el = document.createElement("div");
+        el.className = "pin-wrap";
+        el.appendChild(document.createElement("div"));
+        el.addEventListener("mouseenter", () => highlight(p.key, true));
+        el.addEventListener("mouseleave", () => highlight(p.key, false));
+        el.addEventListener("click", () => {
+          const c = card(p.key);
+          const ruled = c?.closest("details.ruled-out");
+          if (ruled) ruled.open = true;
+          c?.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+        m = { el, marker: new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([p.lng, p.lat]).addTo(map) };
+        markers.set(p.key, m);
+      }
+      m.pin = p;
+      m.marker.setLngLat([p.lng, p.lat]);
+      m.el.firstChild.className = `pin ${p.status}`;
+      m.el.firstChild.textContent = money(p.price);
+    }
+    for (const [k, m] of markers) if (!seen.has(k)) { m.marker.remove(); markers.delete(k); }
+
+    document.getElementById("map-empty").hidden = pins.length > 0;
+    if (!fitted && pins.length) {
+      const b = new maplibregl.LngLatBounds();
+      pins.forEach(p => b.extend([p.lng, p.lat]));
+      map.fitBounds(b, { padding: 70, maxZoom: 15, duration: 0 });
+      fitted = true;
+    } else if (!fitted && center) {
+      map.jumpTo({ center: [center[1], center[0]], zoom: 12 });
+    }
+  }
+
+  function wireCards() {
+    document.querySelectorAll(".listing").forEach(el => {
+      el.addEventListener("mouseenter", () => highlight(el.dataset.key, true));
+      el.addEventListener("mouseleave", () => highlight(el.dataset.key, false));
+    });
+  }
+
+  render();
+  wireCards();
+
+  // Live updates: re-fetch this page while the search is running and swap in the new
+  // header, listings and pins, keeping the map and any open transcripts as they are.
+  async function poll() {
+    if (!document.getElementById("live").dataset.refresh) return;
+    // Don't swap the listings out from under a half-filled form.
+    const typing = document.activeElement?.closest("#listings form") ||
+      [...document.querySelectorAll("#listings form input")].some(i => i.value !== i.defaultValue);
+    if (typing) { setTimeout(poll, 3000); return; }
+    try {
+      const res = await fetch(location.href, { headers: { "Accept": "text/html" } });
+      const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+      const open = new Set([...document.querySelectorAll("details[open][data-id]")].map(d => d.dataset.id));
+      for (const id of ["live", "listings", "sidebar"]) {
+        const fresh = doc.getElementById(id);
+        if (fresh) document.getElementById(id).replaceWith(fresh);
+      }
+      document.querySelectorAll("details[data-id]").forEach(d => { if (open.has(d.dataset.id)) d.open = true; });
+      render();
+      wireCards();
+    } catch (e) { console.warn("refresh failed", e); }
+    setTimeout(poll, 3000);
+  }
+  setTimeout(poll, 3000);
+  document.addEventListener("click", event => {
+    const link = event.target.closest("[data-call-audio]");
+    if (!link) return;
+    const line = document.getElementById(link.hash.slice(1));
+    const transcript = line?.closest("details");
+    if (transcript) transcript.open = true;
+    const player = document.getElementById(link.dataset.callAudio);
+    if (!player) return;
+    const seek = () => { player.currentTime = Number(link.dataset.seek); player.play().catch(() => {}); };
+    if (player.readyState) seek();
+    else { player.addEventListener("loadedmetadata", seek, {once:true}); player.load(); }
+  });
+})();
+</script>
+{% endblock %}
