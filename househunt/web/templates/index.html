@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>New search</h2>
+<form class="grid" method="post" action="/searches">
+  <label>City <input name="city" required placeholder="San Francisco"></label>
+  <label>Max rent ($/mo) <input name="max_price" type="number" required></label>
+  <label>Min rent ($/mo) <input name="min_price" type="number" value="0"></label>
+  <label>Min beds <input name="min_beds" type="number" value="1"></label>
+  <label>Min baths <input name="min_baths" type="number" step="0.5" value="1"></label>
+  <label>Move in by <input name="move_in_by" type="date"></label>
+  <label>Neighborhoods (comma separated) <input name="neighborhoods" placeholder="Mission, Noe Valley"></label>
+  <label>Must-haves (comma separated) <input name="must_haves" placeholder="laundry, cats"></label>
+  <label>Free for viewings <input name="tour_availability" placeholder="weekdays after 6pm, Sat morning"></label>
+  <div style="align-self:end"><button type="submit">Start search</button></div>
+</form>
+
+<h2>Searches</h2>
+{% if searches %}
+<div class="wrap"><table>
+  <tr><th>#</th><th>City</th><th>Budget</th><th>Status</th><th>Created</th></tr>
+  {% for row, c in searches %}
+  <tr>
+    <td><a href="/searches/{{ row.id }}">{{ row.id }}</a></td>
+    <td>{{ c.city }}</td>
+    <td>${{ c.min_price }}–${{ c.max_price }}, {{ c.min_beds }}+ bd</td>
+    <td><span class="pill">{{ row.status }}</span></td>
+    <td class="muted">{{ row.created_at }}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}<p class="muted">No searches yet.</p>{% endif %}
+{% endblock %}

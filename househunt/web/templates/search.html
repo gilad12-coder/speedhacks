@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Search #{{ search.id }} · {{ criteria.city }} · ${{ criteria.min_price }}–${{ criteria.max_price }} · {{ criteria.min_beds }}+ bd</h2>
+<p>Status: <span class="pill">{{ search.status }}</span>
+  {% if refresh %}<span class="muted">(auto-refreshing)</span>{% endif %}</p>
+{% if search.error %}<p class="warn">{{ search.error }}</p>{% endif %}
+
+<div class="wrap"><table>
+  <tr><th>Listing</th><th>Rent</th><th>Beds/Baths</th><th>Status</th><th>Call</th><th>Score</th></tr>
+  {% for l in listings %}
+  {% set call = calls.get(l.key) %}{% set o = outcomes.get(l.key) %}{% set tour = tours.get(l.key) %}
+  <tr>
+    <td>
+      <a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.title }}</a>
+      <div class="muted">{{ l.source.value }}{% if l.address %} · {{ l.address }}{% endif %}{% if l.neighborhood %} · {{ l.neighborhood }}{% endif %}</div>
+      {% if tour %}<div>Viewing <strong>{{ tour.start }}</strong> · <a href="/tours/{{ tour.id }}.ics">add to calendar</a></div>{% endif %}
+      {% if o %}
+        <div>{{ o.summary }}</div>
+        {% if o.tradeoffs %}<div class="muted">Tradeoffs: {{ o.tradeoffs | join("; ") }}</div>{% endif %}
+      {% endif %}
+      {% for n in l.notes if n and (not o or n != o.summary) %}<div class="muted">{{ n }}</div>{% endfor %}
+      {% if call and call.transcript %}<details><summary>Transcript</summary><pre>{{ call.transcript }}</pre></details>{% endif %}
+    </td>
+    <td>{% if l.price %}${{ l.price }}{% endif %}</td>
+    <td>{{ l.beds if l.beds is not none else "?" }} / {{ l.baths if l.baths is not none else "?" }}</td>
+    <td><span class="pill {{ l.status.value }}">{{ l.status.value.replace("_", " ") }}</span></td>
+    <td>
+      {% if call %}<span class="pill">{{ call.status }}</span>
+        {% if call.error %}<div class="warn" style="font-size:12px">{{ call.error }}</div>{% endif %}
+      {% endif %}
+      {% if l.contact and l.contact.phone and l.status.value in ("candidate", "contacted", "not_viable") and not (call and call.status in ("queued", "in_progress")) %}
+        <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/call">
+          <button type="submit" title="{{ l.contact.phone }}">{{ "Call again" if call else "Call" }}</button>
+        </form>
+      {% elif not (l.contact and l.contact.phone) and l.status.value == "candidate" %}
+        <span class="muted">no phone</span>
+      {% endif %}
+    </td>
+    <td>{{ "%.2f"|format(l.score) }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="muted">No listings yet.</td></tr>
+  {% endfor %}
+</table></div>
+{% endblock %}
