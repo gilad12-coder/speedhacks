@@ -6,7 +6,7 @@ Three parts, four workstreams. They meet only at `lib/types.ts`, so everyone bui
 |---|---|---|---|
 | 1. App & UI | Gilad | Next.js + Tailwind app, every screen in `docs/design-brief.md`, styled per `.impeccable.md` | — |
 | 2a. Find | Lucy (@lucywu12) | Listings for the demo + one live browser search | `Listing[]` |
-| 2b. Call | Unassigned | Dial calls, recordings, transcripts → four checks with timestamps | `Call[]`, `Check[]`, `OfferedWindow[]` |
+| 2b. Call | @reedyalouh2 | Dial calls, recordings, transcripts → four checks with timestamps | `Call[]`, `Check[]`, `OfferedWindow[]` |
 | 3. Household & Calendar | Gilad | Households, invites, preference merge + conflicts, Google Calendar, deploy | `Household`, `SearchBrief`, `TourSlot` |
 
 ```
@@ -25,7 +25,7 @@ Part 3 ──SearchBrief──▶ Part 2a ──Listing[]──▶ Part 2b ─�
 - Compute `commuteMinutes` to the brief's destination.
 - Filter obvious misses before calling (budget, size, deal-breakers) and mark them `ruled_out` with a reason.
 
-## 2b. Call (unassigned)
+## 2b. Call (@reedyalouh2)
 - Dial: place outbound calls to 10–20 contacts, fetch recording + transcript, map to `Call`.
 - Call script: confirm availability, occupancy limit, tenant requirements, and ask for tour times.
 - Transcript → `Check[]` with an LLM: each passed check must cite `{callId, t, quote}`; anything unconfirmed is `passed: null`.
