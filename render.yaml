@@ -27,8 +27,6 @@ services:
         sync: false
       - key: DIAL_FROM_NUMBER
         sync: false
-      - key: DIAL_ALLOWED_NUMBERS
-        sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: NOTIFY_NUMBER
@@ -37,8 +35,6 @@ services:
         sync: false
       - key: APP_PASSWORD
         generateValue: true
-      - key: RENTER_NAME
-        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

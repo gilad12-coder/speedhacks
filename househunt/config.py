@@ -23,7 +23,6 @@ class Settings:
     dial_api_key: str | None
     dial_from_number: str | None     # E.164 or pn_… id
     notify_number: str | None        # where to text the renter results
-    renter_name: str
     app_password: str | None         # HTTP basic auth for the deployed app
     claude_model: str
     briefing_pin: str | None         # passcode to hear your briefing when you call your KeyHunt number
@@ -34,7 +33,6 @@ class Settings:
     openai_api_key: str | None
     openai_base_url: str             # OpenRouter when OPENROUTER_API_KEY is set
     openai_model: str
-    dial_allowed_numbers: tuple[str, ...]
     call_max_seconds: int
     call_timezone: str
     max_calls_per_number_per_day: int
@@ -57,7 +55,6 @@ def load() -> Settings:
         dial_api_key=env("DIAL_API_KEY"),
         dial_from_number=env("DIAL_FROM_NUMBER"),
         notify_number=env("NOTIFY_NUMBER"),
-        renter_name=env("RENTER_NAME", "my client"),
         app_password=env("APP_PASSWORD"),
         claude_model=env("CLAUDE_MODEL", "anthropic/claude-opus-5.5" if openrouter else "claude-opus-5-5"),
         briefing_pin=(env("BRIEFING_PIN") or "").strip() or None,
@@ -68,7 +65,6 @@ def load() -> Settings:
         openai_api_key=openrouter or env("OPENAI_API_KEY"),
         openai_base_url="https://openrouter.ai/api/v1" if openrouter else "https://api.openai.com/v1",
         openai_model=env("OPENAI_MODEL", "openai/gpt-4.1-mini" if openrouter else "gpt-4.1-mini"),
-        dial_allowed_numbers=tuple(n.strip() for n in env("DIAL_ALLOWED_NUMBERS", "").split(",") if n.strip()),
         call_max_seconds=max(60, min(300, int(env("CALL_DURATION_SECONDS", "180")))),
         call_timezone=env("CALLER_TIMEZONE", "America/Los_Angeles"),
         max_calls_per_number_per_day=max(1, min(5, int(env("MAX_CALLS_PER_NUMBER_PER_DAY", "1")))),

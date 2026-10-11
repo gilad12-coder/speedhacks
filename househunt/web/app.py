@@ -74,7 +74,7 @@ def voice_page(request: Request, search_id: int):
     if not found:
         raise HTTPException(404, "Search not found")
     return templates.TemplateResponse(request, "voice.html", {"search_id": search_id,
-        "speaker_name": found[0].renter_name or settings.renter_name, "script": SCRIPT},
+        "speaker_name": found[0].renter_name or "my client", "script": SCRIPT},
         headers={"Cache-Control": "private, no-store", "Permissions-Policy": "microphone=(self)"})
 
 
@@ -202,7 +202,7 @@ def create_search(
         must_haves=_split(must_haves), move_in_by=move_in_by or None,
         tour_availability=_split(tour_availability),
         occupants=occupants,
-        renter_name=renter_name.strip() or settings.renter_name,
+        renter_name=renter_name.strip(),
     )
     search_id = db.create_search(criteria)
     background.add_task(pipeline.run_search, search_id)
@@ -299,8 +299,6 @@ def household_call(background: BackgroundTasks, household_id: str, key: str):
     listing = db.get_listing(search_id, key)
     if not listing or not listing.contact or not listing.contact.phone:
         raise HTTPException(400, 'A listing contact phone is required')
-    if not settings.mock_sources and settings.call_mode.value != 'dry_run' and listing.contact.phone not in settings.dial_allowed_numbers:
-        raise HTTPException(400, 'This contact has not been enabled for calling by the operator')
     call_listing(background, search_id, key)
     return {'ok':True}
 
@@ -746,7 +744,7 @@ def draft_listing_email(search_id: int, key: str):
     listing = db.get_listing(search_id, key)
     if not listing:
         raise HTTPException(404)
-    draft = draft_email(listing, criteria, settings.renter_name)
+    draft = draft_email(listing, criteria, criteria.renter_name)
     to = (listing.contact.email if listing.contact else None) or ""
     email_id = db.create_email(search_id, key, to, draft.subject, draft.body)
     return RedirectResponse(f"/emails/{email_id}", status_code=303)

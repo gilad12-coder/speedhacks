@@ -26,7 +26,7 @@ def criteria_from_brief(brief: dict) -> SearchCriteria:
         raise ValueError('Invalid household budget or size')
     # One bedroom per housemate; someone searching alone can take a studio.
     return SearchCriteria(city=location, max_price=budget, min_beds=occupants if occupants > 1 else 0,
-        occupants=occupants, renter_name=str(brief.get('renterName') or settings.renter_name or 'my client')[:80],
+        occupants=occupants, renter_name=str(brief.get('renterName') or 'my client')[:80],
         must_haves=list(brief.get('mustHaves', [])), deal_breakers=list(brief.get('dealBreakers', [])),
         nice_to_haves=list(brief.get('niceToHaves', [])), move_in_from=brief.get('moveInFrom'),
         move_in_by=brief.get('moveInTo'), commute=brief.get('commute', {}),

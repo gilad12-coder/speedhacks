@@ -15,7 +15,6 @@ def voice_env(tmp_path, monkeypatch):
     monkeypatch.setenv("DIAL_AUDIO_SIGNING_SECRET", "test-signing-secret")
     monkeypatch.setenv("ELEVENLABS_API_KEY", "test-elevenlabs-key")
     monkeypatch.setenv("ELEVENLABS_AGENT_ID", "test-agent")
-    monkeypatch.setenv("DIAL_ALLOWED_NUMBERS", "+12025550123")
     import househunt.config
     import househunt.db
     importlib.reload(househunt.config)

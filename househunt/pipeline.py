@@ -277,8 +277,6 @@ def _call_listing(search_id: int, key: str) -> None:
                     phone = listing.contact.phone
                     if not re.fullmatch(r"\+1[2-9]\d{9}", phone) or re.fullmatch(r"\+1\d{3}55501\d{2}", phone):
                         raise RuntimeError("A real US E.164 contact number is required")
-                    if phone not in settings.dial_allowed_numbers:
-                        raise RuntimeError("Contact is not in DIAL_ALLOWED_NUMBERS")
                     if db.contact_blocked(phone):
                         raise RuntimeError("Contact requested no further calls")
                     if db.contact_called_today(phone, call_id):
@@ -288,7 +286,7 @@ def _call_listing(search_id: int, key: str) -> None:
                 if not row["instruction"]:
                     booking_context = booking.prepare(search_id, key, criteria) if not dry_run else {"enabled": False, "windows": []}
                 call_criteria = replace(criteria, renter_name=voice_profile["speaker_name"]) if voice_profile else criteria
-                instruction = row["instruction"] or build_instruction(listing, call_criteria, settings.renter_name,
+                instruction = row["instruction"] or build_instruction(listing, call_criteria, call_criteria.renter_name,
                     db.place_notes(search_id,key), booking_context=booking_context)
                 db.update_call(call_id, instruction=instruction, booking_context=booking_context)
                 placed = dial.place_call(listing.contact.phone, instruction,

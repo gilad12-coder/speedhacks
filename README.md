@@ -51,13 +51,13 @@ respects both.
 `render.yaml` is a blueprint: Render → New → Blueprint → this repo. It builds the
 `Dockerfile`, mounts a 1 GB disk at `/data` for SQLite, and generates `APP_PASSWORD`
 (HTTP basic auth, any username). Set `DIAL_API_KEY`, `DIAL_FROM_NUMBER`, `NOTIFY_NUMBER`,
-`DIAL_ALLOWED_NUMBERS`, and `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY`) in the dashboard. Any Docker host works the same way.
+and `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY`) in the dashboard. Any Docker host works the same way.
 
 ## Caller integration (Part 2b)
 
 The current web app is Python/FastAPI on the team's `ui-refresh` branch. Its existing **Call** button now runs the native Python caller; no separate Node service is required. `caller/` remains the standalone TypeScript shared-contract harness from the earlier brief. `lib/types.ts` is unchanged.
 
-For live calls set `CALL_MODE=approve`, `MOCK_SOURCES=0`, `DIAL_API_KEY`, `DIAL_FROM_NUMBER`, `DIAL_ALLOWED_NUMBERS` (comma-separated approved recipients), and `OPENAI_API_KEY`. Use `APP_PASSWORD` when exposing the app. Keep `.env` and `data/` private and out of Git. Run a single web worker with a persistent SQLite disk. The configured calling timezone defaults to `America/Los_Angeles`.
+For live calls set `CALL_MODE=approve`, `MOCK_SOURCES=0`, `DIAL_API_KEY`, `DIAL_FROM_NUMBER`, and `OPENAI_API_KEY`. Use `APP_PASSWORD` when exposing the app. Keep `.env` and `data/` private and out of Git. Run a single web worker with a persistent SQLite disk. The configured calling timezone defaults to `America/Los_Angeles`.
 
 The default call cap is 180 seconds. Calls are serialized, fictional 555 numbers are rejected, and each contact defaults to one attempt per day across searches (`MAX_CALLS_PER_NUMBER_PER_DAY`). Duplicate clicks reuse the saved attempt rather than creating a new call. **Resume saved call** polls or re-extracts the existing call; ambiguous placements use the same persisted Dial idempotency key. Interrupted work enters attention after a process restart and needs an explicit resume.
 

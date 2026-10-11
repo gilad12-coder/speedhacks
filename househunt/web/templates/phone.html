@@ -47,7 +47,7 @@
     <div class="big-ic">{{ icon("mic", 20) }}</div>
     <h3>Call in anytime {% if enabled %}<span class="pill viable">on</span>{% else %}<span class="pill">off</span>{% endif %}</h3>
     {% if enabled %}
-      <p class="small">Call <strong>{{ number }}</strong> and say you're {{ settings.renter_name }}, then your passcode. The briefing refreshes every few minutes{% if synced_at %} (last updated {{ synced_at | when }}){% endif %}.</p>
+      <p class="small">Call <strong>{{ number }}</strong> and say you're the renter, then your passcode. The briefing refreshes every few minutes{% if synced_at %} (last updated {{ synced_at | when }}){% endif %}.</p>
       <p class="muted small">Landlords calling this number back get a polite message-taker instead, and their messages show up below.</p>
       <div class="row">
         <form method="post" action="/phone/sync"><button type="submit" class="secondary">Refresh now</button></form>
