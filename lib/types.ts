@@ -3,19 +3,23 @@
 
 // ---------- Part 3 → Part 2: what the agent searches for ----------
 
-export type CommuteMode = "caltrain" | "transit" | "drive" | "bike" | "walk";
+// "caltrain" is the stored value for any train; "transit" is the old combined bus-or-metro answer.
+export type CommuteMode =
+  | "walk" | "bike" | "scooter" | "drive" | "caltrain" | "metro" | "bus" | "tram" | "ferry" | "transit";
 
 export interface SearchBrief {
   householdId: string;
-  occupants: number; // 2–6
+  occupants: number; // 1–6
+  location: string; // city or area to search, free text
   maxTotalRentUsd: number; // sum of personal budgets
   moveInFrom: string; // ISO date
   moveInTo: string; // ISO date
-  commute: { destination: string; mode: CommuteMode; maxMinutes: number };
+  commute: { destination: string; mode: CommuteMode; modes: CommuteMode[]; maxMinutes: number }; // mode = most common first choice
   mustHaves: string[]; // e.g. "laundry", "parking"
   dealBreakers: string[]; // e.g. "no pets allowed"
   niceToHaves: string[];
   householdIncomeBandUsd: { min: number; max: number }; // for tenant fit
+  wishes: string[]; // free-form wishes from each housemate's interview, e.g. "Dana: a quiet street"
 }
 
 // ---------- Part 2 → Parts 1 & 3: what the agent returns ----------
@@ -90,11 +94,13 @@ export interface AgentRun {
 export interface Housemate {
   id: string;
   name: string;
+  location: string;
   maxBudgetUsd: number;
-  commute: { destination: string; mode: CommuteMode };
+  commute: { destination: string; mode: CommuteMode; modes: CommuteMode[]; maxMinutes: number }; // mode = first of modes
   mustHaves: string[];
   dealBreakers: string[];
   niceToHaves: string[];
+  wishes: string[]; // what the interview turned up beyond the fixed features
   moveInFrom: string;
   moveInTo: string;
   incomeBandUsd: { min: number; max: number };
