@@ -3,8 +3,8 @@
 {% block title %}{{ criteria.city }} · KeyHunt{% endblock %}
 {% block page_class %}wide{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 {% endblock %}
 {% block style %}
 <style>
@@ -63,27 +63,30 @@
   .ruled-out > summary { font-size: 13.5px; font-weight: 500; padding: 6px 0; }
   .ruled-out .listing { opacity: .75; }
 
-  /* map pins */
-  .pin { transform: translate(-50%, -100%); display:inline-block; padding: 3px 8px; border-radius: 99px;
-    background: var(--surface); color: var(--fg); border: 1.5px solid var(--muted); font: 600 12px/1.3 Inter, system-ui, sans-serif;
-    white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.18); position: relative; transition: transform .12s; }
+  /* map pins: the wrapper is positioned by MapLibre, the pill inside is ours to style */
+  .pin-wrap { cursor: pointer; }
+  .pin { display:inline-block; padding: 4px 9px; border-radius: 99px; background: var(--surface); color: var(--fg);
+    border: 1.5px solid var(--muted); font: 600 12px/1.3 Inter, system-ui, sans-serif; white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,.22); position: relative; transform-origin: 50% 100%;
+    transition: transform .12s, background .12s; margin-bottom: 6px; }
   .pin::after { content:""; position:absolute; left: 50%; bottom: -5px; width: 8px; height: 8px; background: inherit;
     border-right: inherit; border-bottom: inherit; transform: translateX(-50%) rotate(45deg); }
   .pin.candidate { border-color: var(--blue); }
   .pin.contacted { border-color: var(--amber); }
   .pin.viable, .pin.tour_scheduled { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-  .pin.filtered, .pin.not_viable { opacity: .55; border-color: var(--line); color: var(--muted); font-weight: 500; }
-  .pin.hot { transform: translate(-50%, -100%) scale(1.15); border-color: var(--fg); opacity: 1; z-index: 10; }
-  .leaflet-marker-icon.pin-wrap { background: none; border: 0; }
-  .leaflet-marker-icon.pin-wrap.hot { z-index: 9999 !important; }
-  /* Mute the OSM basemap so the price pins stand out; invert it for dark mode. */
-  .leaflet-tile-pane { filter: saturate(.35) contrast(.92) brightness(1.04); }
-  @media (prefers-color-scheme: dark) {
-    .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) saturate(.3) brightness(.85) contrast(.9); }
-  }
-  .leaflet-container { font-family: Inter, system-ui, sans-serif; background: var(--sunken); }
-  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--surface); color: var(--fg); }
-  .leaflet-popup-content { margin: 10px 12px; font-size: 13px; }
+  .pin.filtered, .pin.not_viable { opacity: .6; border-color: var(--line); color: var(--muted); font-weight: 500; }
+  .pin.hot { transform: scale(1.15); border-color: var(--fg); opacity: 1; }
+  .maplibregl-map { font-family: Inter, system-ui, sans-serif; }
+  .maplibregl-popup-content { background: var(--surface); color: var(--fg); border-radius: 10px; padding: 8px 11px;
+    font-size: 12.5px; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
+  .maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--surface); }
+  .maplibregl-ctrl-group { border-radius: 10px !important; box-shadow: var(--shadow) !important; }
+  .styles { position:absolute; top: 10px; right: 10px; z-index: 600; display:flex; gap: 2px; padding: 3px;
+    background: var(--surface); border-radius: 10px; box-shadow: var(--shadow); border: 1px solid var(--line); }
+  .styles button { background: transparent; border: 0; color: var(--muted); padding: 5px 10px; font-size: 12.5px;
+    border-radius: 7px; }
+  .styles button:hover { background: var(--sunken); filter: none; color: var(--fg); }
+  .styles button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
   .legend { position:absolute; left: 10px; bottom: 10px; z-index: 600; background: var(--surface); border-radius: 8px;
     padding: 6px 10px; font-size: 12px; display:flex; gap: 10px; box-shadow: var(--shadow); border: 1px solid var(--line); }
   .legend span { display:flex; align-items:center; gap: 5px; color: var(--muted); }
@@ -289,6 +292,12 @@
 
   <div class="mapbox">
     <div id="map"></div>
+    <div class="styles" role="group" aria-label="Map style">
+      <button type="button" data-style="light">Light</button>
+      <button type="button" data-style="streets">Streets</button>
+      <button type="button" data-style="dark">Dark</button>
+      <button type="button" data-style="satellite">Satellite</button>
+    </div>
     <div class="map-empty" id="map-empty" hidden>{{ icon("pin", 28) }}<br>Listings will appear here once they're located.</div>
     <div class="legend">
       <span><i style="border-color: var(--blue)"></i>To call</span>
@@ -302,26 +311,53 @@
 {% block scripts %}
 <script>
 (() => {
-  const map = L.map("map", { zoomControl: true, scrollWheelZoom: true });
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(map);
+  // Vector basemaps from OpenFreeMap and Esri imagery: no API keys needed.
+  const STYLES = {
+    light: "https://tiles.openfreemap.org/styles/positron",
+    streets: "https://tiles.openfreemap.org/styles/liberty",
+    dark: "https://tiles.openfreemap.org/styles/dark",
+    satellite: {
+      version: 8,
+      sources: { esri: { type: "raster", tileSize: 256, maxzoom: 19,
+        tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+        attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics" } },
+      layers: [{ id: "esri", type: "raster", source: "esri" }],
+    },
+  };
+  const saved = (() => { try { return localStorage.getItem("mapStyle"); } catch { return null; } })();
+  let style = STYLES[saved] ? saved : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 
-  const markers = new Map();   // listing key -> marker
+  const map = new maplibregl.Map({
+    container: "map", style: STYLES[style], center: [-98.35, 39.5], zoom: 3,
+    attributionControl: { compact: true }, cooperativeGestures: false,
+  });
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-left");
+
+  function setStyle(name) {
+    style = name;
+    map.setStyle(STYLES[name]);   // DOM markers survive style swaps
+    document.querySelectorAll(".styles button").forEach(b => b.setAttribute("aria-pressed", b.dataset.style === name));
+    try { localStorage.setItem("mapStyle", name); } catch {}
+  }
+  document.querySelectorAll(".styles button").forEach(b => b.addEventListener("click", () => setStyle(b.dataset.style)));
+  document.querySelectorAll(".styles button").forEach(b => b.setAttribute("aria-pressed", b.dataset.style === style));
+
+  const markers = new Map();   // listing key -> { marker, el, pin }
+  const tip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 34, maxWidth: "260px" });
   let fitted = false;
   const money = p => p == null ? "?" : p >= 1000 ? `$${(p / 1000).toFixed(p % 1000 ? 1 : 0)}k` : `$${p}`;
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
   const card = key => document.querySelector(`.listing[data-key="${CSS.escape(key)}"]`);
 
-  function pinIcon(p, hot) {
-    return L.divIcon({ className: "pin-wrap" + (hot ? " hot" : ""), iconSize: null,
-      html: `<div class="pin ${p.status}${hot ? " hot" : ""}">${money(p.price)}</div>` });
-  }
-
   function highlight(key, on) {
     const m = markers.get(key);
-    if (m) { m.setIcon(pinIcon(m.pin, on)); m.setZIndexOffset(on ? 1000 : 0); }
+    if (m) {
+      m.el.firstChild.classList.toggle("hot", on);
+      m.el.style.zIndex = on ? 10 : "";
+      if (on) tip.setLngLat([m.pin.lng, m.pin.lat]).setHTML(
+        `<b>${esc(m.pin.title)}</b><br>${esc(money(m.pin.price))}/mo · ${m.pin.beds ?? "?"} bd · ${m.pin.baths ?? "?"} ba`).addTo(map);
+      else tip.remove();
+    }
     card(key)?.classList.toggle("hot", on);
   }
 
@@ -333,30 +369,35 @@
       seen.add(p.key);
       let m = markers.get(p.key);
       if (!m) {
-        m = L.marker([p.lat, p.lng]).addTo(map);
-        m.on("mouseover", () => highlight(p.key, true));
-        m.on("mouseout", () => highlight(p.key, false));
-        m.on("click", () => {
-          const el = card(p.key);
-          const ruled = el?.closest("details.ruled-out");
+        const el = document.createElement("div");
+        el.className = "pin-wrap";
+        el.appendChild(document.createElement("div"));
+        el.addEventListener("mouseenter", () => highlight(p.key, true));
+        el.addEventListener("mouseleave", () => highlight(p.key, false));
+        el.addEventListener("click", () => {
+          const c = card(p.key);
+          const ruled = c?.closest("details.ruled-out");
           if (ruled) ruled.open = true;
-          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+          c?.scrollIntoView({ behavior: "smooth", block: "center" });
         });
+        m = { el, marker: new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([p.lng, p.lat]).addTo(map) };
         markers.set(p.key, m);
       }
       m.pin = p;
-      m.setLatLng([p.lat, p.lng]).setIcon(pinIcon(p, false));
-      m.bindTooltip(`<b>${esc(p.title)}</b><br>${esc(money(p.price))}/mo · ${p.beds ?? "?"} bd · ${p.baths ?? "?"} ba`,
-                    { direction: "top", offset: [0, -28] });
+      m.marker.setLngLat([p.lng, p.lat]);
+      m.el.firstChild.className = `pin ${p.status}`;
+      m.el.firstChild.textContent = money(p.price);
     }
-    for (const [k, m] of markers) if (!seen.has(k)) { m.remove(); markers.delete(k); }
+    for (const [k, m] of markers) if (!seen.has(k)) { m.marker.remove(); markers.delete(k); }
 
     document.getElementById("map-empty").hidden = pins.length > 0;
     if (!fitted && pins.length) {
-      map.fitBounds(L.latLngBounds(pins.map(p => [p.lat, p.lng])).pad(0.25), { maxZoom: 15 });
+      const b = new maplibregl.LngLatBounds();
+      pins.forEach(p => b.extend([p.lng, p.lat]));
+      map.fitBounds(b, { padding: 70, maxZoom: 15, duration: 0 });
       fitted = true;
-    } else if (!fitted) {
-      center ? map.setView(center, 12) : map.setView([39.5, -98.35], 4);
+    } else if (!fitted && center) {
+      map.jumpTo({ center: [center[1], center[0]], zoom: 12 });
     }
   }
 
