@@ -114,10 +114,17 @@ class PlatformClient:
         p = urlsplit(self.url)
         if not key or not p.hostname or p.username or p.password or (p.scheme != 'https' and not (p.scheme == 'http' and p.hostname in ('localhost','127.0.0.1'))):
             raise RuntimeError('Set APP_URL (HTTPS, or localhost) and the shared AGENT_API_KEY')
-        self.http = httpx.Client(base_url=self.url, headers={'Authorization':'Bearer '+key}, timeout=30, follow_redirects=False)
+        headers = {'Authorization':'Bearer '+key}
+        # Vercel Deployment Protection: the project's "Protection Bypass for Automation" secret.
+        bypass = os.environ.get('VERCEL_PROTECTION_BYPASS','').strip()
+        if bypass:
+            headers['x-vercel-protection-bypass'] = bypass
+        self.http = httpx.Client(base_url=self.url, headers=headers, timeout=30, follow_redirects=False)
 
     def briefs(self):
         r = self.http.get('/api/agent/briefs')
+        if r.is_redirect and 'vercel.com/sso' in r.headers.get('location',''):
+            raise RuntimeError('The app is behind Vercel Deployment Protection; set VERCEL_PROTECTION_BYPASS')
         if not r.is_success:
             raise RuntimeError(f'Household brief API returned HTTP {r.status_code}')
         return r.json()['briefs']

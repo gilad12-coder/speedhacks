@@ -677,3 +677,26 @@ def test_household_handoff_from_onboarding(monkeypatch):
         # A household whose brief isn't requested yet gets a waiting page.
         r3 = client.get("/households/hh_unknown", follow_redirects=False)
         assert r3.status_code == 202 and "Starting your search" in r3.text
+
+
+def test_platform_client_vercel_bypass(monkeypatch):
+    import httpx
+    import pytest as _pytest
+    from househunt import platform
+
+    monkeypatch.setenv("APP_URL", "https://keyhunt.example.vercel.app")
+    monkeypatch.setenv("AGENT_API_KEY", "k")
+    monkeypatch.setenv("VERCEL_PROTECTION_BYPASS", "s3cret")
+    seen = {}
+
+    def handler(request):
+        seen.update(request.headers)
+        return httpx.Response(302, headers={"location": "https://vercel.com/sso-api?url=x"})
+
+    client = platform.PlatformClient()
+    assert client.http.headers["x-vercel-protection-bypass"] == "s3cret"
+    client.http = httpx.Client(base_url=client.url, headers=client.http.headers,
+                               transport=httpx.MockTransport(handler))
+    with _pytest.raises(RuntimeError, match="VERCEL_PROTECTION_BYPASS"):
+        client.briefs()
+    assert seen["x-vercel-protection-bypass"] == "s3cret"
