@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}{{ criteria.city }} · househunt{% endblock %}
+{% block title %}{{ criteria.city }} · KeyHunt{% endblock %}
 {% block page_class %}wide{% endblock %}
 {% block head %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -179,7 +179,8 @@
       {% set notes = l.notes | reject("equalto", o.summary if o else None) | select | list %}
       {% if notes %}<div class="notes">{% for n in notes %}<div>{{ n }}</div>{% endfor %}</div>{% endif %}
       {% set can_call = l.contact and l.contact.phone and l.status.value in ("candidate", "contacted", "not_viable") and not (call and call.status in ("queued", "in_progress")) %}
-      {% if call or can_call or (l.status.value == "candidate") %}
+      {% set app = tracked.get(l.key) %}
+      {% if call or can_call or app or l.status.value != "filtered" %}
       <div class="actions">
         {% if can_call %}
           <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/call">
@@ -187,6 +188,13 @@
           </form>
         {% elif not (l.contact and l.contact.phone) and l.status.value == "candidate" %}
           <span class="muted small">No phone number in listing</span>
+        {% endif %}
+        {% if app %}
+          <a class="pill viable" href="/applications#app-{{ app.id }}">{{ icon("bookmark", 12) }}{{ stages(app.stage).label }}</a>
+        {% elif l.status.value != "filtered" %}
+          <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/track">
+            <button type="submit" class="secondary" title="Add to your applications board">{{ icon("bookmark", 14) }}Track</button>
+          </form>
         {% endif %}
         {% if call %}<span class="pill {{ call.status }}">{{ icon("phone", 12) }}{{ call.status.replace("_", " ") }}</span>{% endif %}
         {% if call and call.error %}<div class="err">{{ call.error }}</div>{% endif %}

@@ -77,3 +77,51 @@ def test_ics():
     from househunt.tours import to_ics
     ics = to_ics(1, "2026-10-15T18:00:00", "2BR, sunny", "1 Main St", "Jo", "http://x")
     assert "DTSTART:20261015T180000" in ics and "SUMMARY:Viewing: 2BR\\, sunny" in ics
+
+
+def test_pages_and_application_board():
+    from fastapi.testclient import TestClient
+
+    from househunt import db, pipeline
+    from househunt.models import SearchCriteria
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        sid = db.create_search(SearchCriteria(city="sf", max_price=3000, min_beds=1))
+        pipeline.run_search(sid)
+        for path in ["/", "/searches/new", f"/searches/{sid}", "/applications"]:
+            r = client.get(path)
+            assert r.status_code == 200, path
+            assert "KeyHunt" in r.text
+
+        key = db.list_listings(sid)[0].key
+        client.post(f"/searches/{sid}/listings/{key}/track")
+        client.post(f"/searches/{sid}/listings/{key}/track")  # tracking twice is a no-op
+        apps = db.list_applications()
+        assert len(apps) == 1 and apps[0]["stage"] == "interested"
+
+        r = client.post(f"/applications/{apps[0]['id']}", data={"stage": "applied"},
+                        headers={"x-requested-with": "fetch"})
+        assert r.json() == {"ok": True}
+        row = db.get_application(apps[0]["id"])
+        assert row["stage"] == "applied" and row["applied_at"]
+
+        client.post("/applications", data={"title": "Place from a friend", "price": "$2,900",
+                                           "stage": "viewing"})
+        assert {a["title"]: a["price"] for a in db.list_applications()}["Place from a friend"] == 2900
+        page = client.get("/applications").text
+        assert "Place from a friend" in page and "You are here" in page
+        assert f"/applications#app-{apps[0]['id']}" in client.get(f"/searches/{sid}").text
+
+
+def test_viewing_booked_lands_on_board():
+    from househunt import db, pipeline
+    from househunt.models import Listing, SearchCriteria, Source
+
+    db.init()
+    sid = db.create_search(SearchCriteria(city="sf", max_price=3000))
+    l = Listing(source=Source.ZILLOW, source_id="1", url="https://x", title="Nice 1BR", price=2500)
+    db.upsert_listing(sid, l)
+    pipeline.track_viewing(sid, l, "2026-10-15T18:00")
+    (a,) = db.list_applications()
+    assert a["stage"] == "viewing" and a["next_date"] == "2026-10-15T18:00"

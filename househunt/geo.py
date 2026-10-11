@@ -17,7 +17,7 @@ from househunt.models import Listing, SearchCriteria
 log = logging.getLogger(__name__)
 
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
-UA = "househunt/0.1 (rental search assistant)"
+UA = "KeyHunt/0.1 (rental search assistant)"
 
 # Nominatim's usage policy allows at most 1 request per second.
 _lock = threading.Lock()

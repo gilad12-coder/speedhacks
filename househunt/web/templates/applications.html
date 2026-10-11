@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Applications · KeyHunt{% endblock %}
+{% block page_class %}wide{% endblock %}
+{% block style %}
+<style>
+  /* journey */
+  .journey { display:grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 0; overflow: hidden; }
+  .jstep { padding: 16px 18px 18px; position: relative; border-right: 1px solid var(--line); }
+  .jstep:last-child { border-right: 0; }
+  .jstep .num { width: 26px; height: 26px; border-radius: 99px; display:grid; place-items:center; font-size: 12px;
+    font-weight: 600; border: 2px solid var(--line); color: var(--muted); margin-bottom: 10px; }
+  .jstep .name { font-weight: 600; font-size: 14px; }
+  .jstep .sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .jstep.done .num { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .jstep.now { background: var(--accent-soft); }
+  .jstep.now .num { border-color: var(--accent); color: var(--accent); }
+  .jstep .here { position:absolute; top: 18px; right: 16px; font-size: 11px; font-weight: 600; color: var(--accent);
+    text-transform: uppercase; letter-spacing: .05em; }
+  .jstep::after { content:""; position:absolute; left: 0; right: 0; bottom: 0; height: 3px; background: transparent; }
+  .jstep.done::after, .jstep.now::after { background: var(--accent); }
+
+  /* up next + add */
+  .row2 { display:grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; margin-top: 4px; align-items: start; }
+  .row2 .card { margin: 0; }
+  .upnext { list-style: none; margin: 0; padding: 0; }
+  .upnext li { display:flex; gap: 12px; align-items:center; padding: 9px 0; border-top: 1px solid var(--line); }
+  .upnext li:first-child { border-top: 0; }
+  .when-badge { flex: none; width: 52px; text-align:center; border-radius: 8px; background: var(--sunken); padding: 4px 0;
+    line-height: 1.15; }
+  .when-badge b { display:block; font-size: 17px; }
+  .when-badge span { font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: .04em; }
+  .upnext .what { min-width: 0; }
+  .upnext .what div:first-child { font-weight: 500; overflow:hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .add-form { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+  .add-form .full { grid-column: 1 / -1; }
+  .add-form button { justify-self: start; }
+
+  /* board */
+  .board { display:grid; grid-auto-flow: column; grid-auto-columns: minmax(176px, 1fr); gap: 10px;
+    overflow-x: auto; padding-bottom: 8px; align-items: start; }
+  .col { background: var(--sunken); border-radius: var(--radius); padding: 10px; min-height: 140px;
+    border: 1.5px dashed transparent; transition: border-color .12s, background .12s; }
+  .col.over { border-color: var(--accent); background: var(--accent-soft); }
+  .col h3 { display:flex; justify-content: space-between; align-items:center; margin: 2px 4px 10px; font-size: 13px;
+    font-weight: 600; }
+  .col h3 .n { font-size: 12px; color: var(--muted); font-weight: 500; background: var(--surface); padding: 0 8px;
+    border-radius: 99px; }
+  .col .hint { font-size: 12px; color: var(--faint); text-align:center; padding: 18px 6px; }
+  .app { margin: 0 0 8px; padding: 12px 13px; cursor: grab; scroll-margin-top: 20px; }
+  .app.dragging { opacity: .45; }
+  .app:target { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .app .t { font-weight: 500; line-height: 1.35; display:block; color: var(--fg); }
+  .app .meta { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .app .price { font-weight: 600; color: var(--fg); }
+  .app .next { display:inline-flex; align-items:center; gap: 5px; margin-top: 8px; font-size: 12px; padding: 2px 8px;
+    border-radius: 6px; background: var(--amber-soft); color: var(--amber); }
+  .app .notes { font-size: 12.5px; color: var(--muted); margin-top: 6px; white-space: pre-line;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .app details { margin-top: 8px; }
+  .app details[open] { cursor: default; }
+  .edit { display:grid; gap: 8px; margin-top: 8px; }
+  .edit label { font-size: 12px; }
+  .edit input, .edit textarea, .edit select { padding: 6px 8px; font-size: 13px; }
+  .edit .btns { display:flex; justify-content: space-between; gap: 8px; }
+  .edit .btns button { padding: 5px 11px; font-size: 12.5px; }
+  button.danger { background: transparent; color: var(--warn); border-color: var(--line); }
+  .closed { margin-top: 18px; }
+  .closed summary { font-size: 13.5px; font-weight: 500; }
+  .closed .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; margin-top: 10px; }
+  .closed .app { opacity: .7; }
+
+  @media (max-width: 1000px) {
+    .row2 { grid-template-columns: minmax(0, 1fr); }
+    .journey { grid-template-columns: minmax(0, 1fr); }
+    .jstep { border-right: 0; border-bottom: 1px solid var(--line); display:grid; grid-template-columns: 36px 1fr;
+      padding: 12px 16px; }
+    .jstep .num { margin: 0; grid-row: span 2; }
+    .jstep .here { top: 14px; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+{% set n = namespace(viewed=0, applied=0, approved=0) %}
+{% for a in apps %}
+  {% if a.stage in ("viewed", "applied", "approved", "lease_signed", "rejected") %}{% set n.viewed = n.viewed + 1 %}{% endif %}
+  {% if a.stage in ("applied", "approved", "lease_signed", "rejected") and a.applied_at %}{% set n.applied = n.applied + 1 %}{% endif %}
+  {% if a.stage in ("approved", "lease_signed") %}{% set n.approved = n.approved + 1 %}{% endif %}
+{% endfor %}
+{% set subs = [
+  "%d search%s · %d listings" % (counts.searches, "" if counts.searches == 1 else "es", counts.listings),
+  "%d called · %d viable" % (counts.calls, counts.viable),
+  "%d booked · %d viewed" % ([counts.tours, board[stages.VIEWING] | length] | max, n.viewed),
+  "%d applied · %d approved" % (n.applied, n.approved),
+  "Keys in hand" if board[stages.LEASE_SIGNED] else "Not yet",
+] %}
+
+<div class="page-head">
+  <div>
+    <h1>Applications</h1>
+    <p class="muted">Where you are in the hunt, and every place you're pursuing. Drag cards between columns as things move.</p>
+  </div>
+</div>
+
+<div class="card journey" aria-label="Search progress">
+  {% for key, name in journey %}
+    {% set i = loop.index0 %}
+    <div class="jstep {{ 'done' if i < step else ('now' if i == step else '') }}">
+      <div class="num">{{ "✓" if i < step else loop.index }}</div>
+      <div class="name">{{ name }}</div>
+      <div class="sub">{{ subs[i] }}</div>
+      {% if i == step %}<span class="here">You are here</span>{% endif %}
+    </div>
+  {% endfor %}
+</div>
+
+<div class="row2">
+  <div class="card">
+    <h3>Up next</h3>
+    {% if upcoming %}
+      <ul class="upnext">
+        {% for a in upcoming %}
+        <li>
+          <div class="when-badge"><b>{{ a.next_date | when("%-d") }}</b><span>{{ a.next_date | when("%b") }}</span></div>
+          <div class="what">
+            <div><a href="#app-{{ a.id }}" style="color:inherit">{{ a.title }}</a></div>
+            <div class="small muted">{{ a.next_step or stages(a.stage).label }} · {{ a.next_date | when }}</div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted small">Nothing scheduled. Booked viewings and next steps with a date show up here.</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <details {% if not apps %}open{% endif %}>
+      <summary style="font-size:15px; font-weight:600; color: var(--fg)">{{ icon("plus", 15) }} Add a place you found elsewhere</summary>
+      <form class="add-form" method="post" action="/applications">
+        <label class="full">Name or headline <input name="title" required placeholder="2BR on Valencia St"></label>
+        <label>Rent ($/mo) <input name="price" inputmode="numeric" placeholder="3,200"></label>
+        <label>Stage
+          <select name="stage">{% for s in stages %}{% if not s.closed %}<option value="{{ s.value }}">{{ s.label }}</option>{% endif %}{% endfor %}</select></label>
+        <label class="full">Address <input name="address" placeholder="Optional"></label>
+        <label class="full">Listing link <input name="url" type="url" placeholder="https://"></label>
+        <label class="full">Notes <textarea name="notes" rows="2" placeholder="Application fee, landlord contact, anything to remember"></textarea></label>
+        <button type="submit">Add to board</button>
+      </form>
+    </details>
+    <p class="muted small" style="margin-bottom:0">Or press <strong>Track</strong> on any listing in a search.</p>
+  </div>
+</div>
+
+{% macro app_card(a) %}
+<article class="card app" id="app-{{ a.id }}" draggable="true" data-id="{{ a.id }}">
+  {% if a.url %}<a class="t" href="{{ a.url }}" target="_blank" rel="noopener">{{ a.title }}</a>{% else %}<span class="t">{{ a.title }}</span>{% endif %}
+  <div class="meta">
+    {% if a.price %}<span class="price">${{ "{:,}".format(a.price) }}</span>{% endif %}
+    {% if a.address %}{% if a.price %} · {% endif %}{{ a.address }}{% endif %}
+  </div>
+  {% if a.search_id %}<div class="meta"><a href="/searches/{{ a.search_id }}">From search #{{ a.search_id }}</a>{% if a.applied_at %} · applied {{ a.applied_at | when("%b %-d") }}{% endif %}</div>
+  {% elif a.applied_at %}<div class="meta">Applied {{ a.applied_at | when("%b %-d") }}</div>{% endif %}
+  {% if a.next_step or a.next_date %}<div class="next">{{ icon("calendar", 12) }}{{ a.next_step or "Next" }}{% if a.next_date %} · {{ a.next_date | when }}{% endif %}</div>{% endif %}
+  {% if a.notes %}<div class="notes">{{ a.notes }}</div>{% endif %}
+  <details>
+    <summary>Edit</summary>
+    <form class="edit" method="post" action="/applications/{{ a.id }}">
+      <label>Stage <select name="stage">{% for s in stages %}<option value="{{ s.value }}" {{ "selected" if s.value == a.stage }}>{{ s.label }}</option>{% endfor %}</select></label>
+      <label>Next step <input name="next_step" value="{{ a.next_step or '' }}" placeholder="Send pay stubs"></label>
+      <label>Date <input name="next_date" type="datetime-local" value="{{ (a.next_date ~ ('' if 'T' in (a.next_date or '') else 'T09:00'))[:16] if a.next_date else '' }}"></label>
+      <label>Rent ($/mo) <input name="price" inputmode="numeric" value="{{ a.price or '' }}"></label>
+      <label>Notes <textarea name="notes" rows="3">{{ a.notes or '' }}</textarea></label>
+      <div class="btns">
+        <button type="submit">Save</button>
+        <button type="submit" class="danger" formaction="/applications/{{ a.id }}/delete"
+                onclick="return confirm('Remove this from your board?')">{{ icon("trash", 13) }}Remove</button>
+      </div>
+    </form>
+  </details>
+</article>
+{% endmacro %}
+
+<h2>Board</h2>
+{% if apps %}
+<div class="board">
+  {% for s in stages if not s.closed %}
+  <section class="col" data-stage="{{ s.value }}">
+    <h3><span>{{ s.label }}</span><span class="n">{{ board[s] | length }}</span></h3>
+    {% for a in board[s] %}{{ app_card(a) }}{% else %}<div class="hint">Drop a card here</div>{% endfor %}
+  </section>
+  {% endfor %}
+</div>
+{% set closed = board[stages.REJECTED] + board[stages.WITHDRAWN] %}
+<details class="closed">
+  <summary>Rejected or withdrawn ({{ closed | length }})</summary>
+  <div class="grid">
+    {% for s in stages if s.closed %}
+    <section class="col" data-stage="{{ s.value }}" style="min-height:90px">
+      <h3><span>{{ s.label }}</span><span class="n">{{ board[s] | length }}</span></h3>
+      {% for a in board[s] %}{{ app_card(a) }}{% else %}<div class="hint">Drop a card here</div>{% endfor %}
+    </section>
+    {% endfor %}
+  </div>
+</details>
+{% else %}
+<div class="card empty">
+  {{ icon("clipboard", 36) }}
+  <p>Nothing on your board yet. Booked viewings land here automatically; press <strong>Track</strong> on a listing
+    to add it yourself, or add a place you found elsewhere above.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Drag a card to another column to change its stage.
+  let dragged = null;
+  document.querySelectorAll(".app").forEach(card => {
+    card.addEventListener("dragstart", e => {
+      if (e.target.closest("details[open]")) return e.preventDefault();
+      dragged = card; card.classList.add("dragging"); e.dataTransfer.effectAllowed = "move";
+    });
+    card.addEventListener("dragend", () => { card.classList.remove("dragging"); dragged = null; });
+  });
+  document.querySelectorAll(".col").forEach(col => {
+    col.addEventListener("dragover", e => { if (dragged) { e.preventDefault(); col.classList.add("over"); } });
+    col.addEventListener("dragleave", () => col.classList.remove("over"));
+    col.addEventListener("drop", async e => {
+      e.preventDefault(); col.classList.remove("over");
+      if (!dragged || dragged.closest(".col") === col) return;
+      const body = new FormData(); body.append("stage", col.dataset.stage);
+      const res = await fetch(`/applications/${dragged.dataset.id}`,
+                              { method: "POST", body, headers: { "x-requested-with": "fetch" } });
+      if (res.ok) location.reload(); else alert("Couldn't move that card, try again.");
+    });
+  });
+</script>
+{% endblock %}

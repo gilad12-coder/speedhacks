@@ -81,6 +81,27 @@ class Listing:
         return cls(**d)
 
 
+class AppStage(str, Enum):
+    """Where an application stands, from first interest to a signed lease."""
+    INTERESTED = "interested"
+    VIEWING = "viewing"            # viewing booked
+    VIEWED = "viewed"
+    APPLIED = "applied"
+    APPROVED = "approved"
+    LEASE_SIGNED = "lease_signed"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+
+    @property
+    def label(self) -> str:
+        return {"viewing": "Viewing booked", "lease_signed": "Lease signed"}.get(
+            self.value, self.value.capitalize())
+
+    @property
+    def closed(self) -> bool:
+        return self in (AppStage.REJECTED, AppStage.WITHDRAWN)
+
+
 class CallStatus(str, Enum):
     QUEUED = "queued"
     IN_PROGRESS = "in_progress"

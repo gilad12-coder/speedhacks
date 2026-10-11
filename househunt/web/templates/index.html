@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Searches · househunt{% endblock %}
+{% block title %}Searches · KeyHunt{% endblock %}
 {% block style %}
 <style>
   .grid-cards { display:grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
@@ -51,7 +51,7 @@
 {% else %}
 <div class="card empty">
   {{ icon("home", 36) }}
-  <p>No searches yet. Tell househunt what you're looking for and it takes it from there.</p>
+  <p>No searches yet. Tell KeyHunt what you're looking for and it takes it from there.</p>
   <a class="btn" href="/searches/new">{{ icon("plus", 16) }}Start your first search</a>
 </div>
 {% endif %}

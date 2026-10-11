@@ -49,6 +49,23 @@ CREATE TABLE IF NOT EXISTS tours (
     contact_phone TEXT,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS applications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    search_id INTEGER,                        -- NULL for places found outside KeyHunt
+    listing_key TEXT,
+    title TEXT NOT NULL,
+    url TEXT,
+    address TEXT,
+    price INTEGER,
+    stage TEXT NOT NULL DEFAULT 'interested',
+    next_step TEXT,
+    next_date TEXT,
+    notes TEXT,
+    applied_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (search_id, listing_key)
+);
 CREATE TABLE IF NOT EXISTS geocache (
     query TEXT PRIMARY KEY,
     lat REAL,                                 -- NULL = looked up, no match
@@ -198,6 +215,73 @@ def tours_for_search(search_id: int) -> dict[str, sqlite3.Row]:
     with conn() as c:
         rows = c.execute("SELECT * FROM tours WHERE search_id = ?", (search_id,)).fetchall()
     return {r["listing_key"]: r for r in rows}
+
+
+# --- applications -----------------------------------------------------------
+
+APP_FIELDS = ("search_id", "listing_key", "title", "url", "address", "price", "stage",
+              "next_step", "next_date", "notes", "applied_at")
+
+
+def create_application(**fields) -> int | None:
+    """Insert a tracked place. Returns None if that listing is already tracked."""
+    fields = {k: v for k, v in fields.items() if k in APP_FIELDS}
+    fields.setdefault("stage", "interested")
+    fields["created_at"] = fields["updated_at"] = now()
+    cols = ", ".join(fields)
+    with conn() as c:
+        cur = c.execute(f"INSERT OR IGNORE INTO applications ({cols}) VALUES "
+                        f"({', '.join('?' * len(fields))})", tuple(fields.values()))
+        return cur.lastrowid if cur.rowcount else None
+
+
+def get_application(app_id: int) -> sqlite3.Row | None:
+    with conn() as c:
+        return c.execute("SELECT * FROM applications WHERE id = ?", (app_id,)).fetchone()
+
+
+def find_application(search_id: int, listing_key: str) -> sqlite3.Row | None:
+    with conn() as c:
+        return c.execute("SELECT * FROM applications WHERE search_id = ? AND listing_key = ?",
+                         (search_id, listing_key)).fetchone()
+
+
+def list_applications() -> list[sqlite3.Row]:
+    with conn() as c:
+        return c.execute("SELECT * FROM applications ORDER BY updated_at DESC").fetchall()
+
+
+def applications_for_search(search_id: int) -> dict[str, sqlite3.Row]:
+    with conn() as c:
+        rows = c.execute("SELECT * FROM applications WHERE search_id = ?", (search_id,)).fetchall()
+    return {r["listing_key"]: r for r in rows}
+
+
+def update_application(app_id: int, **fields) -> None:
+    fields = {k: v for k, v in fields.items() if k in APP_FIELDS}
+    fields["updated_at"] = now()
+    cols = ", ".join(f"{k} = ?" for k in fields)
+    with conn() as c:
+        c.execute(f"UPDATE applications SET {cols} WHERE id = ?", (*fields.values(), app_id))
+
+
+def delete_application(app_id: int) -> None:
+    with conn() as c:
+        c.execute("DELETE FROM applications WHERE id = ?", (app_id,))
+
+
+def journey_counts() -> dict[str, int]:
+    """Totals across every search, for the 'where am I' overview."""
+    with conn() as c:
+        one = lambda sql: c.execute(sql).fetchone()[0]
+        return {
+            "searches": one("SELECT COUNT(*) FROM searches"),
+            "listings": one("SELECT COUNT(*) FROM listings"),
+            "matches": one("SELECT COUNT(*) FROM listings WHERE status NOT IN ('filtered', 'new')"),
+            "calls": one("SELECT COUNT(DISTINCT search_id || listing_key) FROM calls"),
+            "viable": one("SELECT COUNT(*) FROM listings WHERE status IN ('viable', 'tour_scheduled')"),
+            "tours": one("SELECT COUNT(*) FROM tours"),
+        }
 
 
 # --- geocode cache ----------------------------------------------------------

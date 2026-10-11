@@ -6,6 +6,7 @@ import json
 import logging
 import secrets
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
@@ -15,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 
 from househunt import db, geo, pipeline
 from househunt.config import settings
-from househunt.models import ListingStatus, SearchCriteria
+from househunt.models import AppStage, ListingStatus, SearchCriteria
 from househunt.tours import to_ics
 
 logging.basicConfig(level=logging.INFO)
@@ -39,11 +40,11 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="househunt", lifespan=lifespan, dependencies=[Depends(require_auth)])
+app = FastAPI(title="KeyHunt", lifespan=lifespan, dependencies=[Depends(require_auth)])
 
 # Sidebar tabs: (path, label, icon). A tab shows up once its route exists.
 NAV = [("/", "Searches", "list"), ("/searches/new", "New search", "plus"),
-       ("/connections", "Connections", "plug")]
+       ("/applications", "Applications", "clipboard"), ("/connections", "Connections", "plug")]
 
 
 def nav_items() -> list[tuple[str, str, str]]:
@@ -56,6 +57,21 @@ def recent_searches() -> list[tuple[int, str, str]]:
             for r in db.list_searches()[:6]]
 
 
+def when(value: str | None, fmt: str | None = None) -> str:
+    """Friendly date for ISO strings: 'Thu Oct 15, 6:00 PM', or just 'Thu Oct 15'."""
+    if not value:
+        return ""
+    try:
+        d = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    if fmt:
+        return d.strftime(fmt)
+    timed = "T" in value and (d.hour or d.minute)
+    return d.strftime("%a %b %-d, %-I:%M %p" if timed else "%a %b %-d")
+
+
+templates.env.filters["when"] = when
 templates.env.globals.update(nav_items=nav_items, recent_searches=recent_searches,
                              settings=settings)
 
@@ -118,6 +134,7 @@ def show_search(request: Request, search_id: int):
     calls = db.calls_for_search(search_id)
     outcomes = {k: json.loads(c["outcome"]) for k, c in calls.items() if c["outcome"]}
     tours = db.tours_for_search(search_id)
+    tracked = db.applications_for_search(search_id)
     in_flight = row["status"] in ("pending", "sourcing", "calling") or any(
         c["status"] in ("queued", "in_progress") for c in calls.values())
     order = [ListingStatus.TOUR_SCHEDULED, ListingStatus.VIABLE, ListingStatus.CONTACTED,
@@ -133,6 +150,7 @@ def show_search(request: Request, search_id: int):
         "search": row, "criteria": criteria, "listings": listings, "calls": calls,
         "outcomes": outcomes, "tours": tours, "refresh": in_flight, "settings": settings,
         "pins": pins, "center": geo.cached(criteria.city), "counts": counts,
+        "tracked": tracked, "stages": AppStage,
     })
 
 
@@ -143,6 +161,99 @@ def call_listing(background: BackgroundTasks, search_id: int, key: str):
         raise HTTPException(409, "call already in progress")
     background.add_task(pipeline.call_listing, search_id, key)
     return RedirectResponse(f"/searches/{search_id}", status_code=303)
+
+
+@app.post("/searches/{search_id}/listings/{key}/track")
+def track_listing(search_id: int, key: str):
+    listing = db.get_listing(search_id, key)
+    if not listing:
+        raise HTTPException(404)
+    tour = db.tours_for_search(search_id).get(key)
+    db.create_application(
+        search_id=search_id, listing_key=key, title=listing.title, url=listing.url,
+        address=listing.address, price=listing.price,
+        stage=AppStage.VIEWING.value if tour else AppStage.INTERESTED.value,
+        next_step="Viewing" if tour else None, next_date=tour["start"] if tour else None,
+    )
+    return RedirectResponse(f"/searches/{search_id}", status_code=303)
+
+
+# --- applications -----------------------------------------------------------
+
+# The journey through a search, furthest step reached wins.
+JOURNEY = [("search", "Search"), ("calls", "Calls"), ("viewings", "Viewings"),
+           ("apply", "Applications"), ("lease", "Lease signed")]
+
+
+def _journey_step(counts: dict[str, int], stages: list[AppStage]) -> int:
+    if AppStage.LEASE_SIGNED in stages:
+        return 5  # all done
+    if any(s in (AppStage.APPLIED, AppStage.APPROVED) for s in stages):
+        return 3
+    if counts["tours"] or any(s in (AppStage.VIEWING, AppStage.VIEWED) for s in stages):
+        return 2
+    if counts["calls"]:
+        return 1
+    return 0
+
+
+@app.get("/applications", response_class=HTMLResponse)
+def applications(request: Request):
+    apps = db.list_applications()
+    stages = [AppStage(a["stage"]) for a in apps]
+    counts = db.journey_counts()
+    board = {s: [a for a in apps if a["stage"] == s.value] for s in AppStage}
+    upcoming = sorted((a for a in apps if a["next_date"] and not AppStage(a["stage"]).closed),
+                      key=lambda a: a["next_date"])
+    return templates.TemplateResponse(request, "applications.html", {
+        "settings": settings, "apps": apps, "board": board, "stages": AppStage,
+        "counts": counts, "journey": JOURNEY, "step": _journey_step(counts, stages),
+        "upcoming": upcoming[:5],
+    })
+
+
+def _price(v: str) -> int | None:
+    digits = "".join(ch for ch in v if ch.isdigit())
+    return int(digits) if digits else None
+
+
+@app.post("/applications")
+def add_application(title: str = Form(...), url: str = Form(""), address: str = Form(""),
+                    price: str = Form(""), stage: AppStage = Form(AppStage.INTERESTED),
+                    notes: str = Form("")):
+    db.create_application(title=title, url=url or None, address=address or None,
+                          price=_price(price), stage=stage.value, notes=notes or None,
+                          applied_at=db.now() if stage == AppStage.APPLIED else None)
+    return RedirectResponse("/applications", status_code=303)
+
+
+@app.post("/applications/{app_id}")
+def edit_application(request: Request, app_id: int, stage: AppStage | None = Form(None),
+                     next_step: str | None = Form(None), next_date: str | None = Form(None),
+                     notes: str | None = Form(None), price: str | None = Form(None)):
+    row = db.get_application(app_id)
+    if not row:
+        raise HTTPException(404)
+    fields = {}
+    if stage:
+        fields["stage"] = stage.value
+        if stage == AppStage.APPLIED and not row["applied_at"]:
+            fields["applied_at"] = db.now()
+    for k, v in (("next_step", next_step), ("next_date", next_date), ("notes", notes)):
+        if v is not None:
+            fields[k] = v.strip() or None
+    if price is not None:
+        fields["price"] = _price(price)
+    db.update_application(app_id, **fields)
+    if request.headers.get("x-requested-with") == "fetch":
+        return {"ok": True}
+    return RedirectResponse(f"/applications#app-{app_id}", status_code=303)
+
+
+@app.post("/applications/{app_id}/delete")
+def remove_application(app_id: int):
+    db.delete_application(app_id)
+    return RedirectResponse("/applications", status_code=303)
 
 
 @app.get("/tours/{tour_id}.ics")

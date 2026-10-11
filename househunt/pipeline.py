@@ -11,7 +11,7 @@ import httpx
 from househunt import db, geo
 from househunt.collect import collect
 from househunt.config import CallMode, settings
-from househunt.models import Listing, ListingStatus, SearchCriteria
+from househunt.models import AppStage, Listing, ListingStatus, SearchCriteria
 from househunt.outreach.dial import DialClient, FakeDialClient
 from househunt.outreach.extract import CallSummary, extract
 from househunt.outreach.script import build_instruction
@@ -112,9 +112,23 @@ def apply_outcome(search_id: int, listing: Listing, s: CallSummary) -> None:
                            listing.contact.name if listing.contact else None,
                            listing.contact.phone if listing.contact else None)
             listing.status = ListingStatus.TOUR_SCHEDULED
+            track_viewing(search_id, listing, s.tour_start)
         except ValueError:
             listing.notes.append(f"tour time unparseable: {s.tour_start}")
     db.upsert_listing(search_id, listing)
+
+
+def track_viewing(search_id: int, listing: Listing, start: str) -> None:
+    """A booked viewing goes straight onto the applications board."""
+    existing = db.find_application(search_id, listing.key)
+    if existing:
+        if existing["stage"] == AppStage.INTERESTED.value:
+            db.update_application(existing["id"], stage=AppStage.VIEWING.value,
+                                  next_step="Viewing", next_date=start)
+        return
+    db.create_application(search_id=search_id, listing_key=listing.key, title=listing.title,
+                          url=listing.url, address=listing.address, price=listing.price,
+                          stage=AppStage.VIEWING.value, next_step="Viewing", next_date=start)
 
 
 def notify_summary(search_id: int) -> None:
@@ -126,7 +140,7 @@ def notify_summary(search_id: int) -> None:
     good = [l for l in listings if l.status in (ListingStatus.VIABLE, ListingStatus.TOUR_SCHEDULED)]
     if not good:
         return
-    lines = [f"househunt: {len(good)} viable listing(s)"]
+    lines = [f"KeyHunt: {len(good)} viable listing(s)"]
     for l in good[:5]:
         tour = tours.get(l.key)
         when = f" - viewing {tour['start']}" if tour else ""
