@@ -36,6 +36,10 @@ class Settings:
     call_max_seconds: int
     call_timezone: str
     max_calls_per_number_per_day: int
+    web_research: bool
+    search_model: str
+    search_max_listings: int
+    screen_top_n: int
 
 
 def load() -> Settings:
@@ -62,6 +66,10 @@ def load() -> Settings:
         call_max_seconds=max(60, min(300, int(env("CALL_DURATION_SECONDS", "180")))),
         call_timezone=env("CALLER_TIMEZONE", "America/Los_Angeles"),
         max_calls_per_number_per_day=max(1, min(5, int(env("MAX_CALLS_PER_NUMBER_PER_DAY", "1")))),
+        web_research=env("WEB_RESEARCH", "1") == "1",
+        search_model=env("SEARCH_MODEL", "gpt-4.1"),
+        search_max_listings=max(1, min(15, int(env("SEARCH_MAX_LISTINGS", "10")))),
+        screen_top_n=max(1, min(10, int(env("SCREEN_TOP_N", "5")))),
     )
 
 

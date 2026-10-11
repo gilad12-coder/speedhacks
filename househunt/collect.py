@@ -31,23 +31,37 @@ def normalize(listing: Listing) -> Listing:
 
 
 def dedupe(listings: list[Listing]) -> list[Listing]:
-    """Drop cross-posted duplicates, keyed on address, else phone+price, else source id."""
+    """Keep distinct units; a shared leasing-office phone never identifies a property."""
     seen: dict[str, Listing] = {}
     for l in listings:
         if l.address:
-            k = re.sub(r"\W+", " ", l.address.lower()).strip()
-        elif l.contact and l.contact.phone:
-            k = f"{l.contact.phone}:{l.price}"
+            address = re.sub(r"\b(apartment|apt|unit|suite)\b|#", " unit ", l.address.lower())
+            address = re.sub(r"\W+", " ", address).strip()
+            # Building-only addresses often contain multiple available floorplans.
+            k = address if " unit " in f" {address} " else f"{address}:{l.beds}:{l.price}"
         else:
             k = l.key
         if k in seen:
             seen[k].notes.append(f"also listed at {l.url}")
+            original = seen[k]
+            original.provenance = list(dict.fromkeys([original.url, *original.provenance, l.url, *l.provenance]))
+            if not original.research and l.research:
+                original.research = l.research
+            if original.price != l.price and l.price is not None:
+                original.notes.append(f"Cross-post rent differs: ${l.price} at {l.url}; verify the unit and date")
         else:
             seen[k] = l
     return list(seen.values())
 
 
 def passes_filters(l: Listing, c: SearchCriteria) -> tuple[bool, str | None]:
+    if l.research.get("availability") == "unavailable":
+        return False, "Public page explicitly says this rental is unavailable"
+    if l.research.get("in_requested_city") is False:
+        return False, "Outside the requested city"
+    for match in l.research.get("requirements", []):
+        if match.get("matched") is False and match.get("quote"):
+            return False, f"Does not meet {match['requirement']}: {match['quote']}"
     if l.price is not None and not (c.min_price <= l.price <= c.max_price):
         return False, f"price ${l.price} outside ${c.min_price}-${c.max_price}"
     if l.beds is not None and l.beds < c.min_beds:
@@ -61,16 +75,20 @@ def passes_filters(l: Listing, c: SearchCriteria) -> tuple[bool, str | None]:
 
 
 def score(l: Listing, c: SearchCriteria) -> float:
-    """Rough 0-1 heuristic. TODO: replace with a Claude ranker over the description + commutes."""
+    """Rank evidence coverage and fit, without rewarding implausibly cheap rents."""
     s = 0.0
-    if l.price:
-        s += 0.4 * max(0.0, 1 - l.price / c.max_price) + 0.2
-    text = f"{l.title} {l.description}".lower()
+    if l.price is not None and c.min_price <= l.price <= c.max_price:
+        s += 0.25
+    s += 0.15 if l.beds is not None and l.beds >= c.min_beds else 0
+    s += 0.1 if l.baths is not None and l.baths >= c.min_baths else 0
+    s += 0.1 if l.address else 0
     if c.must_haves:
-        hits = sum(1 for m in c.must_haves if m.lower() in text)
-        s += 0.3 * hits / len(c.must_haves)
+        hits = sum(m.get("matched") is True for m in l.research.get("requirements", []))
+        s += 0.3 * min(1, hits / len(c.must_haves))
     if l.contact and l.contact.phone:
         s += 0.1  # callable listings are more actionable
+    if l.screening.get("status") == "concerns_found":
+        s = max(0, s - 0.4)
     return round(min(s, 1.0), 3)
 
 

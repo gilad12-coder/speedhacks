@@ -13,6 +13,12 @@ from househunt.config import settings
 from househunt.models import Listing, SearchCriteria
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS search_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    search_id INTEGER NOT NULL,
+    message TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS searches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     criteria TEXT NOT NULL,
@@ -172,6 +178,17 @@ def listing_counts() -> dict[int, dict[str, int]]:
 def set_search_status(search_id: int, status: str, error: str | None = None) -> None:
     with conn() as c:
         c.execute("UPDATE searches SET status = ?, error = ? WHERE id = ?", (status, error, search_id))
+
+
+def search_event(search_id: int, message: str) -> None:
+    with conn() as c:
+        c.execute("INSERT INTO search_events(search_id, message, created_at) VALUES (?, ?, ?)",
+                  (search_id, message[:500], now()))
+
+
+def search_events(search_id: int) -> list:
+    with conn() as c:
+        return c.execute("SELECT * FROM search_events WHERE search_id = ? ORDER BY id DESC LIMIT 30", (search_id,)).fetchall()[::-1]
 
 
 # --- listings ---------------------------------------------------------------

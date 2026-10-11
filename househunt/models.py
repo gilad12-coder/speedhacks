@@ -39,6 +39,7 @@ class SearchCriteria:
     move_in_by: str | None = None                          # ISO date
     tour_availability: list[str] = field(default_factory=list)  # e.g. "weekdays after 6pm"
     occupants: int | None = None
+    renter_name: str = ""
 
 
 @dataclass
@@ -69,6 +70,9 @@ class Listing:
     score: float = 0.0
     notes: list[str] = field(default_factory=list)
     scraped_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    provenance: list[str] = field(default_factory=list)
+    research: dict = field(default_factory=dict)
+    screening: dict = field(default_factory=dict)
 
     @property
     def key(self) -> str:

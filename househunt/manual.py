@@ -70,6 +70,7 @@ def set_contact(listing: Listing, phone: str = "", email: str = "", name: str = 
     c.email = email_n or c.email
     c.name = name.strip() or c.name
     listing.contact = c
+    listing.screening = {}  # Contact changes invalidate the previous identity check.
     return listing
 
 

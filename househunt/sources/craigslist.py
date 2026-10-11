@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 from bs4 import BeautifulSoup
@@ -14,6 +15,7 @@ UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, li
 # Craigslist subdomains for cities whose name doesn't map directly.
 SITE_ALIASES = {
     "san francisco": "sfbay",
+    "sf": "sfbay",
     "bay area": "sfbay",
     "oakland": "sfbay",
     "new york": "newyork",
@@ -38,7 +40,7 @@ class CraigslistSource(ListingSource):
     """
 
     name = "craigslist"
-    max_postings = 40
+    max_postings = 12
 
     def fetch(self, criteria: SearchCriteria) -> list[Listing]:
         params = {"max_price": criteria.max_price}
@@ -46,9 +48,12 @@ class CraigslistSource(ListingSource):
             params["min_price"] = criteria.min_price
         if criteria.min_beds:
             params["min_bedrooms"] = criteria.min_beds
-        url = f"https://{site_for(criteria.city)}.craigslist.org/search/apa"
+        area = "sfc/" if criteria.city.lower().strip() in ("san francisco", "sf") else ""
+        url = f"https://{site_for(criteria.city)}.craigslist.org/search/{area}apa"
         with httpx.Client(headers={"User-Agent": UA}, follow_redirects=True, timeout=20) as http:
-            soup = BeautifulSoup(http.get(url, params=params).text, "html.parser")
+            response = http.get(url, params=params)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
             ld = soup.find("script", id="ld_searchpage_results")
             ld_items = json.loads(ld.string)["itemListElement"] if ld else []
             results = soup.select("li.cl-static-search-result")
@@ -73,13 +78,16 @@ class CraigslistSource(ListingSource):
                     neighborhood=(li.select_one(".location").get_text(strip=True)
                                   if li.select_one(".location") else None),
                 )
-                self._enrich(http, listing)
                 listings.append(listing)
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                list(pool.map(lambda listing: self._enrich(http, listing), listings))
         return listings
 
     def _enrich(self, http: httpx.Client, listing: Listing) -> None:
         try:
-            post = BeautifulSoup(http.get(listing.url).text, "html.parser")
+            response = http.get(listing.url)
+            response.raise_for_status()
+            post = BeautifulSoup(response.text, "html.parser")
         except httpx.HTTPError:
             return
         body = post.find("section", id="postingbody")
@@ -93,6 +101,10 @@ class CraigslistSource(ListingSource):
         sqft = re.search(r"(\d{3,5})\s*ft2", post.get_text(" "))
         if sqft:
             listing.sqft = int(sqft.group(1))
+        # Ephemeral source text: the research stage extracts quoted facts before storage.
+        for junk in post.select('script, style, nav, footer, header, .avoid-scams'):
+            junk.decompose()
+        listing.research = {"page_text": re.sub(r"\s+", " ", post.get_text(" ", strip=True))[:50000]}
 
     def mock_results(self, criteria: SearchCriteria) -> list[Listing]:
         return [

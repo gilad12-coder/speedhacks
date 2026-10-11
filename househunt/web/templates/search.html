@@ -114,8 +114,8 @@
 </style>
 {% endblock %}
 {% block content %}
-{% set step_names = ["Find listings", "Call contacts", "Results"] %}
-{% set step_of = {"pending": 0, "sourcing": 0, "calling": 1, "done": 3, "error": -1} %}
+{% set step_names = ["Find listings", "Cross-check", "Call contacts", "Results"] %}
+{% set step_of = {"pending": 0, "sourcing": 0, "screening": 1, "calling": 2, "done": 4, "error": -1} %}
 {% set cur = step_of.get(search.status, 0) %}
 {% set good = counts.viable + counts.tour_scheduled %}
 {% set called = calls | length %}
@@ -149,10 +149,14 @@
 </div>
 
 {% if search.error %}<div class="flash error small">{{ search.error }}</div>{% endif %}
+{% if research_events %}<details class="card" data-id="research-progress" {% if refresh %}open{% endif %} style="padding:12px 16px;margin-bottom:14px">
+  <summary>Search activity · {{ research_events[-1].message }}</summary>
+  {% for event in research_events %}<div class="small muted">{{ event.created_at[11:19] }} · {{ event.message }}</div>{% endfor %}
+</details>{% endif %}
 
 <div class="stats">
   <div class="stat"><b>{{ listings | length }}</b><span>found</span></div>
-  <div class="stat"><b>{{ active | length }}</b><span>match</span></div>
+  <div class="stat"><b>{{ active | length }}</b><span>candidates</span></div>
   <div class="stat"><b>{{ called }}</b><span>called</span></div>
   <div class="stat good"><b>{{ good }}</b><span>viable</span></div>
   <div class="stat good"><b>{{ counts.tour_scheduled }}</b><span>viewings</span></div>
@@ -203,6 +207,26 @@
         <div class="contact small muted">{{ icon("phone", 12) }}
           {{ [l.contact.name, l.contact.phone, l.contact.email] | select | join(" · ") }}</div>
       {% endif %}
+      {% if l.research %}
+      <details style="margin-top:10px" data-id="sources-{{ l.key }}"><summary class="small">Listing evidence · checked {{ l.research.checked_at[:16] if l.research.checked_at else '' }}</summary>
+        {% for fact in l.research.evidence or [] %}<p class="small"><b>{{ fact.field | capitalize }}</b> · “{{ fact.quote }}” <a href="{{ fact.url }}" target="_blank" rel="noopener noreferrer">Source ↗</a></p>{% endfor %}
+        {% for match in l.research.requirements or [] %}<p class="small"><b>{{ match.requirement }}</b>: {{ 'Advertised' if match.matched == true else ('Does not match' if match.matched == false else 'Unknown — ask on call') }}{% if match.quote %} · “{{ match.quote }}”{% endif %}</p>{% endfor %}
+        <p class="small muted">{{ l.research.limitations }}</p>
+      </details>
+      {% endif %}
+      {% set risk = l.screening %}
+      <div class="outcome {{ 'bad' if risk.get('status') == 'concerns_found' else '' }}" style="margin-top:10px">
+        <strong>Rental screening · {{ {'cross_referenced': 'Address and contact cross-referenced', 'concerns_found': 'Concerns to review', 'unconfirmed': 'Unconfirmed', 'checking': 'Checking sources…', 'error': 'Check incomplete'}.get(risk.get('status'), 'Not checked') }}</strong>
+        {% if risk.get('findings') %}<details data-id="risk-{{ l.key }}" {% if risk.status == 'concerns_found' %}open{% endif %}><summary>Evidence and concerns</summary>
+          {% for finding in risk.findings %}<p class="small"><b>{{ finding.kind.replace('_', ' ') | capitalize }}</b> · {{ finding.explanation }}
+            {% if finding.quote %}<br>“{{ finding.quote }}”{% endif %} <a href="{{ finding.url }}" target="_blank" rel="noopener noreferrer">Source ↗</a></p>{% endfor %}
+        </details>{% endif %}
+        {% if risk.get('market') %}<p class="small">Comparable rents: {{ risk.market.sample_size }} units{% if risk.market.median_rent %} · median ${{ '{:,.0f}'.format(risk.market.median_rent) }}/mo{% endif %}. {{ risk.market.note }}</p>
+          {% if risk.market.comparables %}<details><summary class="small">Comparable sources</summary>{% for comp in risk.market.comparables %}<p class="small"><a href="{{ comp.url }}" target="_blank" rel="noopener noreferrer">{{ comp.address }}</a> · ${{ comp.price }}/mo · {{ comp.beds }} bd<br>“{{ comp.price_quote }}”</p>{% endfor %}</details>{% endif %}
+        {% endif %}
+        <p class="small muted">{{ risk.get('limitations', 'Public-source screening has not run. A phone answer alone does not verify ownership.') }}</p>
+        {% if not settings.mock_sources and risk.get('status') != 'checking' %}<form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/screen"><button class="secondary" type="submit">{{ 'Recheck sources' if risk else 'Check sources' }}</button></form>{% endif %}
+      </div>
       {% if tour %}
         <div class="tour">{{ icon("calendar", 16) }} Viewing <strong>{{ tour.start.replace("T", " ")[:16] }}</strong>
           <a href="/tours/{{ tour.id }}.ics">Add to calendar</a></div>

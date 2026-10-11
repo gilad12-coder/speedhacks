@@ -18,7 +18,7 @@
 <div class="page-head">
   <div>
     <h1>New search</h1>
-    <p class="muted">KeyHunt finds listings, verifies them by phone, and collects viewing times for you to confirm.</p>
+    <p class="muted">Find rentals, cross-check public sources, then call to confirm details and collect viewing times.</p>
   </div>
 </div>
 
@@ -47,6 +47,8 @@
   <fieldset>
     <legend>Viewings</legend>
     <div class="fields">
+    <label class="full">Your name <span class="hint">The caller introduces itself as your AI assistant</span>
+      <input name="renter_name" maxlength="80" placeholder="First name" value="{{ settings.renter_name if settings.renter_name != 'my client' else '' }}"></label>
     <label class="full">When you're free <span class="hint">The agent asks about these times; you'll confirm the appointment separately</span>
       <input name="tour_availability" placeholder="weekdays after 6pm, Saturday morning"></label>
     </div>

@@ -12,7 +12,7 @@ from datetime import datetime
 import httpx
 
 from househunt import db, geo
-from househunt.collect import collect
+from househunt.collect import collect, score
 from househunt.config import CallMode, settings
 from househunt.models import AppStage, Listing, ListingStatus, SearchCriteria
 from househunt.outreach.dial import DialClient, FakeDialClient, _parse_call
@@ -34,18 +34,40 @@ def dial_client():
     return DialClient(settings)
 
 
-def source_listings(criteria: SearchCriteria) -> tuple[list[Listing], list[str]]:
+def source_listings(criteria: SearchCriteria, progress=lambda message: None) -> tuple[list[Listing], list[str]]:
     raw, errors = [], []
-    for cls in ALL_SOURCES:
+
+    def read_source(cls):
         src = cls(mock=settings.mock_sources)
         try:
             found = src.search(criteria)
-            log.info("%s: %d listings", src.name, len(found))
-            raw.extend(found)
+            if not settings.mock_sources and settings.web_research and src.name == "craigslist":
+                from househunt.research.engine import read_rentals
+                from househunt.research.web import Page
+                pages = [Page(l.url, l.title, l.research["page_text"]) for l in found if l.research.get("page_text")]
+                progress(f"Checking city, unit, rent and requirements on {len(pages)} Craigslist pages")
+                found = [l for i in range(0, len(pages), 4) for l in read_rentals(pages[i:i+4], criteria)]
+            for listing in found:
+                listing.research.pop("page_text", None)
+            progress(f"{src.name}: found {len(found)} listings")
+            return found, []
         except NotImplementedError:
-            errors.append(f"{src.name}: not implemented yet (skipped)")
-        except (httpx.HTTPError, RuntimeError) as e:
-            errors.append(f"{src.name}: {e}")
+            return [], []  # Web discovery covers public portal pages when readable.
+        except (httpx.HTTPError, RuntimeError):
+            return [], [f"{src.name}: source unavailable; other sources still searched"]
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        jobs = [pool.submit(read_source, cls) for cls in ALL_SOURCES]
+        if not settings.mock_sources and settings.web_research:
+            from househunt.research.engine import discover
+            jobs.append(pool.submit(discover, criteria, progress))
+        for job in jobs:
+            try:
+                found, warnings = job.result()
+                raw.extend(found)
+                errors.extend(warnings)
+            except RuntimeError as e:
+                errors.append(str(e))
     return raw, errors
 
 
@@ -66,7 +88,7 @@ def run_search(search_id: int) -> None:
     criteria, _ = db.get_search(search_id)
     try:
         db.set_search_status(search_id, "sourcing")
-        raw, errors = source_listings(criteria)
+        raw, errors = source_listings(criteria, lambda message: db.search_event(search_id, message))
         listings = collect(raw, criteria)
         try:
             geo.locate(listings, criteria)
@@ -75,8 +97,19 @@ def run_search(search_id: int) -> None:
         for l in listings:
             db.upsert_listing(search_id, l)
 
+        if not settings.mock_sources and settings.web_research:
+            db.set_search_status(search_id, "screening")
+            candidates = [l for l in listings if l.status == ListingStatus.CANDIDATE][:settings.screen_top_n]
+            db.search_event(search_id, f"Cross-checking {len(candidates)} top candidates: address, contact, conflicting terms and comparable rents")
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                list(pool.map(lambda l: screen_listing(search_id, l.key), candidates))
+            listings = db.list_listings(search_id)
+
         callable_ = [l for l in listings
                      if l.status == ListingStatus.CANDIDATE and l.contact and l.contact.phone]
+        if settings.call_mode == CallMode.AUTO and not settings.mock_sources:
+            from househunt.research.engine import auto_call_eligible
+            callable_ = [l for l in callable_ if auto_call_eligible(l)]
         if settings.call_mode in (CallMode.AUTO, CallMode.DRY_RUN):
             db.set_search_status(search_id, "calling")
             futures = [_call_pool.submit(call_listing, search_id, l.key)
@@ -85,10 +118,45 @@ def run_search(search_id: int) -> None:
                 f.result()
 
         db.set_search_status(search_id, "done", "; ".join(errors) or None)
+        db.search_event(search_id, f"Search complete: {len(listings)} listings. Unconfirmed facts and risk flags require review.")
         notify_summary(search_id)
     except Exception as e:  # surface in the UI rather than dying silently in a worker
         log.exception("search %s failed", search_id)
         db.set_search_status(search_id, "error", repr(e))
+
+
+_screen_lock = threading.Lock()
+_screen_running: set[tuple[int, str]] = set()
+
+
+def screen_listing(search_id: int, key: str) -> None:
+    from househunt.research.engine import screen, timestamp
+    with _screen_lock:
+        if (search_id, key) in _screen_running:
+            return
+        _screen_running.add((search_id, key))
+    try:
+        listing = db.get_listing(search_id, key)
+        found = db.get_search(search_id)
+        if not listing or not found:
+            return
+        fingerprint = (listing.address, listing.price, repr(listing.contact))
+        listing.screening = {"status": "checking"}
+        db.upsert_listing(search_id, listing)
+        try:
+            result = screen(listing, found[0])
+        except Exception:
+            result = {"status": "error", "checked_at": timestamp(), "findings": [],
+                      "limitations": "Cross-source research could not complete. Retry; this listing is not cleared for automatic calls."}
+        current = db.get_listing(search_id, key)
+        if current and (current.address, current.price, repr(current.contact)) == fingerprint:
+            current.screening = result
+            current.score = score(current, found[0])
+            db.upsert_listing(search_id, current)
+            db.search_event(search_id, f"{current.title[:90]}: {result['status'].replace('_', ' ')}")
+    finally:
+        with _screen_lock:
+            _screen_running.discard((search_id, key))
 
 
 def call_listing(search_id: int, key: str) -> None:

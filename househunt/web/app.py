@@ -118,13 +118,17 @@ def create_search(
     move_in_by: str = Form(""),
     tour_availability: str = Form(""),
     occupants: int | None = Form(None, ge=1, le=20),
+    renter_name: str = Form("", max_length=80),
 ):
+    if max_price <= 0 or min_price < 0 or min_price > max_price or min_beds < 0 or min_baths < 0:
+        raise HTTPException(400, "Enter a positive budget and valid bedroom/bathroom minimums")
     criteria = SearchCriteria(
         city=city, max_price=max_price, min_price=min_price, min_beds=min_beds,
         min_baths=min_baths, neighborhoods=_split(neighborhoods),
         must_haves=_split(must_haves), move_in_by=move_in_by or None,
         tour_availability=_split(tour_availability),
         occupants=occupants,
+        renter_name=renter_name.strip() or settings.renter_name,
     )
     search_id = db.create_search(criteria)
     background.add_task(pipeline.run_search, search_id)
@@ -143,8 +147,9 @@ def show_search(request: Request, search_id: int):
     tours = db.tours_for_search(search_id)
     tracked = db.applications_for_search(search_id)
     emails = db.emails_for_search(search_id)
-    in_flight = row["status"] in ("pending", "sourcing", "calling") or any(
-        c["status"] in ("queued", "in_progress") for c in calls.values())
+    in_flight = row["status"] in ("pending", "sourcing", "screening", "calling") or any(
+        c["status"] in ("queued", "in_progress", "extracting") for c in calls.values()) or any(
+        l.screening.get("status") == "checking" for l in listings)
     order = [ListingStatus.TOUR_SCHEDULED, ListingStatus.VIABLE, ListingStatus.CONTACTED,
              ListingStatus.CANDIDATE, ListingStatus.NOT_VIABLE, ListingStatus.FILTERED_OUT]
     listings.sort(key=lambda l: (order.index(l.status) if l.status in order else 99, -l.score))
@@ -159,6 +164,7 @@ def show_search(request: Request, search_id: int):
         "outcomes": outcomes, "tours": tours, "emails": emails, "refresh": in_flight,
         "settings": settings, "pins": pins, "center": geo.cached(criteria.city),
         "counts": counts, "tracked": tracked, "stages": AppStage,
+        "research_events": db.search_events(search_id),
     })
 
 
@@ -174,6 +180,19 @@ def call_listing(background: BackgroundTasks, search_id: int, key: str):
         raise HTTPException(409, "Call already exists; no replacement call was started")
     background.add_task(pipeline.call_listing, search_id, key)
     return RedirectResponse(f"/searches/{search_id}", status_code=303)
+
+
+@app.post("/searches/{search_id}/listings/{key}/screen")
+def screen_listing(background: BackgroundTasks, search_id: int, key: str):
+    listing = db.get_listing(search_id, key)
+    if not listing:
+        raise HTTPException(404)
+    if settings.mock_sources:
+        raise HTTPException(400, "Switch to live sources to research a real listing")
+    if not settings.openai_api_key:
+        raise HTTPException(400, "Web research requires the server's OpenAI API key")
+    background.add_task(pipeline.screen_listing, search_id, key)
+    return RedirectResponse(f"/searches/{search_id}#{key}", status_code=303)
 
 
 @app.get("/calls/{call_id}/recording")
