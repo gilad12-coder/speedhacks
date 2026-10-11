@@ -118,9 +118,3 @@ class AppStage(str, Enum):
     def closed(self) -> bool:
         return self in (AppStage.REJECTED, AppStage.WITHDRAWN)
 
-
-class CallStatus(str, Enum):
-    QUEUED = "queued"
-    IN_PROGRESS = "in_progress"
-    ENDED = "ended"
-    FAILED = "failed"

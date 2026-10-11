@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
 

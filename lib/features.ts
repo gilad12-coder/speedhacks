@@ -11,7 +11,6 @@ export const FEATURES = [
   { label: "Smoking allowed", does: "allow smoking", compromise: "Look for places that allow smoking only outdoors." },
 ] as const;
 
-export type FeatureLabel = (typeof FEATURES)[number]["label"];
 
 export const FEATURE_LABELS: readonly string[] = FEATURES.map((f) => f.label);
 
