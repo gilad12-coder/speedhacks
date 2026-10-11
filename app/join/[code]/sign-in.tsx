@@ -10,13 +10,11 @@ export function SignIn({
   status,
   title = "Sign in to join",
   intro = "Your Google account shows your housemates it's really you, and lets you come back to your answers from any device. Keyhunt only sees your name and email.",
-  footnote = "Then five short steps about rent, move-in, commute and the place itself.",
 }: {
   code?: string;
   status?: string;
   title?: string;
   intro?: string;
-  footnote?: string;
 }) {
   return (
     <div className="step-in step-in-forward w-full max-w-2xl">
@@ -39,7 +37,6 @@ export function SignIn({
         <GoogleMark />
         Continue with Google
       </a>
-      <p className="mt-4 text-sm text-ink-3">{footnote}</p>
     </div>
   );
 }
