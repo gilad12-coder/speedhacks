@@ -64,7 +64,7 @@ def test_no_false_green(caller, change):
     assert result['confirmed_tour'] is None
 
 
-@pytest.mark.parametrize('change', ['offer_only','disabled','stale','outside','naive','wrong_location','payment','unknown_fees','unknown_must_have','agent_quote','no_acceptance','partial_confirmation','cancelled_later','opt_out'])
+@pytest.mark.parametrize('change', ['offer_only','disabled','stale','outside','wrong_time_within_window','wrong_duration','naive','wrong_location','payment','unknown_fees','unknown_must_have','agent_quote','no_acceptance','partial_confirmation','cancelled_later','opt_out'])
 def test_offer_or_unsafe_time_never_becomes_booking(caller, change):
     a, turns, context = scenario(caller[3])
     b = a.confirmed_tour
@@ -72,6 +72,8 @@ def test_offer_or_unsafe_time_never_becomes_booking(caller, change):
     if change == 'disabled': context['enabled'] = False
     if change == 'stale': context['checked_at'] = '2026-10-11T19:40:00Z'
     if change == 'outside': b.start = '2026-10-16T18:00:00-07:00'; b.end = '2026-10-16T18:30:00-07:00'
+    if change == 'wrong_time_within_window': b.start = '2026-10-15T19:00:00-07:00'; b.end = '2026-10-15T19:30:00-07:00'
+    if change == 'wrong_duration': b.end = '2026-10-15T19:00:00-07:00'
     if change == 'naive': b.start = '2026-10-15T18:00:00'
     if change == 'wrong_location': b.meeting_address = '123 Main Street, unit 9'
     if change == 'payment': b.requires_payment_or_application = True

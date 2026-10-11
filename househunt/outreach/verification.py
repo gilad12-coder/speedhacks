@@ -1,7 +1,7 @@
 """Evidence extraction contract. Provider output is untrusted until checked here."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 import math
 from typing import Literal
@@ -154,6 +154,45 @@ def timed_turns(raw: dict) -> list[dict]:
     return result
 
 
+def appointment_time_matches(start: datetime, end: datetime, text: str, called: datetime) -> bool:
+    """Conservative grounding of the stated appointment; ambiguous speech needs review."""
+    from zoneinfo import ZoneInfo
+    from househunt.config import settings
+    zone = ZoneInfo(settings.call_timezone)
+    start, end, called = (d.astimezone(zone) for d in (start, end, called))
+    text = text.lower().replace("a.m.", "am").replace("p.m.", "pm")
+    dates = set(re.findall(r"\b\d{4}-\d{2}-\d{2}\b", text))
+    months = "january february march april may june july august september october november december".split()
+    for month, name in enumerate(months, 1):
+        for match in re.finditer(rf"\b{name[:3]}(?:{name[3:]})?\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(\d{{4}}))?\b", text):
+            try:
+                dates.add(datetime(int(match[2] or start.year), month, int(match[1])).date().isoformat())
+            except ValueError:
+                continue
+    for label, days in (("today",0), ("tomorrow",1)):
+        if re.search(rf"\b{label}\b", text): dates.add((called + timedelta(days=days)).date().isoformat())
+    # Relative weekday-only statements can mean different weeks; ask for the full date.
+    if start.date().isoformat() not in dates or start.date() != end.date():
+        return False
+    clock = r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?"
+    def minutes(hour, minute, meridian):
+        hour, minute = int(hour), int(minute or 0)
+        if not 1 <= hour <= 12 or not 0 <= minute < 60 or not meridian:
+            return -1
+        return (hour % 12 + (12 if meridian == "pm" else 0))*60 + minute
+    target = (start.hour*60 + start.minute, end.hour*60 + end.minute)
+    for m in re.finditer(rf"\b{clock}\s*(?:to|until|through|[-–—])\s*{clock}\b", text):
+        meridian = m[3] or m[6]
+        if (minutes(m[1],m[2],meridian), minutes(m[4],m[5],m[6] or meridian)) == target:
+            return True
+    # Explicit duration can replace the end time, but it must actually be spoken.
+    duration = (end-start).total_seconds()/60
+    duration_stated = any(int(m[1]) * (60 if m[2].startswith("hour") else 1) == duration
+                         for m in re.finditer(r"\b(\d+)\s*[- ]?\s*(minutes?|hours?)\b", text))
+    duration_stated = duration_stated or (duration == 30 and bool(re.search(r"\bhalf an? hour\b", text)))
+    return duration_stated and any(minutes(m[1],m[2],m[3]) == target[0] for m in re.finditer(rf"\b{clock}\b", text))
+
+
 def validate_assessment(a: Assessment, turns: list[dict], criteria: SearchCriteria, call_id: str, started_at: datetime, listing: Listing | None = None, booking_context: dict | None = None) -> dict:
     def valid(ref: Ref) -> bool:
         return (ref.turn_index < len(turns) and turns[ref.turn_index]["speaker"] == "contact"
@@ -228,8 +267,11 @@ def validate_assessment(a: Assessment, turns: list[dict], criteria: SearchCriter
             commitment = bool(re.search(r"\b(?:booked|confirmed|scheduled|reserved|see you)\b", contact.quote, re.I)) and not re.search(negative, contact_turn, re.I)
             cancelled_later = any(re.search(r"\b(?:cancel|cancelled|canceled|cannot make|can't make|won't work|will not work)\b", t["text"], re.I) for t in turns[contact.turn_index+1:])
             acceptance = bool(re.search(r"\b(?:book|confirm|we'll be there|we will be there|see you)\b", agent.quote, re.I)) and not re.search(negative, agent.quote, re.I)
+            contact_details = " ".join(turns[r.turn_index]["text"] for r in booking.evidence if valid(r))
+            agent_details = turns[agent.turn_index]["text"] if agent_valid else ""
+            exact_time = appointment_time_matches(start, end, agent_details, started_at) and appointment_time_matches(start, end, contact_details, started_at)
             if (authorized and agent_valid and acceptance and valid(contact) and commitment and not cancelled_later and contact.turn_index > agent.turn_index
-                    and all(valid(r) for r in booking.evidence) and address_matches(listing.address, booking.meeting_address)):
+                    and exact_time and all(valid(r) for r in booking.evidence) and address_matches(listing.address, booking.meeting_address)):
                 confirmed = {"start": booking.start, "end": booking.end, "meeting_address": booking.meeting_address,
                     "contact_evidence": cite(contact).model_dump(), "agent_evidence": cite(agent).model_dump()}
         except (KeyError, ValueError, TypeError):
