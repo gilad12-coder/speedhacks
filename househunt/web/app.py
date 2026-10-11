@@ -59,6 +59,10 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="KeyHunt", lifespan=lifespan, dependencies=[Depends(require_auth)])
 
+from househunt.web.household_api import router as _household_api  # noqa: E402
+
+app.include_router(_household_api)
+
 # Sidebar tabs: (path, label, icon). A tab shows up once its route exists.
 NAV = [("/", "Searches", "list"), ("/leads", "Leads", "star"), ("/calls", "Calls", "phone"), ("/viewings", "Viewings", "calendar"),
        ("/applications", "Applications", "clipboard"), ("/chats/agent", "Ask your agent", "chat"),
