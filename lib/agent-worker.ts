@@ -15,9 +15,3 @@ export async function workerRequest(path: string, init: RequestInit = {}) {
   });
 }
 
-// Where housemates continue after onboarding: the household's search in the main KeyHunt app
-// (the Python app). AGENT_APP_URL is its public URL; locally it's the same as the worker URL.
-export function mainAppUrl(householdId: string): string | null {
-  const base = (process.env.AGENT_APP_URL || process.env.AGENT_WORKER_URL)?.replace(/\/$/, "");
-  return base ? `${base}/households/${encodeURIComponent(householdId)}` : null;
-}
