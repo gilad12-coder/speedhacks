@@ -61,5 +61,5 @@ Every check status pairs an icon and a label; color is never the only signal.
 - Part 2 delivers its `AgentRun` to an API route; until Lucy's part lands, a household simply has no run yet and the UI shows the honest empty state. A fixture file exists only for component tests, never wired into the app.
 
 ## 10. Open Questions
-- Storage: which database (Vercel Postgres/Neon, Supabase, or KV) — decide in the Part 3 build.
+- Storage: Neon Postgres via the Vercel Marketplace (decided 2026-10-11).
 - How Part 2 posts results: webhook into an API route vs. a shared table.
