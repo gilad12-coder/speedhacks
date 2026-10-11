@@ -23,7 +23,7 @@ import { intakeSchema } from "@/lib/schemas";
 import { getAccount, getHousemateId, setHousemateSession } from "@/lib/session";
 import { acceptTour, TourError } from "@/lib/tours";
 import { GoogleError } from "@/lib/google";
-import { workerRequest } from "@/lib/agent-worker";
+import { mainAppUrl, workerRequest } from "@/lib/agent-worker";
 
 export interface FormState {
   error?: string;
@@ -121,6 +121,9 @@ export async function startSearch(householdId: string) {
   if (!state || state.household.housemates.length < state.household.expectedSize || !state.household.confirmed) return;
   await requestSearch(householdId);
   revalidatePath(`/h/${householdId}`);
+  // Onboarding is done: continue in the main KeyHunt app, which runs the search.
+  const next = mainAppUrl(householdId);
+  if (next) redirect(next);
 }
 
 export async function bookTour(householdId: string, listingId: string, start: string, end: string): Promise<FormState> {

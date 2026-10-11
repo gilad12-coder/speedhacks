@@ -2,6 +2,23 @@
 
 This branch integrates both `ui-refresh` (Python source/call console) and `app-ui-form-and-login` (Next.js household app). The Python worker consumes `GET /api/agent/briefs` and publishes complete snapshots to `POST /api/agent/runs`. The Next.js app remains the household/calendar owner. Both API endpoints require the same server-only `AGENT_API_KEY`.
 
+## Onboarding → KeyHunt handoff
+
+The Next.js app is the onboarding flow (sign-in, household, intake, interview, brief). The
+Python app is the main UI after that. When the group clicks **Start search**, the server action
+redirects to `${AGENT_APP_URL || AGENT_WORKER_URL}/households/<householdId>`. That page finds
+the household's search (or creates it from the brief via `/api/agent/briefs`) and opens
+`/searches/<id>`, where housemates work the listings: reveal contacts, call, email, mark
+interest, book viewings. The household dashboard keeps an **Open in KeyHunt** link, and
+results keep flowing back to it as `AgentRun`s.
+
+Set `RUN_PLATFORM_WORKER=1` to run the queue worker inside the web process (then skip
+Terminal 3 below); the handoff wakes it so sourcing starts immediately. Searches are only ever
+run by the worker loop, so a handoff can't start a duplicate run.
+
+Not covered yet: the Python app doesn't know which housemate is signed in. Locally it's open;
+in production it's behind `APP_PASSWORD`. Sharing the Next.js session is a follow-up.
+
 ## Run with the household app
 
 Set the frontend's Postgres, Google OAuth and session settings from `.env.example`. Set `APP_URL` to its reachable URL and generate a strong random `AGENT_API_KEY`, shared only between the two servers. Set `AGENT_WORKER_URL` in Next.js to the Python server's reachable HTTPS URL. Local HTTP is accepted only for localhost. No frontend public environment variables contain provider keys.

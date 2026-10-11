@@ -48,6 +48,8 @@ def require_auth(request: Request,
 async def lifespan(_: FastAPI):
     db.init()
     db.recover_calls()
+    from househunt import platform
+    platform.start_background_worker()
     yield
 
 
@@ -742,3 +744,33 @@ def log_viewing(search_id: int, key: str, start: str = Form(...)):
             listing.notes.append("could not add viewing to Google Calendar")
     db.upsert_listing(search_id, listing)
     return RedirectResponse(f"/searches/{search_id}#{key}", 303)
+
+
+
+# --- handoff from onboarding (the Next.js app) ----------------------------------
+
+@app.get("/households/{household_id}", response_class=HTMLResponse)
+def open_household(request: Request, household_id: str):
+    """Where "Start search" in onboarding sends the household: their search in KeyHunt."""
+    from househunt import platform
+
+    sid = db.household_search(household_id)
+    if sid is None:
+        try:
+            client = platform.PlatformClient()
+            brief = next((b for b in client.briefs() if b["householdId"] == household_id), None)
+            if brief:
+                sid = platform.ensure_search(client, brief)
+                platform.wake.set()  # start sourcing now rather than at the next poll
+        except (RuntimeError, ValueError) as e:
+            logging.getLogger(__name__).warning("household handoff failed: %s", e)
+    if sid is not None:
+        return RedirectResponse(f"/searches/{sid}", status_code=303)
+    return HTMLResponse(
+        "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
+        "<meta http-equiv=refresh content=5><title>Starting your search · KeyHunt</title>"
+        "<body style='font:16px system-ui;max-width:520px;margin:15vh auto;padding:0 16px'>"
+        "<h1 style='font-size:22px'>Starting your search…</h1><p>KeyHunt is picking up your "
+        "household's brief. This page refreshes on its own.</p><p style='color:#666;font-size:14px'>"
+        "If it doesn't start, make sure everyone confirmed the brief and clicked Start search.</p>",
+        status_code=202)

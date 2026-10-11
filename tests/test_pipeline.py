@@ -637,3 +637,43 @@ def test_interested_next_step_and_log_viewing():
         assert db.find_application(sid, "facebook:fb-42")["stage"] == "viewing"
         page = client.get("/viewings").text
         assert "calendar.google.com/calendar/render" in page
+
+
+def test_household_handoff_from_onboarding(monkeypatch):
+    from fastapi.testclient import TestClient
+    from househunt import db, platform
+    from househunt.web.app import app
+
+    brief = {"householdId": "hh_1", "occupants": 2, "location": "San Francisco",
+             "maxTotalRentUsd": 5200, "moveInFrom": "2026-11-01", "moveInTo": "2026-12-01",
+             "commute": {"destination": "SoMa", "mode": "bike", "modes": ["bike"], "maxMinutes": 30},
+             "mustHaves": ["laundry"], "dealBreakers": [], "niceToHaves": [],
+             "householdIncomeBandUsd": {"min": 150000, "max": 200000}, "wishes": []}
+    published = []
+
+    class FakeClient:
+        def briefs(self):
+            return [brief]
+
+        def publish(self, household_id, search_id):
+            published.append((household_id, search_id))
+
+    monkeypatch.setattr(platform, "PlatformClient", FakeClient)
+    with TestClient(app) as client:
+        r = client.get("/households/hh_1", follow_redirects=False)
+        assert r.status_code == 303
+        sid = int(r.headers["location"].rsplit("/", 1)[-1])
+        crit, row = db.get_search(sid)
+        assert (crit.city, crit.max_price, crit.min_beds, crit.must_haves) == (
+            "San Francisco", 5200, 2, ["laundry"])
+        assert row["status"] == "pending"            # the worker runs it, not the handoff
+        assert published == [("hh_1", sid)] and platform.wake.is_set()
+
+        # Coming back goes to the same search; no duplicate is created.
+        r2 = client.get("/households/hh_1", follow_redirects=False)
+        assert r2.headers["location"] == f"/searches/{sid}"
+        assert db.household_search("hh_1") == sid
+
+        # A household whose brief isn't requested yet gets a waiting page.
+        r3 = client.get("/households/hh_unknown", follow_redirects=False)
+        assert r3.status_code == 202 and "Starting your search" in r3.text

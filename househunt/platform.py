@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from datetime import datetime, timezone
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
@@ -135,18 +136,54 @@ class PlatformClient:
             conn.execute('UPDATE household_jobs SET published_hash=? WHERE household_id=?',(digest,household_id))
 
 
+def ensure_search(client: PlatformClient, brief: dict) -> int:
+    """The search for a household's brief, created once. Safe to call from the web app
+    (when a housemate is handed over from onboarding) and from the worker loop."""
+    household_id = brief['householdId']
+    sid = db.household_search(household_id)
+    if sid is None:
+        criteria = criteria_from_brief(brief)
+        with _ensure_lock:
+            sid = db.household_search(household_id)
+            if sid is None:
+                sid = db.create_search(criteria)
+                with db.conn() as conn:
+                    conn.execute('INSERT INTO household_jobs(household_id,search_id) VALUES (?,?)',(household_id,sid))
+        client.publish(household_id,sid)
+    return sid
+
+
+_ensure_lock = threading.Lock()
+# Set to run the worker loop now instead of waiting for the next poll.
+wake = threading.Event()
+
+
+def start_background_worker(interval: float = 15) -> threading.Thread | None:
+    """Run the worker loop inside the web app (single-process deploys and local dev).
+    Enabled with RUN_PLATFORM_WORKER=1; otherwise run `python -m househunt.platform`."""
+    if os.environ.get('RUN_PLATFORM_WORKER') != '1':
+        return None
+    client = PlatformClient()
+
+    def loop():
+        while True:
+            try:
+                run_once(client)
+            except (RuntimeError, ValueError, httpx.HTTPError) as e:
+                print(f'Worker needs attention: {type(e).__name__}: {e}', flush=True)
+            wake.wait(interval)
+            wake.clear()
+
+    t = threading.Thread(target=loop, name='platform-worker', daemon=True)
+    t.start()
+    return t
+
+
 def run_once(client: PlatformClient) -> None:
     from househunt.pipeline import run_search
     for brief in client.briefs():
         household_id = brief['householdId']
-        sid = db.household_search(household_id)
-        if sid is None:
-            criteria = criteria_from_brief(brief)
-            # A single worker owns this queue; SQLite keeps restarts from duplicating searches.
-            sid = db.create_search(criteria)
-            with db.conn() as conn:
-                conn.execute('INSERT INTO household_jobs(household_id,search_id) VALUES (?,?)',(household_id,sid))
-            client.publish(household_id,sid)
+        sid = ensure_search(client, brief)
         _, row = db.get_search(sid)
         if row['status'] in ('pending','sourcing','screening','calling'):
             run_search(sid, on_update=lambda: client.publish(household_id,sid))
