@@ -18,6 +18,7 @@ import {
   upsertHousemate,
 } from "@/lib/households";
 import { InterviewError, nextAgentStep, type InterviewMessage } from "@/lib/interview";
+import { areaFromText } from "@/lib/places";
 import { intakeSchema } from "@/lib/schemas";
 import { getAccount, getHousemateId, setHousemateSession } from "@/lib/session";
 import { acceptTour, TourError } from "@/lib/tours";
@@ -44,8 +45,11 @@ export async function submitIntake(joinCode: string, _: FormState, form: FormDat
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
     for (const issue of parsed.error.issues) fieldErrors[String(issue.path[0])] ??= issue.message;
-    return { error: "A few answers need another look.", fieldErrors };
+    // Each field shows its own message and the form jumps to that step, so no banner on top.
+    return { fieldErrors };
   }
+
+  parsed.data.location = await areaFromText(parsed.data.location);
 
   const account = await getAccount();
   const existing =

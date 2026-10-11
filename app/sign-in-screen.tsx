@@ -82,10 +82,6 @@ export function SignInScreen({ status }: { status?: string }) {
           <h1 className="font-display text-3xl leading-tight font-semibold tracking-tight text-ink">
             Sign in to get started
           </h1>
-          <p className="mx-auto mt-3 max-w-[36ch] text-[0.9375rem] leading-relaxed text-ink-2">
-            Keyhunt uses your Google account so you can come back to your search from any device, and so your
-            housemates know it&apos;s really you. Keyhunt only sees your name and email.
-          </p>
           {status && MESSAGES[status] && (
             <p role="alert" className="mt-5 rounded-xl bg-red-soft px-4 py-3 text-left text-sm text-red-ink">
               {MESSAGES[status]}

@@ -12,9 +12,9 @@ const WORD = [
   "m672.7 57.6h14.4q1.4 0 1.4 1.4v16.8h12.2q1.3 0 1.3 1.3v12.3q0 1.2-1.2 1.2h-12.3v23c0 4.6 2.5 7.1 6.7 7.1 1.8 0 3.4-0.4 5-1q1.7-0.7 1.7 1v12.2q0 1.2-1.3 1.7c-3.1 1.3-6.3 1.9-9.8 1.9-12.1 0-19.6-6.8-19.6-18.9v-27h-6.9q-1.2 0-1.2-1.2v-12.1q0-1.5 1.4-1.5h6.7v-16.8q0-1.4 1.5-1.4z",
 ];
 
-function Key({ light, className }: { light: boolean; className: string }) {
+function Key({ light, stacked, className }: { light: boolean; stacked: boolean; className: string }) {
   return (
-    <svg aria-hidden viewBox="30 30 238 136" className={`logo-key overflow-visible ${className}`}>
+    <svg aria-hidden viewBox={stacked ? "30 30 238 136" : "33 33 232 131"} className={`logo-key overflow-visible ${className}`}>
       <path fill="currentColor" d={KEY} />
       <path className="logo-house" fill={light ? "var(--green)" : "var(--amber-soft)"} d={HOUSE} />
     </svg>
@@ -22,13 +22,13 @@ function Key({ light, className }: { light: boolean; className: string }) {
 }
 
 function Word({ light, tight, className }: { light: boolean; tight: boolean; className: string }) {
-  // Side by side it shares the key's height range, so both keep the original proportions.
+  // Side by side, the box is cropped so the capitals sit centered on the key and a little larger than the original lockup.
   // White on the cream ground would vanish, so there it gets a green outline drawn behind the fill.
   return (
-    <svg aria-hidden viewBox={tight ? "290 50 415 115" : "280 30 425 136"} className={`logo-word overflow-visible ${className}`}>
+    <svg aria-hidden viewBox={tight ? "290 50 415 115" : "289 34.7 417 119.4"} className={`logo-word overflow-visible ${className}`}>
       <g fill="#fff" stroke={light ? "none" : "var(--green)"} strokeWidth={10} strokeLinejoin="round" paintOrder="stroke">
-        {WORD.map((d) => (
-          <path key={d.slice(0, 12)} d={d} fillRule="evenodd" />
+        {WORD.map((d, i) => (
+          <path key={d.slice(0, 12)} d={d} fillRule="evenodd" className="logo-letter" style={{ "--i": i } as React.CSSProperties} />
         ))}
       </g>
     </svg>
@@ -38,8 +38,8 @@ function Word({ light, tight, className }: { light: boolean; tight: boolean; cla
 // stacked puts the key above the word, for the big title; otherwise they sit side by side.
 export function Logo({ light = false, stacked = false, size }: { light?: boolean; stacked?: boolean; size: string }) {
   return (
-    <span role="img" aria-label="Keyhunt" className={`inline-flex items-center ${light ? "text-on-green" : "text-green"} ${stacked ? "logo-stacked flex-col gap-2" : "gap-0"}`}>
-      <Key light={light} className={stacked ? "h-20" : size} />
+    <span role="img" aria-label="Keyhunt" className={`inline-flex items-center ${light ? "text-on-green" : "text-green"} ${stacked ? "logo-stacked flex-col gap-2" : "gap-2"}`}>
+      <Key light={light} stacked={stacked} className={stacked ? "h-20" : size} />
       <Word light={light} tight={stacked} className={stacked ? "h-11" : size} />
     </span>
   );

@@ -182,7 +182,7 @@ export async function nextAgentStep(ctx: InterviewContext, history: InterviewMes
     res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "Keyhunt" },
-      body: JSON.stringify({ model: MODEL, messages, tools, tool_choice: "required", max_tokens: 1200 }),
+      body: JSON.stringify({ model: MODEL, messages, tools, tool_choice: "auto", max_tokens: 1200 }),
       signal: AbortSignal.timeout(45_000),
     });
   } catch {
@@ -193,9 +193,15 @@ export async function nextAgentStep(ctx: InterviewContext, history: InterviewMes
     throw new InterviewError("The interviewer isn't answering right now.");
   }
   const body = (await res.json()) as {
-    choices?: { message?: { tool_calls?: { function?: { name?: string; arguments?: string } }[] } }[];
+    choices?: { message?: { content?: string | null; tool_calls?: { function?: { name?: string; arguments?: string } }[] } }[];
   };
-  const call = body.choices?.[0]?.message?.tool_calls?.[0]?.function;
-  if (!call?.name) throw new InterviewError("The interviewer sent an empty reply.");
+  const message = body.choices?.[0]?.message;
+  const call = message?.tool_calls?.[0]?.function;
+  // Some providers reject a forced tool call, so the model may answer in plain text; treat that as a question.
+  if (!call?.name) {
+    const text = message?.content?.trim();
+    if (!text) throw new InterviewError("The interviewer sent an empty reply.");
+    return { kind: "ask", text: text.slice(0, 600), choices: [] };
+  }
   return parseToolCall(call.name, call.arguments ?? "{}");
 }

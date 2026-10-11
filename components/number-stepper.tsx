@@ -39,7 +39,7 @@ export function NumberStepper({
 
   return (
     <div
-      className="flex h-12 w-full max-w-xs items-stretch overflow-hidden rounded-xl border border-line bg-surface hover:border-line-strong has-[input:focus]:border-line-strong has-aria-invalid:border-red-ink"
+      className="flex h-12 w-full items-stretch overflow-hidden rounded-xl border border-line bg-surface hover:border-line-strong has-[input:focus]:border-line-strong has-aria-invalid:border-red-ink"
     >
       <button type="button" aria-label={`Less ${label.toLowerCase()}`} onClick={() => nudge(-1)} disabled={n <= min} className={`${button} border-r border-line`}>
         <Minus aria-hidden className="size-4" />
