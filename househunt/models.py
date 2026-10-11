@@ -64,6 +64,7 @@ class Listing:
     lng: float | None = None
     # How to reveal a contact the site hides, e.g. "show_contact" / "reply" on Craigslist.
     contact_hint: str | None = None
+    tour_url: str | None = None      # the site's own "schedule a tour" page, when it has one
     description: str = ""
     contact: Contact | None = None
     status: ListingStatus = ListingStatus.NEW

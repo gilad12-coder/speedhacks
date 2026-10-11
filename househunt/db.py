@@ -177,6 +177,12 @@ def listing_counts() -> dict[int, dict[str, int]]:
     return out
 
 
+def update_search_criteria(search_id: int, criteria: SearchCriteria) -> None:
+    with conn() as c:
+        c.execute("UPDATE searches SET criteria = ? WHERE id = ?",
+                  (json.dumps(criteria.__dict__), search_id))
+
+
 def set_search_status(search_id: int, status: str, error: str | None = None) -> None:
     with conn() as c:
         c.execute("UPDATE searches SET status = ?, error = ? WHERE id = ?", (status, error, search_id))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -68,6 +69,7 @@ def run_search(search_id: int) -> None:
             geo.locate(listings, criteria)
         except Exception:  # the map is a nice-to-have; never fail the search over it
             log.exception("geocoding failed")
+        listings = merge_with_existing(search_id, listings, criteria)
         for l in listings:
             db.upsert_listing(search_id, l)
 
@@ -85,6 +87,53 @@ def run_search(search_id: int) -> None:
     except Exception as e:  # surface in the UI rather than dying silently in a worker
         log.exception("search %s failed", search_id)
         db.set_search_status(search_id, "error", repr(e))
+
+
+# Notes collect.passes_filters() writes; dropped and recomputed when criteria change.
+FILTER_NOTE = re.compile(r"^(price \$|not in |neighborhood |outside your search|[\d.]+ (beds|baths) <)")
+
+# Statuses that mean the renter or agent has acted; a re-run never resets these.
+PROGRESSED = {ListingStatus.CONTACTED, ListingStatus.VIABLE, ListingStatus.NOT_VIABLE,
+              ListingStatus.TOUR_SCHEDULED}
+
+
+def merge_with_existing(search_id: int, fresh: list[Listing],
+                        criteria: SearchCriteria) -> list[Listing]:
+    """Re-running a (possibly edited) search keeps everything already learned about a place.
+
+    Fresh scrape data fills gaps, but contacts, notes and progressed statuses survive.
+    Listings from earlier runs that aren't in this run are re-checked against the criteria.
+    """
+    from househunt.collect import passes_filters, score
+
+    old = {l.key: l for l in db.list_listings(search_id)}
+    interested = set(db.applications_for_search(search_id))
+    out = []
+    for l in fresh:
+        prev = old.pop(l.key, None)
+        if prev:
+            if prev.contact and (prev.contact.phone or prev.contact.email):
+                l.contact = prev.contact
+            kept = [n for n in prev.notes if not FILTER_NOTE.match(n)]
+            l.notes = kept + [n for n in l.notes if n not in kept]
+            for attr in ("lat", "lng", "contact_hint", "tour_url"):
+                if getattr(l, attr, None) is None:
+                    setattr(l, attr, getattr(prev, attr, None))
+            if prev.status in PROGRESSED or (l.key in interested and l.status == ListingStatus.FILTERED_OUT):
+                l.status = prev.status
+        out.append(l)
+    for prev in old.values():  # not found this time: re-judge unless already in progress
+        if prev.status not in PROGRESSED and prev.key not in interested \
+                and "added by you" not in prev.notes:
+            ok, reason = passes_filters(prev, criteria)
+            prev.status = ListingStatus.CANDIDATE if ok else ListingStatus.FILTERED_OUT
+            prev.notes = [n for n in prev.notes if not FILTER_NOTE.match(n)]
+            if ok:
+                prev.score = score(prev, criteria)
+            else:
+                prev.notes.append(reason)
+        out.append(prev)
+    return out
 
 
 def call_listing(search_id: int, key: str) -> None:

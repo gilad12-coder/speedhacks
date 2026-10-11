@@ -39,6 +39,9 @@ SCHEMA = {
         "contact_name": {"type": "string"},
         "contact_phone": {"type": "string", "description": "only if shown on the page"},
         "contact_email": {"type": "string", "description": "only if shown on the page"},
+        "tour_booking_url": {"type": "string",
+                             "description": "absolute URL of the page's 'schedule a tour' / "
+                                            "'book a showing' link, if it has one"},
     },
 }
 

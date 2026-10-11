@@ -551,3 +551,89 @@ def test_calls_and_viewings_pages():
         assert client.get("/viewings").status_code == 200
         apps = client.get("/applications").text
         assert 'href="/calls"' in apps and 'href="/viewings"' in apps
+
+
+def test_next_step_rules():
+    import json as _json
+
+    from househunt.models import Contact, Listing, Source
+    from househunt.next_step import gcal_link, recommend
+
+    def l(**kw):
+        return Listing(source=kw.pop("source", Source.CRAIGSLIST), source_id="1", url="https://x/1",
+                       title="1BR", **kw)
+
+    assert recommend(l()).action == "reveal"
+    assert recommend(l(source=Source.FACEBOOK)).action == "message"
+    assert recommend(l(contact=Contact(phone="+14155550100"))).action == "call"
+    assert recommend(l(contact=Contact(email="a@b.co"))).action == "email"
+    assert recommend(l(tour_url="https://x/tour")).action == "book_online"
+
+    viable = {"status": "ended", "outcome": _json.dumps(
+        {"viable": True, "offered_times": ["Thu 6pm"], "summary": "ok"})}
+    assert recommend(l(contact=Contact(phone="+1")), call=viable).action == "log_viewing"
+    dead = {"status": "ended", "outcome": _json.dumps({"viable": False, "summary": "Rented."})}
+    ns = recommend(l(), call=dead)
+    assert ns.action == "move_on" and ns.why == "Rented."
+    assert recommend(l(), call={"status": "in_progress", "outcome": None}).action == "wait"
+    tour = {"start": "2026-10-15T18:30"}
+    ns = recommend(l(address="1 Main St"), tour=tour)
+    assert ns.action == "prepare" and "dates=20261015T183000%2F20261015T190000" in ns.href
+    assert gcal_link("x", "not a date", None, None) is None
+
+
+def test_edit_search_keeps_progress():
+    from fastapi.testclient import TestClient
+    from househunt import db
+    from househunt.models import ListingStatus
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        r = client.post("/searches", data={"city": "sf", "max_price": 3000, "min_beds": 1})
+        sid = int(r.url.path.rsplit("/", 1)[-1])
+        # Dry run already "called" the callable ones; add a contact + interest to another.
+        client.post(f"/searches/{sid}/listings/facebook:fb-42/contact", data={"pasted": "a@b.co"})
+        client.post(f"/searches/{sid}/listings/facebook:fb-42/track")
+        before = {l.key: l for l in db.list_listings(sid)}
+        called = [k for k, l in before.items() if l.status == ListingStatus.VIABLE]
+        assert called
+
+        assert client.get(f"/searches/{sid}/edit").status_code == 200
+        # Tighten to 3+ beds and re-run: unprogressed 1-2 bed places drop out, progress stays.
+        client.post(f"/searches/{sid}/edit", data={
+            "city": "sf", "max_price": 3000, "min_beds": 3, "rerun": "1"})
+        crit, row = db.get_search(sid)
+        assert crit.min_beds == 3 and row["status"] == "done"
+        after = {l.key: l for l in db.list_listings(sid)}
+        unprogressed = [k for k, l in before.items() if l.status == ListingStatus.CANDIDATE
+                        and k != "facebook:fb-42"]
+        for k in unprogressed:
+            assert after[k].status == ListingStatus.FILTERED_OUT
+            assert any("beds <" in n for n in after[k].notes)
+        for k in called:
+            assert after[k].status == ListingStatus.VIABLE                 # progress kept
+        assert after["facebook:fb-42"].contact.email == "a@b.co"
+        assert db.find_application(sid, "facebook:fb-42")
+
+
+def test_interested_next_step_and_log_viewing():
+    from fastapi.testclient import TestClient
+    from househunt import db
+    from househunt.models import ListingStatus
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        r = client.post("/searches", data={"city": "sf", "max_price": 3000, "min_beds": 1})
+        sid = int(r.url.path.rsplit("/", 1)[-1])
+        assert "I&#39;m interested" in client.get(f"/searches/{sid}").text \
+            or "I'm interested" in client.get(f"/searches/{sid}").text
+        client.post(f"/searches/{sid}/listings/facebook:fb-42/track")
+        card = client.get(f"/searches/{sid}").text.split('id="facebook:fb-42"')[1].split("</article>")[0]
+        assert "Recommended next step" in card and "Message the seller on Facebook" in card
+
+        client.post(f"/searches/{sid}/listings/facebook:fb-42/viewing", data={"start": "2026-10-20T18:30"})
+        assert db.get_listing(sid, "facebook:fb-42").status == ListingStatus.TOUR_SCHEDULED
+        assert db.tours_for_search(sid)["facebook:fb-42"]["start"] == "2026-10-20T18:30"
+        assert db.find_application(sid, "facebook:fb-42")["stage"] == "viewing"
+        page = client.get("/viewings").text
+        assert "calendar.google.com/calendar/render" in page

@@ -604,3 +604,72 @@ from househunt import facebook as _facebook  # noqa: E402
 
 templates.env.globals["facebook_links"] = _facebook.links
 templates.env.globals["zillow_links"] = _facebook.zillow_links
+
+
+# --- editing a search ---------------------------------------------------------
+
+@app.get("/searches/{search_id}/edit", response_class=HTMLResponse)
+def edit_search_form(request: Request, search_id: int):
+    found = db.get_search(search_id)
+    if not found:
+        raise HTTPException(404)
+    return templates.TemplateResponse(request, "new.html", {
+        "settings": settings, "c": found[0], "edit_id": search_id})
+
+
+@app.post("/searches/{search_id}/edit")
+def edit_search(background: BackgroundTasks, search_id: int, city: str = Form(...),
+                max_price: int = Form(...), min_price: int = Form(0), min_beds: int = Form(0),
+                min_baths: float = Form(0), neighborhoods: str = Form(""),
+                must_haves: str = Form(""), tour_availability: str = Form(""),
+                rerun: str = Form("1")):
+    found = db.get_search(search_id)
+    if not found:
+        raise HTTPException(404)
+    old, row = found
+    if row["status"] in ("pending", "sourcing", "calling"):
+        raise HTTPException(409, "This search is still running; edit it when it's done")
+    criteria = SearchCriteria(
+        city=city, max_price=max_price, min_price=min_price, min_beds=min_beds,
+        min_baths=min_baths, neighborhoods=_split(neighborhoods), must_haves=_split(must_haves),
+        move_in_by=old.move_in_by, tour_availability=_split(tour_availability))
+    db.update_search_criteria(search_id, criteria)
+    if rerun == "1":
+        db.set_search_status(search_id, "pending")
+        background.add_task(pipeline.run_search, search_id)
+    return RedirectResponse(f"/searches/{search_id}", status_code=303)
+
+
+# --- next steps & viewings you book yourself ------------------------------------
+
+from househunt import next_step as _next_step  # noqa: E402
+
+templates.env.globals["next_step"] = _next_step.recommend
+templates.env.globals["gcal_link"] = _next_step.gcal_link
+
+
+@app.post("/searches/{search_id}/listings/{key}/viewing")
+def log_viewing(search_id: int, key: str, start: str = Form(...)):
+    """A viewing the renter booked themselves (on the listing's site, by phone, ...)."""
+    listing = db.get_listing(search_id, key)
+    if not listing:
+        raise HTTPException(404)
+    try:
+        start = datetime.fromisoformat(start).isoformat(timespec="minutes")
+    except ValueError:
+        raise HTTPException(400, "Pick a date and time")
+    contact = listing.contact
+    db.create_tour(search_id, key, start, listing.address,
+                   contact.name if contact else None, contact.phone if contact else None)
+    listing.status = ListingStatus.TOUR_SCHEDULED
+    pipeline.track_viewing(search_id, listing, start)
+    if google.connection():
+        try:
+            link = google.add_event(start, f"Viewing: {listing.title}", listing.address,
+                                    "\n".join(x for x in [listing.url, contact.phone if contact else None] if x))
+            listing.notes.append(f"added to Google Calendar: {link}")
+        except Exception:
+            logging.getLogger(__name__).exception("calendar add failed")
+            listing.notes.append("could not add viewing to Google Calendar")
+    db.upsert_listing(search_id, listing)
+    return RedirectResponse(f"/searches/{search_id}#{key}", 303)

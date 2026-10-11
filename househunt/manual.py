@@ -200,4 +200,7 @@ def _fill_from_firecrawl(listing: Listing) -> None:
                             data.get("contact_email") or "", data.get("contact_name") or "")
         except InvalidInput:
             pass  # extraction returned something that isn't a usable number/email
+    tour = (data.get("tour_booking_url") or "").strip()
+    if tour.startswith("http"):
+        listing.tour_url = tour
     listing.notes.append("details read by Firecrawl")
