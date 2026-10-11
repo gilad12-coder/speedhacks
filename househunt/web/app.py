@@ -16,6 +16,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Requ
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 
 from househunt import chat as agent, db, geo, pipeline
 from househunt.connectors import google
@@ -50,6 +51,8 @@ async def lifespan(_: FastAPI):
 
     db.init()
     db.recover_calls()
+    from househunt.voice.enrollment import recover_pending
+    recover_pending()
     from househunt import platform
     platform.start_background_worker()
     stop = phone.start_background()   # keeps the call-in briefing fresh, when switched on
@@ -58,6 +61,28 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="KeyHunt", lifespan=lifespan, dependencies=[Depends(require_auth)])
+from househunt.voice.enrollment import router as voice_router
+app.include_router(voice_router)
+app.mount("/voice-assets", StaticFiles(directory=Path(__file__).parent / "static"), name="voice-assets")
+
+
+@app.get("/searches/{search_id}/voice", response_class=HTMLResponse)
+def voice_page(request: Request, search_id: int):
+    from househunt.voice.enrollment import SCRIPT
+    found = db.get_search(search_id)
+    if not found:
+        raise HTTPException(404, "Search not found")
+    return templates.TemplateResponse(request, "voice.html", {"search_id": search_id,
+        "speaker_name": found[0].renter_name or settings.renter_name, "script": SCRIPT},
+        headers={"Cache-Control": "private, no-store", "Permissions-Policy": "microphone=(self)"})
+
+
+@app.get("/households/{household_id}/voice")
+def household_voice_page(household_id: str):
+    sid = db.household_search(household_id)
+    if sid is None:
+        raise HTTPException(404, "Start your household search before setting up its voice")
+    return RedirectResponse(f"/searches/{sid}/voice", status_code=303)
 
 # Sidebar tabs: (path, label, icon). A tab shows up once its route exists.
 NAV = [("/", "Searches", "list"), ("/leads", "Leads", "star"), ("/calls", "Calls", "phone"), ("/viewings", "Viewings", "calendar"),
@@ -250,7 +275,8 @@ def call_recording(call_id: int):
     path = recording_path(call_id)
     if path is None or not path.is_file():
         raise HTTPException(404, "Recording not imported")
-    return FileResponse(path, media_type="audio/wav", headers={"Cache-Control": "private, no-store"})
+    return FileResponse(path, media_type="audio/mpeg" if path.suffix == ".mp3" else "audio/wav",
+                        headers={"Cache-Control": "private, no-store"})
 
 
 @app.post('/agent/households/{household_id}/listings/{key}/call')

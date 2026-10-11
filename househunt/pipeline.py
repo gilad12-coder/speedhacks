@@ -250,7 +250,11 @@ def _call_listing(search_id: int, key: str) -> None:
         else:
             provider_id = row["dial_call_id"]
             if not provider_id:
+                voice_profile = None
                 if not dry_run:
+                    from househunt.voice import store as voice_store
+                    if voice_store.enabled():
+                        voice_profile = voice_store.preflight(search_id)
                     phone = listing.contact.phone
                     if not re.fullmatch(r"\+1[2-9]\d{9}", phone) or re.fullmatch(r"\+1\d{3}55501\d{2}", phone):
                         raise RuntimeError("A real US E.164 contact number is required")
@@ -262,8 +266,9 @@ def _call_listing(search_id: int, key: str) -> None:
                         raise RuntimeError("Daily call limit reached for this contact")
                 if not criteria.tour_availability:
                     criteria.tour_availability = calendar_availability()
-                instruction = row["instruction"] or build_instruction(listing, criteria, settings.renter_name,
-                                                                       db.place_notes(search_id,key))
+                call_criteria = criteria.model_copy(update={"renter_name": voice_profile["speaker_name"]}) if voice_profile else criteria
+                instruction = (row["instruction"] if not voice_profile else None) or build_instruction(
+                    listing, call_criteria, settings.renter_name, db.place_notes(search_id,key))
                 db.update_call(call_id, instruction=instruction)
                 placed = dial.place_call(listing.contact.phone, instruction,
                     max_seconds=settings.call_max_seconds, idempotency_key=row["attempt_key"])

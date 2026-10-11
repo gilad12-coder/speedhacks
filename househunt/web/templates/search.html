@@ -147,6 +147,7 @@
     <a class="crumb" href="/">Searches</a>
     <h1>{{ criteria.city }}
       {% if search.status not in ("pending", "sourcing", "calling") %}<a class="btn secondary small edit-search" href="/searches/{{ search.id }}/edit">Edit search</a>{% endif %}</h1>
+    <a class="btn secondary small" style="margin-top:10px" href="/searches/{{ search.id }}/voice">{{ icon("mic", 14) }} Set up my voice</a>
     <div class="chips">
       <span class="chip"><b>${{ "{:,}".format(criteria.min_price) }}–${{ "{:,}".format(criteria.max_price) }}</b>/mo</span>
       <span class="chip"><b>{{ criteria.min_beds }}+</b> bd · <b>{{ criteria.min_baths | round(1) | replace(".0", "") }}+</b> ba</span>
