@@ -14,7 +14,7 @@ def agent_config(voice_id: str, model: str = "eleven_v4_turbo") -> dict:
         "name": "KeyHunt rental voice assistant",
         "conversation_config": {
             "agent": {"first_message": "Hi, I'm an AI assistant with KeyHunt.", "language": "en",
-                "prompt": {"prompt": "You are KeyHunt's disclosed AI rental assistant. Use the authorized per-call instruction. Never book, pay or submit applications.",
+                "prompt": {"prompt": "You are KeyHunt's disclosed AI rental assistant. Use the authorized per-call instruction. Book a tour only within its explicit calendar authorization and after confirming the exact unit. Never pay or submit applications.",
                     "llm": "gpt-4.1-mini", "temperature": .25, "max_tokens": 180,
                     "built_in_tools": {"end_call": {"type": "system", "name": "end_call", "params": {"system_tool_type": "end_call"}}}}},
             "asr": {"quality": "high", "provider": "scribe_realtime", "user_input_audio_format": "pcm_16000"},

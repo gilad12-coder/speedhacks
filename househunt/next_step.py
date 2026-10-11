@@ -39,7 +39,9 @@ def recommend(listing: Listing, call=None, email=None, tour=None) -> NextStep:
                         "Your agent is on the phone with them now; results show up here.")
 
     if outcome:
-        if not outcome.get("viable"):
+        if outcome.get("booking_warning"):
+            return NextStep("wait", "Review the possible booking", outcome["booking_warning"])
+        if outcome.get("verification_status") == "ruled_out":
             return NextStep("move_on", "Probably move on",
                             outcome.get("summary") or "The call suggests it isn't a fit.")
         if listing.tour_url:
@@ -50,6 +52,8 @@ def recommend(listing: Listing, call=None, email=None, tour=None) -> NextStep:
         if times:
             return NextStep("log_viewing", f"Pick a viewing time: {', '.join(times[:3])}",
                             "They offered these on the call. Confirm one with them, then log it here.")
+        if not outcome.get("viable"):
+            return NextStep("wait", "Review the remaining questions", "Unconfirmed requirements are still open questions. Check the call evidence before deciding whether to proceed.")
         return NextStep("call" if phone else "email", "Follow up to book a viewing",
                         "It's available and fits, but no time was set on the call.")
 
@@ -100,7 +104,7 @@ def _when(start: str) -> str:
 
 
 def gcal_link(title: str, start: str, location: str | None, details: str | None,
-              minutes: int = 30) -> str | None:
+              minutes: int = 30, end: str | None = None) -> str | None:
     """A Google Calendar "add event" link; works without connecting Google."""
     try:
         s = datetime.fromisoformat(start)
@@ -108,8 +112,12 @@ def gcal_link(title: str, start: str, location: str | None, details: str | None,
         return None
     from datetime import timedelta
 
-    e = s + timedelta(minutes=minutes)
+    e = datetime.fromisoformat(end) if end else s + timedelta(minutes=minutes)
     fmt = "%Y%m%dT%H%M%S"
+    if s.utcoffset() is not None:
+        from datetime import timezone
+        s, e = s.astimezone(timezone.utc), e.astimezone(timezone.utc)
+        fmt += "Z"
     return "https://calendar.google.com/calendar/render?" + urlencode({
         "action": "TEMPLATE", "text": title, "dates": f"{s:{fmt}}/{e:{fmt}}",
         "location": location or "", "details": details or "",

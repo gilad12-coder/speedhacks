@@ -10,6 +10,15 @@ services:
       mountPath: /data
       sizeGB: 1
     envVars:
+      # Link to the household app (Next.js on Vercel)
+      - key: APP_URL              # the Vercel production URL, e.g. https://keyhunt.vercel.app
+        sync: false
+      - key: AGENT_API_KEY        # same value as AGENT_API_KEY in Vercel
+        sync: false
+      - key: VERCEL_PROTECTION_BYPASS   # only if the Vercel app uses Deployment Protection
+        sync: false
+      - key: RUN_PLATFORM_WORKER
+        value: "1"
       - key: CALL_MODE
         value: approve
       - key: MOCK_SOURCES

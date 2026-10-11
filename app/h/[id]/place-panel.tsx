@@ -79,6 +79,9 @@ export function PlacePanel({
         <>
         <section aria-labelledby="call-title" className="border-b border-line px-7 py-5">
           <h3 id="call-title" className="mb-3 text-sm font-semibold text-ink">Confirmed on the call</h3>
+          <p className={`mb-3 text-sm ${call.listingVerified === true ? "text-green-ink" : "text-ink-2"}`}>
+            {call.listingVerified === true ? "✓ Listing verified" : call.listingVerified === false ? "Listing details differ" : "Listing unconfirmed"}
+          </p>
           <ul className="space-y-2">
             {CHECK_ORDER.map((kind) => {
               const c = checks[kind];
@@ -148,4 +151,3 @@ function findLineIndex(call: Call, t: number) {
   });
   return index;
 }
-

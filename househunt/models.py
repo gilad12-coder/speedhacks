@@ -117,4 +117,3 @@ class AppStage(str, Enum):
     @property
     def closed(self) -> bool:
         return self in (AppStage.REJECTED, AppStage.WITHDRAWN)
-

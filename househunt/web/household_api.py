@@ -64,6 +64,10 @@ def _card(listing: Listing, call, email, tour, app) -> dict:
         "contactHint": listing.contact_hint,
         "tourUrl": listing.tour_url,
         "call": {
+            "id": str(call["id"]),
+            "listingVerified": (outcome or {}).get("listing_verified") if call["mode"] == "live" else None,
+            "verificationEvidence": [f for f in (outcome or {}).get("confirmed_facts", []) if f["key"] in ("identity", "authority", "available", "rent", "advertised_beds", "advertised_baths")],
+            "bookingWarning": (outcome or {}).get("booking_warning"),
             "status": call["status"],
             "error": call["error"],
             "summary": (outcome or {}).get("summary"),
@@ -74,8 +78,10 @@ def _card(listing: Listing, call, email, tour, app) -> dict:
         "email": {"id": email["id"], "status": email["status"], "to": email["to_addr"],
                   "subject": email["subject"], "body": email["body"]} if email else None,
         "viewing": {"start": tour["start"],
+                    "end": tour["end"], "confirmedOnCall": tour["source_call_id"] is not None,
+                    "calendarStatus": tour["calendar_status"], "calendarError": tour["calendar_error"],
                     "calendarUrl": gcal_link(f"Viewing: {listing.title}", tour["start"],
-                                             listing.address, listing.url)} if tour else None,
+                                             listing.address, listing.url, end= tour["end"])} if tour else None,
         "interested": app["stage"] if app else None,
         "nextStep": dataclasses.asdict(ns) if ns else None,
     }
@@ -135,6 +141,23 @@ def mark_interested(household_id: str, key: str):
 
 class ViewingIn(BaseModel):
     start: str
+
+
+@router.post("/listings/{key}/calendar-sync")
+def retry_calendar(household_id: str, key: str):
+    from househunt.outreach.booking import retry_sync
+    search_id, _, _ = _search(household_id)
+    tour = db.tours_for_search(search_id).get(key)
+    if not tour or tour["source_call_id"] is None:
+        raise HTTPException(404, "No call-confirmed tour")
+    try:
+        retry_sync(tour["id"])
+    except Exception:
+        raise HTTPException(503, "Calendar sync needs attention; the contact booking is saved") from None
+    updated = db.get_tour(tour["id"])
+    if updated["calendar_status"] != "synced":
+        raise HTTPException(409, updated["calendar_error"] or "Calendar sync is pending")
+    return {"ok": True}
 
 
 @router.post("/listings/{key}/viewing")

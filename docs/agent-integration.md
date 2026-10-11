@@ -1,16 +1,14 @@
 # Agent integration
 
-This branch integrates both `ui-refresh` (Python source/call console) and `app-ui-form-and-login` (Next.js household app). The Python worker consumes `GET /api/agent/briefs` and publishes complete snapshots to `POST /api/agent/runs`. The Next.js app remains the household/calendar owner. Both API endpoints require the same server-only `AGENT_API_KEY`.
+This branch integrates `main` (including `app-ui-form-and-login`), `ui-refresh`, `feat/keyhunt-in-dashboard`, and `feat/live-results-and-voice`. The Python worker consumes `GET /api/agent/briefs` and publishes complete snapshots to `POST /api/agent/runs`. Next.js owns household membership and calendars. Agent endpoints require the same server-only `AGENT_API_KEY`.
 
 ## Onboarding → KeyHunt handoff
 
-The Next.js app is the onboarding flow (sign-in, household, intake, interview, brief). The
-Python app is the main UI after that. When the group clicks **Start search**, the server action
-redirects to `${AGENT_APP_URL || AGENT_WORKER_URL}/households/<householdId>`. That page finds
-the household's search (or creates it from the brief via `/api/agent/briefs`) and opens
-`/searches/<id>`, where housemates work the listings: reveal contacts, call, email, mark
-interest, book viewings. The household dashboard keeps an **Open in KeyHunt** link, and
-results keep flowing back to it as `AgentRun`s.
+The Next.js app hosts onboarding and the search workspace at `/h/<householdId>/search`.
+Its server actions verify membership and proxy to `/agent/households/<householdId>/...` on
+the Python worker. Housemates can reveal contacts, call, email, mark interest and track
+viewings without leaving the dashboard. The Python `/searches/<id>` and `/calls` pages
+remain the operator console; the voice recorder link in Settings still opens the worker.
 
 Set `RUN_PLATFORM_WORKER=1` to run the queue worker inside the web process (then skip
 Terminal 3 below); the handoff wakes it so sourcing starts immediately. Searches are only ever
@@ -50,7 +48,20 @@ Recordings remain on the worker's private disk. Import a Dial-downloaded WAV usi
 - `Listing.rentUsd`, `bedrooms`, and `bathrooms` accept `null`. The Zod contract, price sorting, shortlist and calendar formatting preserve unknowns rather than inventing zero values.
 - Optional `Listing.research` carries separate web findings, exact quotes, source links, timestamps and comparable counts. These are not fabricated call checks.
 - Optional `AgentRun.progress` and `warnings` carry operational state. Call evidence IDs are remapped consistently to exported call IDs.
-- The brief's location, budget, one-bedroom-per-occupant requirement (matching the existing UI), must-haves, deal-breakers and move-in window feed search/calls. Financial eligibility and commute duration remain unconfirmed; no routing ETA is invented. Wishes and nice-to-haves do not silently become hard constraints.
+- Optional `Call.listingVerified: boolean | null` carries exact-listing verification; older calls stay unconfirmed. Optional `AgentRun.bookedTours` carries mutually confirmed appointments with `listingId`, `callId`, `start`, `end`, `meetingAddress`, `agentEvidence` and `contactEvidence`. Evidence IDs reference the exported call and quotes must match its correctly attributed transcript. Existing `offeredWindows` stays offer-only; older producers remain valid.
+- The brief's location, budget, bedroom requirements (studios allowed for solo renters; one bedroom per housemate for groups), must-haves, deal-breakers and move-in window feed search/calls. Financial eligibility and commute duration remain unconfirmed; no routing ETA is invented. Wishes and nice-to-haves do not silently become hard constraints.
+
+## Exact listing verification and booking on calls
+
+The caller introduces itself as **Reed's AI assistant** for Reed's search, or uses the household's supplied renter name. It asks the contact to repeat the street address and unit, confirm their authority, availability, actual monthly rent, advertised bed/bath counts, fees and essential requirements. A green **Listing verified** badge requires contact evidence for the exact unit and core advertised facts. Missing evidence is neutral; contradictions are shown as **Listing details differ**. This verifies statements on the call, not legal ownership or absence of fraud. Research findings stay separate.
+
+Before a live call, the worker requests `GET /api/agent/availability/<householdId>?timezone=America/Los_Angeles`. The calendar owner checks all housemates' connected calendars and existing tours, then returns `{enabled, windows: [{start,end}], checked_at, reason}`. The timezone comes from `CALL_TIMEZONE`; ranges cover daytime in that timezone over the next seven days. Missing calendars, an unconfirmed household, errors, explicit free-text scheduling preferences needing clarification, or an existing viewing disable booking and leave the caller collecting offers. A native operator search can use its connected primary Google calendar instead.
+
+The call may book **one** future appointment only within those fresh windows, after the exact listing, essential requirements, fees and no-payment/no-application reservation terms are confirmed. Financial application eligibility can remain unknown. The agent repeats the exact date, start/end, timezone and meeting address and requests the booking; the contact must explicitly confirm it afterward. Extracted dates and times must match the cited turns (full date or today/tomorrow, explicit AM/PM range or duration); ambiguous speech needs review. Availability snapshots expire after ten minutes. Ambiguous or out-of-window commitments generate a visible review warning, not a false booked state.
+
+The worker saves the original authorization with the call before dialing, and the raw transcript before extraction. A confirmed appointment creates a unique local tour tied to that call and advances the viewing tracker. The `POST /api/agent/runs` response includes `calendarSync: [{callId,status,error?}]`; the calendar owner adds the appointment to each housemate's calendar. Stable Google event IDs, per-listing database locks and saved partial success prevent duplicate inserts on retries. A calendar conflict or disconnected account leaves **Tour booked · Calendar sync pending** visible and does not erase the contact's commitment. Pending snapshots retry through the worker loop; **Retry calendar sync** also works without rerunning extraction or dialing.
+
+The private workspace DTO adds `call.listingVerified`, `verificationEvidence`, `bookingWarning`, and `viewing.end`, `confirmedOnCall`, `calendarStatus`, `calendarError`. The UI displays separate verification, booking and calendar states. SQLite migrations are additive on startup; the existing Postgres tours table is reused without a schema migration. The standalone `caller/` package is retained; production dashboard calls use the Python worker.
 
 ## Search and risk screening
 

@@ -8,6 +8,7 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from dataclasses import replace
 
 import httpx
 
@@ -256,6 +257,7 @@ def _call_listing(search_id: int, key: str) -> None:
     if row is None:
         return
     call_id = row["id"]
+    booking_context = json.loads(row["booking_context"]) if row["booking_context"] else {"enabled": False, "windows": []}
     try:
         if not dry_run and not has_credentials():
             raise RuntimeError("Set OPENAI_API_KEY or ANTHROPIC_API_KEY before live calls")
@@ -281,12 +283,14 @@ def _call_listing(search_id: int, key: str) -> None:
                         raise RuntimeError("Contact requested no further calls")
                     if db.contact_called_today(phone, call_id):
                         raise RuntimeError("Daily call limit reached for this contact")
-                if not criteria.tour_availability:
-                    criteria.tour_availability = calendar_availability()
-                call_criteria = criteria.model_copy(update={"renter_name": voice_profile["speaker_name"]}) if voice_profile else criteria
-                instruction = (row["instruction"] if not voice_profile else None) or build_instruction(
-                    listing, call_criteria, settings.renter_name, db.place_notes(search_id,key))
-                db.update_call(call_id, instruction=instruction)
+                from househunt.outreach import booking
+                # A retry with a saved provider call never changes its original authorization.
+                if not row["instruction"]:
+                    booking_context = booking.prepare(search_id, key, criteria) if not dry_run else {"enabled": False, "windows": []}
+                call_criteria = replace(criteria, renter_name=voice_profile["speaker_name"]) if voice_profile else criteria
+                instruction = row["instruction"] or build_instruction(listing, call_criteria, settings.renter_name,
+                    db.place_notes(search_id,key), booking_context=booking_context)
+                db.update_call(call_id, instruction=instruction, booking_context=booking_context)
                 placed = dial.place_call(listing.contact.phone, instruction,
                     max_seconds=settings.call_max_seconds, idempotency_key=row["attempt_key"])
                 provider_id = placed.id
@@ -296,6 +300,7 @@ def _call_listing(search_id: int, key: str) -> None:
             ended = dial.wait_for_call(provider_id)
         transcript = ended.transcript or "\n".join(f'{t.get("speaker", "unknown")}: {t.get("text", "")}' for t in ended.raw.get("transcriptTurns") or [])
         # Save evidence BEFORE model work, so extraction failures never lose the call.
+        ended.raw["booking_context"] = booking_context
         db.update_call(call_id, raw=ended.raw, transcript=transcript, status="extracting")
         contact_text = " ".join(t.get("text", "") for t in ended.raw.get("transcriptTurns") or [] if t.get("speaker") in ("user", "contact"))
         if re.search(r"\b(do not|don't|stop) call(ing)?|remove (me|my number)|never call", contact_text, re.I):
@@ -311,7 +316,7 @@ def _call_listing(search_id: int, key: str) -> None:
         if recording and recording.is_file():
             summary.audio_url = f"/calls/{call_id}/recording"
         db.update_call(call_id, status="ended", outcome=summary.model_dump(), error=None)
-        apply_outcome(search_id, listing, summary)
+        apply_outcome(search_id, listing, summary, call_id=call_id)
     except Exception as e:
         # Provider bodies, credentials and arbitrary model outputs never enter UI errors.
         message = str(e) if isinstance(e, RuntimeError) else f"Call processing failed ({type(e).__name__}); saved evidence can be retried"
@@ -319,11 +324,20 @@ def _call_listing(search_id: int, key: str) -> None:
         db.update_call(call_id, status="attention", error=message)
 
 
-def apply_outcome(search_id: int, listing: Listing, s: CallSummary) -> None:
-    listing.notes.append(s.summary)
+def apply_outcome(search_id: int, listing: Listing, s: CallSummary, call_id: int | None = None) -> None:
+    if s.summary not in listing.notes:
+        listing.notes.append(s.summary)
     listing.status = (ListingStatus.VIABLE if s.viable else
                       ListingStatus.NOT_VIABLE if s.verification_status == "ruled_out" else ListingStatus.CONTACTED)
-    # Offers are not appointments. The calendar owner handles explicit confirmation.
+    if call_id is not None:
+        from househunt.outreach import booking
+        tour_id = booking.record(search_id, listing, s, call_id)
+        if tour_id is not None:
+            listing.status = ListingStatus.TOUR_SCHEDULED
+            track_viewing(search_id, listing, s.tour_start)
+            booking.sync_local_calendar(tour_id, listing, s)
+    if db.tours_for_search(search_id).get(listing.key):
+        listing.status = ListingStatus.TOUR_SCHEDULED
     db.upsert_listing(search_id, listing)
 
 

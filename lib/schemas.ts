@@ -52,6 +52,7 @@ const listingSchema = z.object({
 });
 
 const callSchema = z.object({
+  listingVerified: z.boolean().nullable().optional(),
   id: z.string().min(1),
   listingId: z.string().min(1),
   dialCallId: z.string(),
@@ -83,12 +84,33 @@ export const agentRunSchema = z
     calls: z.array(callSchema),
     checks: z.array(checkSchema),
     offeredWindows: z.array(z.object({ listingId: z.string(), start: isoDateTime, end: isoDateTime })),
+    bookedTours: z.array(z.object({
+      listingId: z.string(), callId: z.string(), start: isoDateTime, end: isoDateTime, meetingAddress: z.string().min(1),
+      contactEvidence: z.object({ callId: z.string(), t: z.number().nonnegative(), quote: z.string().min(1) }),
+      agentEvidence: z.object({ callId: z.string(), t: z.number().nonnegative(), quote: z.string().min(1) }),
+    })).optional(),
     progress: z.array(z.string()).optional(),
     warnings: z.array(z.string()).optional(),
   })
   .superRefine((run, ctx) => {
     const listingIds = new Set(run.listings.map((l) => l.id));
     const callIds = new Set(run.calls.map((c) => c.id));
+    const bookedListings = new Set<string>();
+    for (const [i, tour] of (run.bookedTours ?? []).entries()) {
+      const call = run.calls.find((c) => c.id === tour.callId && c.listingId === tour.listingId);
+      const evidenceMatches = (["contact", "agent"] as const).every((speaker) => {
+        const ev = speaker === "contact" ? tour.contactEvidence : tour.agentEvidence;
+        return ev.callId === tour.callId && call?.transcript.some((line) => line.speaker === speaker && line.t === ev.t && line.text.includes(ev.quote));
+      });
+      const duration = Date.parse(tour.end) - Date.parse(tour.start);
+      if (!call || call.listingVerified !== true || call.outcome !== "answered" || !listingIds.has(tour.listingId)
+          || !evidenceMatches || tour.contactEvidence.t <= tour.agentEvidence.t
+          || duration <= 0 || duration > 7_200_000 || Date.parse(tour.start) <= Date.parse(call.startedAt)
+          || bookedListings.has(tour.listingId)) {
+        ctx.addIssue({ code: "custom", path: ["bookedTours", i], message: "A booking needs one verified listing, an exact time and both sides' call evidence" });
+      }
+      bookedListings.add(tour.listingId);
+    }
     for (const [i, c] of run.checks.entries()) {
       if (!listingIds.has(c.listingId)) ctx.addIssue({ code: "custom", path: ["checks", i], message: "Unknown listingId" });
       if (c.evidence && !callIds.has(c.evidence.callId))

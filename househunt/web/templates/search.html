@@ -256,11 +256,17 @@
         {% if not settings.mock_sources and risk.get('status') != 'checking' %}<form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/screen"><button class="secondary" type="submit">{{ 'Recheck sources' if risk else 'Check sources' }}</button></form>{% endif %}
       </div>
       {% if tour %}
-        <div class="tour">{{ icon("calendar", 16) }} Viewing <strong>{{ tour.start.replace("T", " ")[:16] }}</strong>
-          <a href="/tours/{{ tour.id }}.ics">Add to calendar</a></div>
+        <div class="tour">{{ icon("calendar", 16) }} {{ 'Tour confirmed on call' if tour.source_call_id else 'Viewing' }} <strong>{{ tour.start | when }}{% if tour.end %} – {{ tour.end | when }}{% endif %}</strong>
+          <a href="/tours/{{ tour.id }}.ics">Calendar invite</a></div>
+        {% if tour.source_call_id %}<p class="small">{{ '✓ Calendar synced' if tour.calendar_status == 'synced' else tour.calendar_error or 'Tour booked. Calendar sync pending.' }}</p>{% endif %}
+        {% if tour.source_call_id and tour.calendar_status != 'synced' %}<form method="post" action="/tours/{{ tour.id }}/calendar-sync"><button class="secondary" type="submit">Retry calendar sync</button></form>{% endif %}
       {% endif %}
       {% if o %}
         <div class="outcome {{ 'good' if o.viable else ('bad' if o.verification_status == 'ruled_out' else '') }}">{{ o.summary }}
+          <p>{% if call.mode == 'live' and o.listing_verified is sameas true %}<span class="pill" style="color:var(--accent);background:var(--accent-soft)">✓ Listing verified</span>
+          {% elif o.listing_verified is sameas false %}<span class="pill warn">Listing details differ</span>
+          {% else %}<span class="pill">Listing unconfirmed</span>{% endif %}</p>
+          {% if o.booking_warning %}<p class="warn">{{ o.booking_warning }}</p>{% endif %}
           {% if o.tradeoffs %}<div class="tradeoffs">Tradeoffs: {{ o.tradeoffs | join("; ") }}</div>{% endif %}
           {% for check in o.checks or [] %}
           <div style="margin-top:8px"><strong>{{ check.kind | capitalize }} · {{ 'Confirmed' if check.passed == true else ('Does not match' if check.passed == false else 'Unknown') }}</strong>: {{ check.summary }}
@@ -272,7 +278,7 @@
               {% for evidence in fact.evidence %}<span class="muted small"> · <a href="#call-{{ call.id }}-{{ evidence.t }}" data-call-audio="audio-{{ call.id }}" data-seek="{{ evidence.t }}">{{ evidence.t }}s</a>: “{{ evidence.quote }}”</span>{% endfor %}
             </p>{% endfor %}
           </details>{% endif %}
-          {% for window in o.offered_windows or [] %}
+          {% for window in (o.offered_windows or []) if not o.tour_booked %}
           <div class="tour">{{ icon("calendar", 16) }} Offered: {{ window.start | when }} – {{ window.end | when }} · confirmation needed</div>
           {% endfor %}
           {% if o.audio_url %}<p class="small">Hear the call</p><audio id="audio-{{ call.id }}" controls preload="none" src="{{ o.audio_url }}" style="width:100%"></audio>{% endif %}
