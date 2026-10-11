@@ -50,7 +50,8 @@ async def lifespan(_: FastAPI):
     from househunt import phone
 
     db.init()
-    db.recover_calls()
+    if not os.environ.get("VERCEL"):  # serverless instances overlap; platform.tick() recovers there
+        db.recover_calls()
     from househunt.voice.enrollment import recover_pending
     recover_pending()
     from househunt import platform
@@ -281,6 +282,13 @@ def call_recording(call_id: int):
         raise HTTPException(404, "Recording not imported")
     return FileResponse(path, media_type="audio/mpeg" if path.suffix == ".mp3" else "audio/wav",
                         headers={"Cache-Control": "private, no-store"})
+
+
+@app.get('/agent/tick')
+def worker_tick():
+    """Vercel Cron's entry point; it authenticates with CRON_SECRET set to AGENT_API_KEY."""
+    from househunt import platform
+    return {'ran': platform.tick()}
 
 
 @app.post('/agent/households/{household_id}/listings/{key}/call')

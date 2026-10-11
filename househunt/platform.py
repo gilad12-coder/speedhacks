@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -226,6 +226,21 @@ def start_background_worker(interval: float = 15) -> threading.Thread | None:
     t = threading.Thread(target=loop, name='platform-worker', daemon=True)
     t.start()
     return t
+
+
+def tick(lease_seconds: int = 800) -> bool:
+    """One worker pass for serverless hosts (Vercel Cron runs it every minute) in place of
+    the background loop. Returns False when another pass is still running."""
+    if not db.claim_lease('platform-worker', lease_seconds):
+        return False
+    try:
+        # A pass that hit the function time limit leaves its calls mid-flight; one untouched
+        # for 20 minutes is treated like a restart and waits for an explicit resume.
+        db.recover_calls(older_than=(datetime.now() - timedelta(minutes=20)).isoformat(timespec='seconds'))
+        run_once(PlatformClient())
+    finally:
+        db.release_lease('platform-worker')
+    return True
 
 
 def run_once(client: PlatformClient) -> None:

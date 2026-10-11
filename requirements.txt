@@ -10,3 +10,4 @@ dial-sdk==0.40.2
 elevenlabs==2.71.0
 websockets>=14,<18
 python-dotenv>=1.0
+psycopg[binary]>=3.2
