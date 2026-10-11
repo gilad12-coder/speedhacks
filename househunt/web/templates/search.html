@@ -209,12 +209,18 @@
           {% if o.tradeoffs %}<div class="tradeoffs">Tradeoffs: {{ o.tradeoffs | join("; ") }}</div>{% endif %}
           {% for check in o.checks or [] %}
           <div style="margin-top:8px"><strong>{{ check.kind | capitalize }} · {{ 'Confirmed' if check.passed == true else ('Does not match' if check.passed == false else 'Unknown') }}</strong>: {{ check.summary }}
-            {% if check.evidence %}<div class="muted small"><a href="#call-{{ call.id }}-{{ check.evidence.t }}">{{ check.evidence.t }}s</a> · “{{ check.evidence.quote }}”</div>{% endif %}
+            {% if check.evidence %}<div class="muted small"><a href="#call-{{ call.id }}-{{ check.evidence.t }}" data-call-audio="audio-{{ call.id }}" data-seek="{{ check.evidence.t }}">{{ check.evidence.t }}s</a> · “{{ check.evidence.quote }}”</div>{% endif %}
           </div>
           {% endfor %}
+          {% if o.confirmed_facts %}<details><summary>Facts confirmed on this call</summary>
+            {% for fact in o.confirmed_facts %}<p>{{ fact.summary }}
+              {% for evidence in fact.evidence %}<span class="muted small"> · <a href="#call-{{ call.id }}-{{ evidence.t }}" data-call-audio="audio-{{ call.id }}" data-seek="{{ evidence.t }}">{{ evidence.t }}s</a>: “{{ evidence.quote }}”</span>{% endfor %}
+            </p>{% endfor %}
+          </details>{% endif %}
           {% for window in o.offered_windows or [] %}
           <div class="tour">{{ icon("calendar", 16) }} Offered: {{ window.start | when }} – {{ window.end | when }} · confirmation needed</div>
           {% endfor %}
+          {% if o.audio_url %}<p class="small">Hear the call</p><audio id="audio-{{ call.id }}" controls preload="none" src="{{ o.audio_url }}" style="width:100%"></audio>{% endif %}
         </div>
       {% endif %}
       {% set notes = l.notes | reject("equalto", o.summary if o else None) | select | list %}
@@ -387,6 +393,18 @@
     setTimeout(poll, 3000);
   }
   setTimeout(poll, 3000);
+  document.addEventListener("click", event => {
+    const link = event.target.closest("[data-call-audio]");
+    if (!link) return;
+    const line = document.getElementById(link.hash.slice(1));
+    const transcript = line?.closest("details");
+    if (transcript) transcript.open = true;
+    const player = document.getElementById(link.dataset.callAudio);
+    if (!player) return;
+    const seek = () => { player.currentTime = Number(link.dataset.seek); player.play().catch(() => {}); };
+    if (player.readyState) seek();
+    else { player.addEventListener("loadedmetadata", seek, {once:true}); player.load(); }
+  });
 })();
 </script>
 {% endblock %}

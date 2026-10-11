@@ -159,3 +159,37 @@ def test_ui_displays_citations_without_booking(caller):
         assert 'Call again' not in response.text
         assert client.post(f'/searches/{sid}/listings/{listing.key}/call').status_code == 409
         assert not db.tours_for_search(sid)
+
+
+def test_private_recording_import_and_authenticated_playback(caller, tmp_path, monkeypatch):
+    import wave
+    from fastapi.testclient import TestClient
+    from househunt.outreach.recording import import_recording
+    from househunt.web import app as web
+    db, _, sid, listing, _ = caller
+    row = db.claim_call(sid, listing.key, listing.contact.phone, 'live')
+    db.update_call(row['id'], dial_call_id='provider-test', status='ended', outcome={'summary':'Test'})
+    source = tmp_path / 'download.wav'
+    with wave.open(str(source), 'wb') as w:
+        w.setnchannels(1);w.setsampwidth(2);w.setframerate(8000);w.writeframes(b'\0\0'*8000)
+    path = import_recording(row['id'], source)
+    assert path.stat().st_mode & 0o777 == 0o600
+    monkeypatch.setattr(web, 'settings', replace(web.settings, app_password='test-password'))
+    with TestClient(web.app) as client:
+        url=f'/calls/{row["id"]}/recording'
+        assert client.get(url).status_code == 401
+        response = client.get(url, auth=('demo','test-password'), headers={'Range':'bytes=0-11'})
+        assert response.status_code == 206
+        assert response.content[:4] == b'RIFF'
+        assert response.headers['cache-control'] == 'private, no-store'
+        assert client.get('/calls/9999/recording', auth=('demo','test-password')).status_code == 404
+
+
+def test_recording_import_rejects_non_audio(caller, tmp_path):
+    from househunt.outreach.recording import import_recording
+    db, _, sid, listing, _ = caller
+    row=db.claim_call(sid,listing.key,listing.contact.phone,'live')
+    db.update_call(row['id'],dial_call_id='provider-test')
+    source=tmp_path/'not-audio.wav';source.write_text('<script>not a recording</script>')
+    with pytest.raises(ValueError,match='Expected a WAV'):
+        import_recording(row['id'],source)

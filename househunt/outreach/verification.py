@@ -138,6 +138,9 @@ def validate_assessment(a: Assessment, turns: list[dict], criteria: SearchCriter
                         evidence=cite(refs[0]) if refs else None))
     verified = all(c.passed is True for c in checks[:3])
     return {"checks": checks, "facts": facts, "monthly_rent": amount.value if answered and amount else None,
+            "confirmed_facts": [{"key": f.key, "summary": f.summary, "passed": f.passed,
+                                  "evidence": [cite(r).model_dump() for r in f.evidence]}
+                                 for f in facts.values() if answered and f.passed is not None and f.evidence and all(valid(r) for r in f.evidence)],
             "details": {d.name: d.value for d in a.details if answered and valid(d.evidence)},
             "offered_windows": windows, "do_not_call": bool(a.do_not_call and valid(a.do_not_call)),
             "verification_status": "verified" if verified else "ruled_out" if failed else "unconfirmed"}

@@ -56,13 +56,19 @@ The current web app is Python/FastAPI on the team's `ui-refresh` branch. Its exi
 
 For live calls set `CALL_MODE=approve`, `MOCK_SOURCES=0`, `DIAL_API_KEY`, `DIAL_FROM_NUMBER`, `DIAL_ALLOWED_NUMBERS` (comma-separated approved recipients), and `OPENAI_API_KEY`. Use `APP_PASSWORD` when exposing the app. Keep `.env` and `data/` private and out of Git. Run a single web worker with a persistent SQLite disk. The configured calling timezone defaults to `America/Los_Angeles`.
 
-The default call cap is 180 seconds. Calls are serialized, fictional 555 numbers are rejected, and each contact can be attempted only once per day across searches. Duplicate clicks reuse the saved attempt rather than creating a new call. **Resume saved call** polls or re-extracts the existing call; ambiguous placements use the same persisted Dial idempotency key. Interrupted work enters attention after a process restart and needs an explicit resume.
+The default call cap is 180 seconds. Calls are serialized, fictional 555 numbers are rejected, and each contact defaults to one attempt per day across searches (`MAX_CALLS_PER_NUMBER_PER_DAY`). Duplicate clicks reuse the saved attempt rather than creating a new call. **Resume saved call** polls or re-extracts the existing call; ambiguous placements use the same persisted Dial idempotency key. Interrupted work enters attention after a process restart and needs an explicit resume.
 
 Live extraction uses OpenAI when `OPENAI_API_KEY` exists, otherwise Anthropic. It never falls back to keyword guesses. The raw response and transcript are saved before extraction; provider errors are shown without response bodies or credentials. Opt-outs persist even if extraction fails. Dry runs are explicitly labeled synthetic and never invoke either model provider.
 
 `calls.outcome` now includes `checks` (real/matches/fit/tour with `{callId,t,quote}` evidence), `transcript_turns`, `offered_windows`, `verification_status`, and `mode`, while preserving the existing UI summary fields. Missing evidence stays unknown, not rejected or verified. Tenant qualifications may remain unknown because intake does not collect financial eligibility. Offers never create a tour, calendar event or application automatically. The calendar owner can consume `offered_windows` for the separate confirmation step.
 
-Dial's documented response has timed transcripts but no recording URL, so `audio_url` remains null. Real live-call transcripts are local only; the committed fixture in `mocks/` is synthetic.
+Dial's dashboard provides recordings through expiring signed links; the documented public API does not expose a recording-download endpoint. For demo replay, download the call's WAV from Dial → Voice Calls and import it with:
+
+```sh
+.venv/bin/python -m househunt.outreach.recording CALL_ID /path/to/download.wav
+```
+
+`CALL_ID` is the local SQLite call ID. Imported audio is stored beside the database with owner-only permissions and served by the app's authenticated `/calls/:id/recording` route, including range requests for seeking. Timestamp links open the matching transcript line and seek the player. The URL stays null until a recording is imported; the app never exposes Dial credentials or signed storage links. Real call data remains local; the committed fixture in `mocks/` is synthetic.
 
 ## Source status
 

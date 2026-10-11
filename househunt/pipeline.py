@@ -153,6 +153,10 @@ def _call_listing(search_id: int, key: str) -> None:
         summary = extract(transcript, listing, criteria, call_date=started_at, raw=ended.raw, dry_run=dry_run)
         if summary.do_not_call:
             db.block_contact(listing.contact.phone)
+        from househunt.outreach.recording import recording_path
+        recording = recording_path(call_id)
+        if recording and recording.is_file():
+            summary.audio_url = f"/calls/{call_id}/recording"
         db.update_call(call_id, status="ended", outcome=summary.model_dump(), error=None)
         apply_outcome(search_id, listing, summary)
     except Exception as e:

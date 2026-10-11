@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
@@ -174,6 +174,15 @@ def call_listing(background: BackgroundTasks, search_id: int, key: str):
         raise HTTPException(409, "Call already exists; no replacement call was started")
     background.add_task(pipeline.call_listing, search_id, key)
     return RedirectResponse(f"/searches/{search_id}", status_code=303)
+
+
+@app.get("/calls/{call_id}/recording")
+def call_recording(call_id: int):
+    from househunt.outreach.recording import recording_path
+    path = recording_path(call_id)
+    if path is None or not path.is_file():
+        raise HTTPException(404, "Recording not imported")
+    return FileResponse(path, media_type="audio/wav", headers={"Cache-Control": "private, no-store"})
 
 
 @app.post("/searches/{search_id}/listings/{key}/track")
