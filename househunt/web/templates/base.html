@@ -42,6 +42,10 @@
     .brand:hover { text-decoration: none; }
     .brand .logo { width: 30px; height: 30px; border-radius: 8px; background: #6fbf93; color:#0f1a14;
       display:grid; place-items:center; }
+    .sidebar a.new-search { display:flex; align-items:center; justify-content:center; gap: 8px; margin: 0 2px 12px;
+      padding: 8px 10px; border-radius: 8px; background: #6fbf93; color: #0f1a14; font-weight: 600; }
+    .sidebar a.new-search:hover { filter: brightness(1.08); text-decoration: none; }
+    .sidebar a.recent .icon { opacity: .5; }
     .sidebar a.nav { display:flex; align-items:center; gap: 10px; padding: 8px 10px; border-radius: 8px;
       color: var(--side-fg); font-weight: 500; }
     .sidebar a.nav:hover, .sidebar a.recent:hover { background: var(--side-hover); text-decoration: none; }
@@ -126,13 +130,23 @@
 <div class="shell">
   <aside class="sidebar" id="sidebar">
     <a class="brand" href="/"><span class="logo">{{ icon("key", 18) }}</span>KeyHunt</a>
+    <a class="new-search {{ 'active' if path == '/searches/new' }}" href="/searches/new">{{ icon("plus", 16) }}New search</a>
     {% for href, label, ic in nav_items() %}
-      {% set active = path == href or (href == "/" and path.startswith("/searches/") and path != "/searches/new") %}
+      {% set active = path == href or (href == "/" and path.startswith("/searches/") and path != "/searches/new")
+                      or (href == "/chats/agent" and chat is defined and chat and not chat.listing_key) %}
       <a class="nav {{ 'active' if active }}" href="{{ href }}">{{ icon(ic) }}{{ label }}</a>
     {% endfor %}
+    {% set place_chats = recent_chats() %}
+    {% if place_chats %}
+      <div class="section">Chats</div>
+      {% for c in place_chats %}
+        <a class="recent {{ 'active' if path == '/chats/' ~ c.id }}" href="/chats/{{ c.id }}" title="{{ c.title }}">
+          <span>{{ c.title }}</span>{{ icon("chat", 13) }}</a>
+      {% endfor %}
+    {% endif %}
     {% set recent = recent_searches() %}
     {% if recent %}
-      <div class="section">Recent</div>
+      <div class="section">Recent searches</div>
       {% for id, city, status in recent %}
         <a class="recent {{ 'active' if path == '/searches/' ~ id }}" href="/searches/{{ id }}" title="{{ status }}">
           <span>{{ city }} <span style="opacity:.5">#{{ id }}</span></span><span class="dot {{ status }}"></span></a>

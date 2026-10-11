@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ chat.title if chat.listing_key else "Ask your agent" }} · KeyHunt{% endblock %}
+{% block page_class %}wide{% endblock %}
+{% block style %}
+<style>
+  .chat-wrap { display:grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+  .chat-wrap.solo { grid-template-columns: minmax(0, 820px); justify-content: center; }
+  .convo { display:flex; flex-direction: column; min-height: calc(100vh - 150px); }
+  .msgs { flex: 1; display:flex; flex-direction: column; gap: 14px; padding-bottom: 16px; }
+  .msg { display:flex; gap: 10px; max-width: 760px; }
+  .msg.user { align-self: flex-end; }
+  .msg .bubble { padding: 10px 14px; border-radius: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+  .msg.user .bubble { background: var(--accent); color: var(--on-accent); border-bottom-right-radius: 4px;
+    white-space: pre-wrap; }
+  .msg.assistant .bubble { background: var(--surface); border: 1px solid var(--line); border-top-left-radius: 4px; }
+  .avatar { flex: none; width: 30px; height: 30px; border-radius: 9px; display:grid; place-items:center;
+    background: var(--accent-soft); color: var(--accent); }
+  .md p { margin: 0 0 8px; } .md p:last-child { margin-bottom: 0; }
+  .md ul, .md ol { margin: 4px 0 8px; padding-left: 20px; } .md li { margin: 2px 0; }
+  .md code { font-size: 12.5px; }
+  .msg .tools { display:flex; gap: 8px; margin-top: 6px; }
+  .msg .tools button { background: none; border: 0; color: var(--muted); padding: 2px 4px; font-size: 12px; }
+  .msg .tools button:hover { color: var(--accent); filter: none; }
+  .saved { display:inline-flex; align-items:center; gap: 6px; margin-top: 8px; font-size: 12.5px; padding: 4px 10px;
+    border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+  .save-row { display:flex; gap: 6px; margin-top: 8px; }
+  .save-row input { flex: 1; padding: 6px 9px; font-size: 13px; }
+  .save-row button { padding: 5px 11px; font-size: 12.5px; }
+  .err { color: var(--warn); }
+  .typing span { display:inline-block; width: 6px; height: 6px; margin-right: 3px; border-radius: 99px;
+    background: var(--faint); animation: blink 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: .2s; } .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  .hello { text-align:center; padding: 40px 16px 8px; color: var(--muted); }
+  .hello .avatar { width: 44px; height: 44px; margin: 0 auto 10px; border-radius: 12px; }
+  .hello h2 { color: var(--fg); margin: 0 0 4px; font-size: 18px; }
+  .starters { display:flex; flex-wrap: wrap; gap: 8px; justify-content:center; margin-top: 16px; }
+  .starters button { background: var(--surface); color: var(--fg); border-color: var(--line); font-weight: 400; }
+  .starters button:hover { border-color: var(--accent); filter: none; }
+
+  .composer { position: sticky; bottom: 0; padding: 12px 0 16px; background: linear-gradient(transparent, var(--bg) 30%); }
+  .composer form { display:flex; gap: 8px; align-items: flex-end; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 8px 8px 8px 14px; box-shadow: var(--shadow); }
+  .composer form:focus-within { border-color: var(--accent); }
+  .composer textarea { flex: 1; border: 0; padding: 6px 0; resize: none; background: transparent; max-height: 180px;
+    outline: none; }
+  .composer button { border-radius: 10px; padding: 8px 12px; }
+  .composer .hint { font-size: 12px; color: var(--faint); margin-top: 6px; text-align: center; }
+
+  .panel { position: sticky; top: 20px; margin: 0; max-height: calc(100vh - 40px); overflow-y: auto; }
+  .panel h3 { margin-bottom: 2px; }
+  .panel .facts { font-size: 13px; color: var(--muted); }
+  .panel .sec { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; font-size: 13.5px; }
+  .panel .sec h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .notes-list { list-style: none; margin: 0; padding: 0; }
+  .notes-list li { display:flex; gap: 6px; align-items: flex-start; padding: 5px 0; border-top: 1px dashed var(--line); }
+  .notes-list li:first-child { border-top: 0; }
+  .notes-list li span { flex: 1; }
+  .notes-list li button { background: none; border: 0; color: var(--faint); padding: 0 2px; font-size: 15px; line-height: 1; }
+  .notes-list li button:hover { color: var(--warn); filter: none; }
+  .notes-list li.new { animation: flash 1.2s ease-out; }
+  @keyframes flash { from { background: var(--accent-soft); } }
+  .add-note { display:flex; gap: 6px; margin-top: 8px; }
+  .add-note input { flex: 1; padding: 6px 9px; font-size: 13px; }
+  .add-note button { padding: 5px 10px; font-size: 12.5px; }
+  .panel .links { display:flex; gap: 12px; flex-wrap: wrap; font-size: 13px; margin-top: 8px; }
+  @media (max-width: 1000px) {
+    .chat-wrap { grid-template-columns: minmax(0, 1fr); }
+    .panel { position: static; max-height: none; order: -1; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+{% set place = chat.listing_key %}
+<div class="chat-wrap {{ 'solo' if not place }}">
+  <div class="convo">
+    <div class="page-head" style="margin-bottom:8px">
+      <div>
+        {% if place %}<a class="muted small" href="/searches/{{ chat.search_id }}#{{ chat.listing_key }}">← Search #{{ chat.search_id }}</a>{% endif %}
+        <h1>{{ chat.title if place else "Ask your agent" }}</h1>
+        <p class="muted small">{% if place %}Your agent knows this listing, the call, and your notes. Concerns you mention get saved and raised on the next call.{% else %}Talk through your whole search: what's working, what isn't, and what to do next.{% endif %}</p>
+      </div>
+    </div>
+
+    <div class="msgs" id="msgs">
+      {% if not messages %}
+      <div class="hello" id="hello">
+        <div class="avatar">{{ icon("sparkle", 22) }}</div>
+        <h2>{{ "What's on your mind about this place?" if place else "How can I help with your search?" }}</h2>
+        <div>Ask anything, or start with one of these.</div>
+        <div class="starters">
+          {% if place %}
+            {% for q in ["What did the call tell us?", "Any red flags here?", "How does it stack up against my criteria?", "What should we ask on the next call?"] %}<button type="button">{{ q }}</button>{% endfor %}
+          {% else %}
+            {% for q in ["How is my search going?", "Which place looks strongest so far?", "What should I do next?", "Should I adjust my budget or neighborhoods?"] %}<button type="button">{{ q }}</button>{% endfor %}
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+      {% for m in messages %}
+        {% if m.role == "user" %}
+          <div class="msg user"><div class="bubble">{{ m.display }}</div></div>
+        {% else %}
+          <div class="msg assistant"><div class="avatar">{{ icon("sparkle", 16) }}</div>
+            <div><div class="bubble md" data-md="{{ m.display }}"></div>{% if place %}<div class="tools"><button type="button" class="save-btn">{{ icon("bookmark", 12) }} Save to notes</button></div>{% endif %}</div></div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="composer">
+      <form id="composer">
+        <textarea name="message" rows="1" placeholder="{{ 'Ask about this place, or share a concern…' if place else 'Ask your agent anything…' }}" required></textarea>
+        <button type="submit" aria-label="Send">{{ icon("send", 16) }}</button>
+      </form>
+      <div class="hint">{% if has_key %}Enter to send · Shift+Enter for a new line{% else %}Add ANTHROPIC_API_KEY to .env to chat with your agent{% endif %}</div>
+    </div>
+  </div>
+
+  {% if place and listing %}
+  <aside class="card panel">
+    <h3>{{ listing.title }}</h3>
+    <div class="facts">{% if listing.price %}<strong style="color:var(--fg)">${{ "{:,}".format(listing.price) }}</strong>/mo · {% endif %}{{ listing.beds if listing.beds is not none else "?" }} bd · {{ listing.baths if listing.baths is not none else "?" }} ba{% if listing.address %}<br>{{ listing.address }}{% endif %}</div>
+    <div style="margin-top:8px"><span class="pill {{ listing.status.value }}">{{ listing.status.value.replace("_", " ") }}</span>
+      {% if app %}<a class="pill viable" href="/applications#app-{{ app.id }}">{{ icon("bookmark", 12) }}{{ app.stage.replace("_", " ") }}</a>{% endif %}</div>
+
+    <div class="sec">
+      <h4>Notes &amp; concerns</h4>
+      <ul class="notes-list" id="notes">
+        {% for n in notes %}<li><span>{{ n }}</span><button type="button" title="Remove">×</button></li>{% endfor %}
+      </ul>
+      <p class="muted small" id="notes-empty" {% if notes %}hidden{% endif %} style="margin:0">Nothing yet. Mention a concern in the chat, or add one here.</p>
+      <form class="add-note" id="add-note"><input name="note" placeholder="Add a note…" autocomplete="off"><button type="submit" class="secondary">Add</button></form>
+      <p class="muted small" style="margin:8px 0 0">{{ icon("phone", 12) }} Your agent raises open notes on the next call to this place.</p>
+    </div>
+
+    {% if outcome or call %}
+    <div class="sec">
+      <h4>Last call</h4>
+      {% if outcome %}<div>{{ outcome.summary }}</div>{% if outcome.tradeoffs %}<div class="muted small" style="margin-top:4px">Tradeoffs: {{ outcome.tradeoffs | join("; ") }}</div>{% endif %}
+      {% else %}<span class="pill {{ call.status }}">{{ call.status.replace("_", " ") }}</span>{% endif %}
+    </div>
+    {% endif %}
+    {% if tour %}<div class="sec"><h4>Viewing</h4>{{ tour.start | when }} · <a href="/tours/{{ tour.id }}.ics">Add to calendar</a></div>{% endif %}
+
+    <div class="links">
+      <a href="{{ listing.url }}" target="_blank" rel="noopener">Open listing {{ icon("external", 12) }}</a>
+      <a href="/searches/{{ chat.search_id }}#{{ chat.listing_key }}">See in search</a>
+    </div>
+  </aside>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const PLACE = {{ ({"sid": chat.search_id, "key": chat.listing_key} if place else None) | tojson }};
+  const msgs = document.getElementById("msgs");
+  const form = document.getElementById("composer");
+  const box = form.querySelector("textarea");
+  const ICON_SPARK = `{{ icon("sparkle", 16) }}`;
+  const ICON_MARK = `{{ icon("bookmark", 12) }}`;
+
+  // A small, safe markdown subset: paragraphs, lists, **bold**, *italic*, `code`.
+  const esc = s => s.replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
+  const inline = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*(?!\s)(.+?)\*/g, "$1<em>$2</em>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  function md(text) {
+    let html = "", list = null;
+    const close = () => { if (list) { html += `</${list}>`; list = null; } };
+    for (const block of text.trim().split(/\n{2,}/)) {
+      for (const line of block.split("\n")) {
+        const ul = line.match(/^\s*[-*•]\s+(.*)/), ol = line.match(/^\s*\d+[.)]\s+(.*)/);
+        if (ul || ol) {
+          const kind = ul ? "ul" : "ol";
+          if (list !== kind) { close(); html += `<${kind}>`; list = kind; }
+          html += `<li>${inline((ul || ol)[1])}</li>`;
+        } else if (line.trim()) { close(); html += `<p>${inline(line)}</p>`; }
+      }
+      close();
+    }
+    return html;
+  }
+  document.querySelectorAll(".md[data-md]").forEach(el => el.innerHTML = md(el.dataset.md));
+  const scroll = () => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  scroll();
+
+  // --- notes panel ---------------------------------------------------------
+  const notesEl = document.getElementById("notes");
+  function renderNotes(list, fresh) {
+    if (!notesEl) return;
+    notesEl.innerHTML = list.map(n => `<li class="${n === fresh ? "new" : ""}"><span>${esc(n)}</span><button type="button" title="Remove">×</button></li>`).join("");
+    document.getElementById("notes-empty").hidden = list.length > 0;
+  }
+  const currentNotes = () => [...(notesEl?.querySelectorAll("li span") || [])].map(s => s.textContent);
+  async function addNote(note) {
+    const body = new FormData(); body.append("note", note);
+    const r = await fetch(`/places/${PLACE.sid}/${encodeURIComponent(PLACE.key)}/notes/add`, { method: "POST", body });
+    if (r.ok) renderNotes((await r.json()).notes, note.trim());
+    return r.ok;
+  }
+  notesEl?.addEventListener("click", async e => {
+    const li = e.target.closest("button") && e.target.closest("li");
+    if (!li) return;
+    li.remove();
+    const body = new FormData(); body.append("notes", currentNotes().join("\n"));
+    const r = await fetch(`/places/${PLACE.sid}/${encodeURIComponent(PLACE.key)}/notes`,
+                          { method: "POST", body, headers: { "x-requested-with": "fetch" } });
+    if (r.ok) renderNotes((await r.json()).notes);
+  });
+  document.getElementById("add-note")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const input = e.target.note;
+    if (input.value.trim() && await addNote(input.value)) input.value = "";
+  });
+
+  // "Save to notes" on an agent reply: prefill with the selected text or the first sentence.
+  msgs.addEventListener("click", e => {
+    const btn = e.target.closest(".save-btn");
+    if (!btn || !PLACE) return;
+    const wrap = btn.closest(".msg > div");
+    if (wrap.querySelector(".save-row")) return;
+    const sel = String(getSelection()).trim();
+    const text = wrap.querySelector(".bubble").innerText.trim();
+    const guess = sel || (text.match(/^[^.!?\n]{8,200}[.!?]?/) || [text.slice(0, 200)])[0];
+    const row = document.createElement("form");
+    row.className = "save-row";
+    row.innerHTML = `<input value="${esc(guess)}"><button type="submit">Save</button><button type="button" class="secondary">Cancel</button>`;
+    wrap.appendChild(row);
+    row.querySelector("input").select();
+    row.querySelector(".secondary").onclick = () => row.remove();
+    row.onsubmit = async ev => {
+      ev.preventDefault();
+      const note = row.querySelector("input").value.trim();
+      if (note && await addNote(note)) row.outerHTML = `<div class="saved">${ICON_MARK} Saved to notes</div>`;
+    };
+  });
+
+  // --- sending ---------------------------------------------------------------
+  function bubble(role, text) {
+    document.getElementById("hello")?.remove();
+    const el = document.createElement("div");
+    el.className = `msg ${role}`;
+    el.innerHTML = role === "user" ? `<div class="bubble"></div>`
+      : `<div class="avatar">${ICON_SPARK}</div><div><div class="bubble md"><span class="typing"><span></span><span></span><span></span></span></div></div>`;
+    if (role === "user") el.querySelector(".bubble").textContent = text;
+    msgs.appendChild(el);
+    scroll();
+    return el;
+  }
+
+  async function send(text) {
+    if (!text.trim() || form.dataset.busy) return;
+    form.dataset.busy = "1"; box.value = ""; box.style.height = "";
+    bubble("user", text);
+    const out = bubble("assistant");
+    const target = out.querySelector(".bubble");
+    let acc = "";
+    try {
+      const body = new FormData(); body.append("message", text);
+      const res = await fetch(`/chats/{{ chat.id }}/messages`, { method: "POST", body });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader(), dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const ev = JSON.parse(buf.slice(0, nl)); buf = buf.slice(nl + 1);
+          if (ev.t === "text") { acc += ev.v; target.innerHTML = md(acc); scroll(); }
+          else if (ev.t === "note") {
+            const chip = document.createElement("div");
+            chip.className = "saved"; chip.innerHTML = `${ICON_MARK} Saved note${PLACE ? "" : " for " + esc(ev.place)}: ${esc(ev.v)}`;
+            target.after(chip);
+            if (PLACE && ev.key === PLACE.key) renderNotes([...currentNotes(), ev.v], ev.v);
+          } else if (ev.t === "error") {
+            target.innerHTML = (acc ? md(acc) : "") + `<p class="err">${esc(ev.v)}</p>`;
+          }
+        }
+      }
+      if (PLACE && acc.trim()) {
+        const tools = document.createElement("div");
+        tools.className = "tools";
+        tools.innerHTML = `<button type="button" class="save-btn">${ICON_MARK} Save to notes</button>`;
+        out.lastElementChild.appendChild(tools);
+      }
+      if (!acc && !target.querySelector(".err")) target.innerHTML = `<p class="muted">No reply.</p>`;
+    } catch (err) {
+      target.innerHTML = `<p class="err">Couldn't reach your agent (${esc(err.message)}). Try again.</p>`;
+    } finally {
+      delete form.dataset.busy; box.focus();
+    }
+  }
+
+  form.addEventListener("submit", e => { e.preventDefault(); send(box.value); });
+  box.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(box.value); }
+  });
+  box.addEventListener("input", () => { box.style.height = "auto"; box.style.height = Math.min(box.scrollHeight, 180) + "px"; });
+  document.querySelectorAll(".starters button").forEach(b => b.addEventListener("click", () => send(b.textContent)));
+})();
+</script>
+{% endblock %}

@@ -97,7 +97,8 @@ def call_listing(search_id: int, key: str) -> None:
         dial = dial_client()
         if not criteria.tour_availability:
             criteria.tour_availability = calendar_availability()
-        instruction = build_instruction(listing, criteria, settings.renter_name)
+        instruction = build_instruction(listing, criteria, settings.renter_name,
+                                        db.place_notes(search_id, key))
         placed = dial.place_call(listing.contact.phone, instruction, max_seconds=300,
                                  idempotency_key=f"search{search_id}-{key}-{call_id}")
         db.update_call(call_id, dial_call_id=placed.id, status="in_progress")

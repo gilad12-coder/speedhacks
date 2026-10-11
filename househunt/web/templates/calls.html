@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Calls · KeyHunt{% endblock %}
+{% block style %}
+<style>
+  .filters { display:flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .filters button { background: var(--surface); color: var(--muted); border-color: var(--line); font-weight: 500; padding: 5px 12px; }
+  .filters button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  .call { display:grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 14px; align-items: start; margin: 0 0 10px; }
+  .call .ic { width: 40px; height: 40px; border-radius: 10px; display:grid; place-items:center;
+    background: var(--sunken); color: var(--muted); }
+  .call.good .ic { background: var(--accent-soft); color: var(--accent); }
+  .call.bad .ic { background: var(--warn-soft); color: var(--warn); }
+  .call.live .ic { background: var(--amber-soft); color: var(--amber); }
+  .call .t { font-weight: 600; color: var(--fg); }
+  .call .meta { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+  .call .sum { margin-top: 8px; font-size: 13.5px; }
+  .call .trade { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .call .side { display:flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .call .side form { margin: 0; }
+  .call details { margin-top: 8px; }
+  @media (max-width: 640px) { .call { grid-template-columns: minmax(0, 1fr); } .call .ic { display: none; } .call .side { align-items: flex-start; flex-direction: row; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Calls</h1>
+    <p class="muted">Every call your agent has made, what it learned, and the transcript.</p>
+  </div>
+  <a class="btn secondary" href="/viewings">Viewings {{ icon("arrow", 14) }}</a>
+</div>
+
+{% if calls %}
+{% set n_good = calls | selectattr("outcome") | selectattr("outcome.viable") | list | length %}
+<div class="filters" role="group" aria-label="Filter calls">
+  <button type="button" data-f="all" aria-pressed="true">All {{ calls | length }}</button>
+  <button type="button" data-f="good">Promising {{ n_good }}</button>
+  <button type="button" data-f="bad">Not a fit</button>
+  <button type="button" data-f="live">In progress</button>
+  <button type="button" data-f="failed">Didn't connect</button>
+</div>
+{% for c in calls %}
+  {% set call, l, o = c.call, c.listing, c.outcome %}
+  {% set kind = "live" if call.status in ("queued", "in_progress") else ("failed" if call.status == "failed" else ("good" if o and o.viable else "bad")) %}
+  <article class="card call {{ kind }}" data-kind="{{ kind }}">
+    <div class="ic">{{ icon("phone", 18) }}</div>
+    <div>
+      <a class="t" href="/searches/{{ call.search_id }}#{{ call.listing_key }}">{{ l.title if l else call.listing_key }}</a>
+      <div class="meta">{{ c.city }} search #{{ call.search_id }}{% if l and l.price %} · ${{ "{:,}".format(l.price) }}/mo{% endif %}{% if l and l.contact and l.contact.name %} · {{ l.contact.name }}{% endif %} · {{ call.created_at | when }}</div>
+      {% if o %}<div class="sum">{{ o.summary }}</div>
+        {% if o.tradeoffs %}<div class="trade">Tradeoffs: {{ o.tradeoffs | join("; ") }}</div>{% endif %}
+      {% elif call.error %}<div class="sum warn small">{{ call.error }}</div>{% endif %}
+      {% if call.transcript %}<details><summary>Transcript</summary><pre>{{ call.transcript }}</pre></details>{% endif %}
+    </div>
+    <div class="side">
+      <span class="pill {{ call.status }}">{{ call.status.replace("_", " ") }}</span>
+      {% if l %}<form method="post" action="/searches/{{ call.search_id }}/listings/{{ call.listing_key }}/chat">
+        <button type="submit" class="secondary">{{ icon("chat", 14) }}Discuss</button></form>{% endif %}
+    </div>
+  </article>
+{% endfor %}
+{% else %}
+<div class="card empty">
+  {{ icon("phone", 36) }}
+  <p>No calls yet. Start a search and your agent calls the most promising listings{% if settings.call_mode.value == "approve" %} once you approve them{% endif %}.</p>
+  <a class="btn" href="/searches/new">{{ icon("plus", 16) }}New search</a>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  document.querySelectorAll(".filters button").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll(".filters button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    document.querySelectorAll(".call").forEach(c => c.hidden = !(b.dataset.f === "all" || c.dataset.kind === b.dataset.f));
+  }));
+</script>
+{% endblock %}

@@ -54,6 +54,9 @@
     border-radius: 0 8px 8px 0; font-size: 13.5px; }
   .outcome.good { border-color: var(--accent); } .outcome.bad { border-color: var(--warn); }
   .outcome .tradeoffs { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  .concerns { margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: var(--amber-soft); font-size: 13px; }
+  .concerns b { color: var(--amber); font-weight: 600; display:inline-flex; gap: 4px; align-items:center; }
+  .concerns ul { margin: 4px 0 0; padding-left: 18px; }
   .notes { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
   .listing .actions { display:flex; align-items:center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
   .listing .actions form { margin: 0; }
@@ -101,7 +104,8 @@
     .stats { gap: 6px; }
     .stat { padding: 8px 10px; } .stat b { font-size: 18px; } .stat span { font-size: 11px; }
   }
-  .add-contact { width: 100%; }
+  .listing .actions .add-contact:not([open]) { flex-basis: auto; width: auto; }
+  .add-contact[open] { width: 100%; order: 10; }
   .get-contact { width: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
     padding: 10px 12px; border: 1px dashed var(--accent); border-radius: 10px; }
   .get-contact > .small { flex: 1 1 100%; }
@@ -227,10 +231,15 @@
       {% endif %}
       {% set notes = l.notes | reject("equalto", o.summary if o else None) | select | list %}
       {% if notes %}<div class="notes">{% for n in notes %}<div>{{ n }}</div>{% endfor %}</div>{% endif %}
+      {% set concerns = place_notes.get(l.key, []) %}
+      {% if concerns %}<div class="concerns"><b>{{ icon("bookmark", 12) }} Your notes</b> <span class="muted">· raised on the next call</span>
+        <ul>{% for n in concerns %}<li>{{ n }}</li>{% endfor %}</ul></div>{% endif %}
       {% set can_call = l.contact and l.contact.phone and l.status.value in ("candidate", "contacted", "not_viable") and not (call and call.status in ("queued", "in_progress")) %}
       {% set app = tracked.get(l.key) %}
-      {% if call or can_call or app or email or l.status.value != "filtered" %}
       <div class="actions">
+        <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/chat">
+          <button type="submit" class="secondary" title="Ask your agent about this place">{{ icon("chat", 14) }}{{ "Continue chat" if chats.get(l.key) else "Chat" }}</button>
+        </form>
         {% if can_call %}
           <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/call">
             <button type="submit" class="{{ 'secondary' if call }}" title="{{ l.contact.phone }}">{{ icon("phone", 14) }}{{ "Call again" if call else "Call" }}</button>
@@ -280,7 +289,6 @@
         {% if call and call.error %}<div class="err">{{ call.error }}</div>{% endif %}
         {% if call and call.transcript %}<details data-id="t-{{ l.key }}"><summary>Call transcript</summary><pre>{{ call.transcript }}</pre></details>{% endif %}
       </div>
-      {% endif %}
     </article>
     {% endmacro %}
 
