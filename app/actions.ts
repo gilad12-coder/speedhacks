@@ -164,15 +164,15 @@ export async function bookTour(householdId: string, listingId: string, start: st
 export async function callRental(householdId: string, listingId: string): Promise<FormState> {
   try {
     await requireMember(householdId);
-    const run = await getAgentRun(householdId);
-    const listing = run?.listings.find((l) => l.id === listingId);
-    if (!listing || listing.status === "ruled_out" || !listing.contact.phone) return { error: "No callable listing contact." };
+    // The workspace can contain a newly added contact before the next AgentRun snapshot.
+    // The worker validates the current listing, phone, allowlist and saved call attempt.
     const response = await workerRequest(`/agent/households/${encodeURIComponent(householdId)}/listings/${encodeURIComponent(listingId)}/call`, { method: "POST" });
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
       return { error: typeof result.detail === "string" ? result.detail : "The saved call could not be started. Check the agent worker." };
     }
     revalidatePath(`/h/${householdId}`);
+    revalidatePath(`/h/${householdId}/search`);
     return {};
   } catch {
     return { error: "The calling worker is unavailable or not connected. Your call has not been confirmed." };

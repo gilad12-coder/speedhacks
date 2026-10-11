@@ -39,7 +39,7 @@ def iso(value: str) -> str:
 
 def export_run(household_id: str, search_id: int, app_url: str = '') -> dict:
     criteria, row = db.get_search(search_id)
-    listings, calls, checks, windows = [], [], [], []
+    listings, calls, checks, windows, bookings = [], [], [], [], []
     call_rows = db.calls_for_search(search_id)
     in_flight = row['status'] not in ('done', 'error') or any(c['status'] in ('queued','in_progress','extracting') for c in call_rows.values())
     for listing in db.list_listings(search_id):
@@ -50,7 +50,7 @@ def export_run(household_id: str, search_id: int, app_url: str = '') -> dict:
             status = 'called'
         if outcome.get('verification_status') == 'verified':
             status = 'verified'
-        if outcome.get('offered_windows'):
+        if outcome.get('offered_windows') or outcome.get('tour_booked'):
             status = 'tour_offered'
         if listing.status in (ListingStatus.FILTERED_OUT, ListingStatus.NOT_VIABLE):
             status = 'ruled_out'
@@ -84,26 +84,37 @@ def export_run(household_id: str, search_id: int, app_url: str = '') -> dict:
         calls.append({'id':call_id,'listingId':listing.key,'dialCallId':c['dial_call_id'],
             'startedAt':iso(raw.get('createdAt') or c['created_at']), 'durationSec':float(raw.get('duration') or 0),
             'outcome':'answered' if outcome.get('reached_person') else 'failed' if c['status'] in ('failed','attention') else 'no_answer',
-            'audioUrl':audio,'transcript':outcome.get('transcript_turns',[])})
+            'audioUrl':audio,'transcript':outcome.get('transcript_turns',[]),
+            'listingVerified': outcome.get('listing_verified') if outcome.get('mode') != 'dry_run' else None})
+        booked = outcome.get('confirmed_tour')
+        if booked and outcome.get('tour_booked') and outcome.get('listing_verified') is True and outcome.get('mode') == 'live':
+            bookings.append({'listingId':listing.key, 'callId':call_id, 'start':booked['start'], 'end':booked['end'],
+                'meetingAddress':booked['meeting_address'],
+                'contactEvidence':{**booked['contact_evidence'], 'callId':call_id},
+                'agentEvidence':{**booked['agent_evidence'], 'callId':call_id}})
         for check in outcome.get('checks',[]):
             ev = check.get('evidence')
             if check['kind'] == 'matches' and check['passed'] is True and criteria.commute:
                 check = {**check,'passed':None,'summary':'Call requirements confirmed; requested commute duration has not been measured'}
                 ev = None
             checks.append({**check,'listingId':listing.key,'evidence':{**ev,'callId':call_id} if ev else None})
-        windows.extend({**w,'listingId':listing.key} for w in outcome.get('offered_windows',[]))
+        if not outcome.get('tour_booked'):
+            windows.extend({**w,'listingId':listing.key} for w in outcome.get('offered_windows',[]))
     warnings = [row['error']] if row['error'] else []
     if criteria.commute:
         warnings.append('Commute duration has not been measured; commute limits remain unconfirmed.')
     for c in call_rows.values():
         if c['error']:
             warnings.append(c['error'])
+        outcome = json.loads(c['outcome']) if c['outcome'] else {}
+        if outcome.get('booking_warning'):
+            warnings.append(outcome['booking_warning'])
     events = db.search_events(search_id)
     finished = max([row['created_at'], *[e['created_at'] for e in events],
                     *[c['updated_at'] for c in call_rows.values()]])
     return {'householdId':household_id,'startedAt':iso(row['created_at']),
         'finishedAt':None if in_flight else iso(finished),
-        'listings':listings,'calls':calls,'checks':checks,'offeredWindows':windows,
+        'listings':listings,'calls':calls,'checks':checks,'offeredWindows':windows,'bookedTours':bookings,
         'progress':[e['message'] for e in events], 'warnings':warnings}
 
 
@@ -139,8 +150,17 @@ class PlatformClient:
         r = self.http.post('/api/agent/runs',json=run)
         if not r.is_success:
             raise RuntimeError(f'AgentRun publish returned HTTP {r.status_code}; local evidence is saved')
+        sync_results = {item['callId']:item for item in r.json().get('calendarSync', [])}
+        pending = False
+        for tour in db.tours_for_search(search_id).values():
+            if tour['source_call_id'] is None:
+                continue
+            result = sync_results.get(str(tour['source_call_id']))
+            if result:
+                db.update_tour_calendar(tour['id'], result['status'], result.get('error'))
+            pending = pending or not result or result['status'] != 'synced'
         with db.conn() as conn:
-            conn.execute('UPDATE household_jobs SET published_hash=? WHERE household_id=?',(digest,household_id))
+            conn.execute('UPDATE household_jobs SET published_hash=? WHERE household_id=?',(None if pending else digest,household_id))
 
 
 def ensure_search(client: PlatformClient, brief: dict) -> int:

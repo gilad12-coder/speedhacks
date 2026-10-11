@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { isAgent } from "@/lib/agent-auth";
-import { saveAgentRun } from "@/lib/households";
+import { getHouseholdState, saveAgentRun } from "@/lib/households";
+import { syncCallBookings } from "@/lib/call-bookings";
 import { agentRunSchema } from "@/lib/schemas";
 import type { AgentRun } from "@/lib/types";
+
+export const maxDuration = 60;
 
 // Post the whole AgentRun each time; the latest post replaces the previous one.
 // Post partial runs (finishedAt: null) as calls finish so the dashboard fills in live.
@@ -16,5 +19,7 @@ export async function POST(request: Request) {
   const result = await saveAgentRun(parsed.data as AgentRun);
   if (result === "not_found") return NextResponse.json({ error: "unknown_household" }, { status: 404 });
   if (result === "not_requested") return NextResponse.json({ error: "search_not_requested" }, { status: 409 });
-  return NextResponse.json({ ok: true });
+  const state = parsed.data.bookedTours?.length ? await getHouseholdState(parsed.data.householdId) : null;
+  const calendarSync = state ? await syncCallBookings(state.household, parsed.data as AgentRun) : [];
+  return NextResponse.json({ ok: true, calendarSync });
 }

@@ -29,3 +29,20 @@ export function firstFreeSlot(
   }
   return null;
 }
+
+/** Available daytime ranges for a phone agent, aligned to half-hours in property time. */
+export function freeCallWindows(busy: Interval[], now: number, timeZone: string, days = 7): Interval[] {
+  const local = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", hourCycle: "h23" });
+  const step = 30 * MINUTE;
+  const result: Interval[] = [];
+  for (let start = Math.ceil((now + 60 * MINUTE) / step) * step; start + step <= now + days * 86_400_000; start += step) {
+    const end = start + step;
+    const hour = Number(local.format(new Date(start)));
+    const endHour = Number(local.format(new Date(end - 1)));
+    if (hour < 9 || endHour >= 20 || busy.some((b) => b.start < end && b.end > start)) continue;
+    const previous = result.at(-1);
+    if (previous?.end === start) previous.end = end;
+    else result.push({ start, end });
+  }
+  return result;
+}

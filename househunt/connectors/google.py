@@ -134,6 +134,72 @@ def _client() -> httpx.Client:
 
 # --- Calendar ---------------------------------------------------------------
 
+def _busy(client, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    response = client.post(f"{CAL}/freeBusy", json={"timeMin": start.isoformat(), "timeMax": end.isoformat(), "items": [{"id": "primary"}]})
+    response.raise_for_status()
+    primary = response.json().get("calendars", {}).get("primary", {})
+    if primary.get("errors") or not isinstance(primary.get("busy"), list):
+        raise RuntimeError("Calendar availability could not be checked")
+    busy = [(datetime.fromisoformat(b["start"]), datetime.fromisoformat(b["end"])) for b in primary["busy"]]
+    if any(s.utcoffset() is None or e.utcoffset() is None or e <= s for s,e in busy):
+        raise RuntimeError("Calendar returned invalid availability")
+    return busy
+
+
+def free_intervals(days: int = 7) -> list[dict]:
+    """Fresh, timezone-aware daytime ranges; errors never mean an empty calendar."""
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo(settings.call_timezone))
+    horizon = now + timedelta(days=days)
+    with _client() as client:
+        busy = _busy(client, now, horizon)
+    ranges = []
+    for day in range(days + 1):
+        base = (now + timedelta(days=day)).replace(minute=0, second=0, microsecond=0)
+        start = max(base.replace(hour=9), now + timedelta(hours=1))
+        end = min(base.replace(hour=20), horizon)
+        if start >= end:
+            continue
+        fragments = [(start, end)]
+        for bs, be in busy:
+            fragments = [(a,b) for lo,hi in fragments for a,b in
+                         ([(lo, hi)] if be <= lo or bs >= hi else [(lo, min(hi,bs)), (max(lo,be),hi)]) if a < b]
+        ranges.extend({"start": s.isoformat(), "end": e.isoformat()} for s,e in fragments if (e-s).total_seconds() >= 1800)
+    return ranges
+
+
+def add_confirmed_event(call_id: str, start_iso: str, end_iso: str, title: str, location: str, description: str) -> str:
+    """A stable event ID makes retries safe after partial writes or network timeouts."""
+    import hashlib
+    start, end = datetime.fromisoformat(start_iso), datetime.fromisoformat(end_iso)
+    if start.utcoffset() is None or end.utcoffset() is None or end <= start:
+        raise ValueError("A confirmed viewing needs an exact timezone-aware interval")
+    event_id = hashlib.sha256(f"keyhunt-tour:{call_id}:{start_iso}".encode()).hexdigest()
+    url = f"{CAL}/calendars/primary/events/{event_id}"
+
+    def existing_event(response):
+        response.raise_for_status()
+        event = response.json()
+        if (event.get("status") == "cancelled" or datetime.fromisoformat(event["start"]["dateTime"]) != start
+                or datetime.fromisoformat(event["end"]["dateTime"]) != end):
+            raise RuntimeError("Calendar event was changed; review the confirmed viewing")
+        return event.get("htmlLink", "")
+
+    with _client() as client:
+        existing = client.get(url)
+        if existing.status_code != 404:
+            return existing_event(existing)
+        if any(bs < end and be > start for bs,be in _busy(client, start, end)):
+            raise RuntimeError("Calendar changed after the call; the contact booking needs review")
+        response = client.post(f"{CAL}/calendars/primary/events", json={
+            "id": event_id, "summary": title, "location": location, "description": description,
+            "start": {"dateTime": start.isoformat()}, "end": {"dateTime": end.isoformat()},
+            "extendedProperties": {"private": {"keyhuntCall": call_id}},
+        })
+        if response.status_code == 409:
+            return existing_event(client.get(url))
+        return existing_event(response)
+
 def timezone() -> str:
     with _client() as c:
         return c.get(f"{CAL}/users/me/settings/timezone").json().get("value", "UTC")

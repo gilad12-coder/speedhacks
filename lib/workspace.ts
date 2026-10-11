@@ -24,9 +24,11 @@ export interface WorkspaceListing {
   contact: { name: string | null; phone: string | null; email: string | null } | null;
   contactHint: "show_contact" | "reply" | null;
   tourUrl: string | null;
-  call: { status: string; error: string | null; summary: string | null; viable: boolean | null; tradeoffs: string[]; transcript: string | null } | null;
+  call: { id?: string; listingVerified?: boolean | null; bookingWarning?: string | null;
+    verificationEvidence?: { key: string; summary: string; passed: boolean | null; evidence: { t: number; quote: string }[] }[];
+    status: string; error: string | null; summary: string | null; viable: boolean | null; tradeoffs: string[]; transcript: string | null } | null;
   email: { id: number; status: "draft" | "sent" | "failed" | "discarded"; to: string; subject: string; body: string } | null;
-  viewing: { start: string; calendarUrl: string | null } | null;
+  viewing: { start: string; end?: string | null; confirmedOnCall?: boolean; calendarStatus?: string; calendarError?: string | null; calendarUrl: string | null } | null;
   interested: string | null;
   nextStep: { action: NextAction; label: string; why: string; href: string | null } | null;
 }

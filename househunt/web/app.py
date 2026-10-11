@@ -336,6 +336,7 @@ def calls_page(request: Request):
     for c in db.all_calls():
         listing, criteria = _listing_info(cache, c["search_id"], c["listing_key"])
         calls.append({"call": c, "listing": listing, "city": criteria.city if criteria else "",
+                      "tour": next((t for t in db.tours_for_search(c["search_id"]).values() if t["source_call_id"] == c["id"]), None),
                       "outcome": json.loads(c["outcome"]) if c["outcome"] else None})
     return templates.TemplateResponse(request, "calls.html", {"settings": settings, "calls": calls})
 
@@ -627,9 +628,22 @@ def tour_ics(tour_id: int):
     listing = db.get_listing(tour["search_id"], tour["listing_key"])
     body = to_ics(tour_id, tour["start"], listing.title if listing else "Viewing",
                   tour["address"], tour["contact_name"] or tour["contact_phone"],
-                  listing.url if listing else None)
+                  listing.url if listing else None, end_iso=tour["end"])
     return Response(body, media_type="text/calendar",
                     headers={"Content-Disposition": f'attachment; filename="tour-{tour_id}.ics"'})
+
+
+@app.post("/tours/{tour_id}/calendar-sync")
+def retry_tour_calendar(tour_id: int):
+    from househunt.outreach.booking import retry_sync
+    tour = db.get_tour(tour_id)
+    if not tour:
+        raise HTTPException(404)
+    try:
+        retry_sync(tour_id)
+    except Exception:
+        db.update_tour_calendar(tour_id, "pending", "Tour booked; calendar sync could not complete. Check your calendar connection and retry.")
+    return RedirectResponse(f"/searches/{tour['search_id']}#{tour['listing_key']}", status_code=303)
 
 
 # --- connections ------------------------------------------------------------

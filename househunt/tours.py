@@ -6,11 +6,14 @@ from datetime import UTC, datetime, timedelta
 
 
 def to_ics(tour_id: int, start_iso: str, title: str, address: str | None,
-           contact: str | None, url: str | None, minutes: int = 30) -> str:
+           contact: str | None, url: str | None, minutes: int = 30, end_iso: str | None = None) -> str:
     start = datetime.fromisoformat(start_iso)
-    end = start + timedelta(minutes=minutes)
+    end = datetime.fromisoformat(end_iso) if end_iso else start + timedelta(minutes=minutes)
     fmt = "%Y%m%dT%H%M%S"  # floating local time: shows at the agreed wall-clock time
-    desc = "\\n".join(x for x in [f"Contact: {contact}" if contact else None, url] if x)
+    if start.utcoffset() is not None:
+        start, end = start.astimezone(UTC), end.astimezone(UTC)
+        fmt += "Z"
+    desc = "\n".join(x for x in [f"Contact: {contact}" if contact else None, url] if x)
     return "\r\n".join([
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -30,4 +33,4 @@ def to_ics(tour_id: int, start_iso: str, title: str, address: str | None,
 
 
 def _esc(s: str) -> str:
-    return s.replace(",", "\\,").replace(";", "\\;")
+    return s.replace("\\", "\\\\").replace("\r", "").replace("\n", "\\n").replace(",", "\\,").replace(";", "\\;")

@@ -36,6 +36,10 @@ export async function markInterested(householdId: string, listingId: string) {
   return post(householdId, `/listings/${key(listingId)}/interested`);
 }
 
+export async function retryCalendarSync(householdId: string, listingId: string) {
+  return post(householdId, `/listings/${key(listingId)}/calendar-sync`);
+}
+
 export async function logViewing(householdId: string, listingId: string, _: ActionState, form: FormData) {
   const start = text(form, "start");
   if (!start) return { error: "Pick the date and time of the viewing." };

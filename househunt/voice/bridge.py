@@ -247,7 +247,7 @@ async def audio_socket(ws: WebSocket, call_id: str):
             elif msg.type == "mark" and msg.name == "keyhunt-final":
                 session.final_playback.set()
             elif msg.type == "duration_warning":
-                await session.provider_send({"type": "contextual_update", "text": "The call will end shortly. Finish briefly, repeat any tour offers, and use end_call. Do not book anything."})
+                await session.provider_send({"type": "contextual_update", "text": "The call will end shortly. Briefly recap the confirmed booking, or unconfirmed offers if nothing was booked, and use end_call. Do not rush into a new commitment; follow the original booking authorization."})
             elif msg.type == "call_ended" or (msg.type == "dtmf" and msg.digit == "#"):
                 if msg.type == "dtmf":
                     await session.send(ServerEndCall())

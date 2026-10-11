@@ -19,7 +19,7 @@ describe('voice enrollment household boundary', () => {
     expect(workerRequest).not.toHaveBeenCalled();
   });
   it('requires a same-origin mutation with the custom header', async () => {
-    for (const headers of [{}, { 'X-KeyHunt-Voice':'1', Origin:'https://unrelated.example' }]) {
+    for (const headers of [{}, { 'X-KeyHunt-Voice':'1', Origin:'https://unrelated.example' }] as Record<string, string>[]) {
       expect((await POST(new Request(base, { method:'POST', headers }), context())).status).toBe(403);
     }
     expect(workerRequest).not.toHaveBeenCalled();

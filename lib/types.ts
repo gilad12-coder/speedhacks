@@ -64,6 +64,7 @@ export interface TranscriptLine {
 }
 
 export interface Call {
+  listingVerified?: boolean | null; // exact unit/core advertised details confirmed by contact
   id: string;
   listingId: string;
   dialCallId: string;
@@ -92,6 +93,7 @@ export interface OfferedWindow {
 }
 
 export interface AgentRun {
+  bookedTours?: ConfirmedTour[]; // mutually confirmed on the call; distinct from offers
   householdId: string;
   startedAt: string;
   finishedAt: string | null; // null while still running
@@ -101,6 +103,16 @@ export interface AgentRun {
   offeredWindows: OfferedWindow[];
   progress?: string[];
   warnings?: string[];
+}
+
+export interface ConfirmedTour {
+  listingId: string;
+  callId: string;
+  start: string;
+  end: string;
+  meetingAddress: string;
+  contactEvidence: { callId: string; t: number; quote: string };
+  agentEvidence: { callId: string; t: number; quote: string };
 }
 
 // ---------- Part 3 → Part 1: household and tours ----------

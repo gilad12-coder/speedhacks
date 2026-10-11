@@ -107,6 +107,7 @@ function Row({
 }) {
   const checks = checksFor(run, listing.id);
   const call = primaryCall(run, listing.id);
+  const confirmedTour = run.bookedTours?.find((t) => t.listingId === listing.id);
   const photo = listing.photoUrls[0];
 
   return (
@@ -145,6 +146,9 @@ function Row({
           ))}
         </ul>
         <ResearchEvidence listing={listing} />
+        {call && <p className={`mt-2 text-sm ${call.listingVerified === true ? "text-green-ink" : "text-ink-2"}`}>
+          {call.listingVerified === true ? "✓ Listing verified" : call.listingVerified === false ? "Listing details differ" : "Listing unconfirmed"}
+        </p>}
 
         {call && call.durationSec > 0 && (
           <CallStrip call={call} checks={CHECK_ORDER.map((k) => checks[k])} onPick={(t, el) => onOpen(listing.id, t, el)} />
@@ -152,7 +156,10 @@ function Row({
       </div>
 
       <div className="flex flex-col justify-between gap-3 border-l border-line py-1 pl-6">
-        <TourBox slot={slot} listing={listing} onBook={onBook} />
+        {confirmedTour ? <div className="text-sm"><p className="font-semibold text-green-ink">✓ Tour confirmed on call</p>
+          <p>{formatSlot(confirmedTour.start, confirmedTour.end)}</p>
+          <p className="mt-1 text-ink-2">{slot?.status === "accepted" ? "Calendar synced" : "Calendar sync pending. The contact booking is confirmed."}</p>
+        </div> : <TourBox slot={slot} listing={listing} onBook={onBook} />}
         {call && (
           <Button
             variant="quiet"

@@ -173,9 +173,14 @@ def init() -> None:
     with conn() as c:
         c.executescript(SCHEMA)
         columns = {r[1] for r in c.execute("PRAGMA table_info(calls)")}
-        for name, kind in {"raw": "TEXT", "attempt_key": "TEXT", "phone": "TEXT", "mode": "TEXT", "instruction": "TEXT"}.items():
+        for name, kind in {"raw": "TEXT", "attempt_key": "TEXT", "phone": "TEXT", "mode": "TEXT", "instruction": "TEXT", "booking_context": "TEXT"}.items():
             if name not in columns:
                 c.execute(f"ALTER TABLE calls ADD COLUMN {name} {kind}")
+        columns = {r[1] for r in c.execute("PRAGMA table_info(tours)")}
+        for name, kind in {"end": "TEXT", "source_call_id": "INTEGER", "calendar_status": "TEXT DEFAULT 'pending'", "calendar_error": "TEXT", "calendar_url": "TEXT"}.items():
+            if name not in columns:
+                c.execute(f"ALTER TABLE tours ADD COLUMN {name} {kind}")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS tour_call ON tours(source_call_id) WHERE source_call_id IS NOT NULL")
     Path(settings.db_path).chmod(0o600)
 
 
@@ -322,6 +327,8 @@ def contact_called_today(phone: str, except_id: int) -> bool:
 
 
 def update_call(call_id: int, **fields) -> None:
+    if "booking_context" in fields and not isinstance(fields["booking_context"], str):
+        fields["booking_context"] = json.dumps(fields["booking_context"])
     if "raw" in fields and not isinstance(fields["raw"], str):
         fields["raw"] = json.dumps(fields["raw"])
     if "outcome" in fields and not isinstance(fields["outcome"], str):
@@ -344,14 +351,27 @@ def calls_for_search(search_id: int) -> dict[str, sqlite3.Row]:
 # --- tours ------------------------------------------------------------------
 
 def create_tour(search_id: int, listing_key: str, start: str, address: str | None,
-                contact_name: str | None, contact_phone: str | None) -> int:
+                contact_name: str | None, contact_phone: str | None, *, end: str | None = None,
+                source_call_id: int | None = None) -> int:
     with conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        if source_call_id is not None:
+            existing = c.execute("SELECT * FROM tours WHERE source_call_id=?", (source_call_id,)).fetchone()
+            if existing:
+                if (existing["search_id"], existing["listing_key"], existing["start"], existing["end"]) != (search_id, listing_key, start, end):
+                    raise RuntimeError("Saved tour differs from this extraction; review the call before changing the appointment")
+                return existing["id"]
         cur = c.execute(
             "INSERT INTO tours (search_id, listing_key, start, address, contact_name, "
-            "contact_phone, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (search_id, listing_key, start, address, contact_name, contact_phone, now()),
+            "contact_phone, created_at, end, source_call_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (search_id, listing_key, start, address, contact_name, contact_phone, now(), end, source_call_id),
         )
         return cur.lastrowid
+
+
+def update_tour_calendar(tour_id: int, status: str, error: str | None = None, url: str | None = None) -> None:
+    with conn() as c:
+        c.execute("UPDATE tours SET calendar_status=?, calendar_error=?, calendar_url=? WHERE id=?", (status, error, url, tour_id))
 
 
 def get_tour(tour_id: int) -> sqlite3.Row | None:

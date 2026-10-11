@@ -572,9 +572,11 @@ def test_next_step_rules():
     viable = {"status": "ended", "outcome": _json.dumps(
         {"viable": True, "offered_times": ["Thu 6pm"], "summary": "ok"})}
     assert recommend(l(contact=Contact(phone="+1")), call=viable).action == "log_viewing"
-    dead = {"status": "ended", "outcome": _json.dumps({"viable": False, "summary": "Rented."})}
+    dead = {"status": "ended", "outcome": _json.dumps({"viable": False, "verification_status": "ruled_out", "summary": "Rented."})}
     ns = recommend(l(), call=dead)
     assert ns.action == "move_on" and ns.why == "Rented."
+    unknown = {"status": "ended", "outcome": _json.dumps({"viable": False, "verification_status": "unconfirmed", "summary": "Financial qualifications unknown."})}
+    assert recommend(l(), call=unknown).action == "wait"
     assert recommend(l(), call={"status": "in_progress", "outcome": None}).action == "wait"
     tour = {"start": "2026-10-15T18:30"}
     ns = recommend(l(address="1 Main St"), tour=tour)

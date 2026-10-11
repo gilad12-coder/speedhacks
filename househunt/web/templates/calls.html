@@ -49,6 +49,13 @@
       <a class="t" href="/searches/{{ call.search_id }}#{{ call.listing_key }}">{{ l.title if l else call.listing_key }}</a>
       <div class="meta">{{ c.city }} search #{{ call.search_id }}{% if l and l.price %} · ${{ "{:,}".format(l.price) }}/mo{% endif %}{% if l and l.contact and l.contact.name %} · {{ l.contact.name }}{% endif %} · {{ call.created_at | when }}</div>
       {% if o %}<div class="sum">{{ o.summary }}</div>
+        {% if call.mode == 'live' and o.listing_verified is sameas true %}<span class="pill" style="color:var(--accent);background:var(--accent-soft)">✓ Listing verified</span>
+        {% elif o.listing_verified is sameas false %}<span class="pill warn">Listing details differ</span>
+        {% else %}<span class="pill">Listing unconfirmed</span>{% endif %}
+        {% if c.tour %}<p>✓ Tour booked: {{ c.tour.start | when }}{% if c.tour.end %} – {{ c.tour.end | when }}{% endif %} · {{ c.tour.address }}</p>
+          <p class="small">{{ '✓ Calendar synced' if c.tour.calendar_status == 'synced' else c.tour.calendar_error or 'Calendar sync pending' }} · <a href="/tours/{{ c.tour.id }}.ics">Calendar invite</a></p>{% endif %}
+        {% if o.booking_warning %}<p class="warn">{{ o.booking_warning }}</p>{% endif %}
+        {% if o.confirmed_facts %}<details><summary>Verification evidence</summary><p class="muted small">Checks listing details; ownership and fraud screening remain separate.</p>{% for fact in o.confirmed_facts %}<p>{{ fact.summary }}</p>{% for ev in fact.evidence %}<blockquote>{{ ev.t | round(1) }}s — “{{ ev.quote }}”</blockquote>{% endfor %}{% endfor %}</details>{% endif %}
         {% if o.tradeoffs %}<div class="trade">Tradeoffs: {{ o.tradeoffs | join("; ") }}</div>{% endif %}
       {% elif call.error %}<div class="sum warn small" title="{{ call.error }}">{{ call.error | short_error }}</div>{% endif %}
       {% if call.transcript %}<details><summary>Transcript</summary><pre>{{ call.transcript }}</pre></details>{% endif %}

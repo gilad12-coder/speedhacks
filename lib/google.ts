@@ -123,23 +123,28 @@ async function accessToken(housemateId: string): Promise<string> {
   }
 }
 
-async function calendarFetch<T>(housemateId: string, path: string, body: unknown): Promise<T> {
+async function calendarFetch<T>(housemateId: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`https://www.googleapis.com/calendar/v3${path}`, {
-    method: "POST",
+    method: body === undefined ? "GET" : "POST",
     headers: { Authorization: `Bearer ${await accessToken(housemateId)}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new GoogleError(`Google Calendar request failed (${res.status})`, res.status);
   return res.json();
 }
 
 export async function busyIntervals(housemateId: string, range: Interval): Promise<Interval[]> {
-  const data = await calendarFetch<{ calendars: Record<string, { busy: { start: string; end: string }[] }> }>(
+  const data = await calendarFetch<{ calendars: Record<string, { errors?: unknown[]; busy?: { start: string; end: string }[] }> }>(
     housemateId,
     "/freeBusy",
     { timeMin: new Date(range.start).toISOString(), timeMax: new Date(range.end).toISOString(), items: [{ id: "primary" }] },
   );
-  return (data.calendars.primary?.busy ?? []).map((b) => ({ start: Date.parse(b.start), end: Date.parse(b.end) }));
+  const primary = data.calendars?.primary;
+  if (!primary || primary.errors?.length || !Array.isArray(primary.busy)) throw new GoogleError("Calendar availability is unknown", 503);
+  const intervals = primary.busy.map((b) => ({ start: Date.parse(b.start), end: Date.parse(b.end) }));
+  if (intervals.some((b) => !Number.isFinite(b.start) || !Number.isFinite(b.end) || b.end <= b.start)) throw new GoogleError("Calendar availability is invalid", 503);
+  return intervals;
 }
 
 export async function createEvent(
@@ -155,4 +160,32 @@ export async function createEvent(
     reminders: { useDefault: true },
   });
   return created.id;
+}
+
+export async function createConfirmedEvent(housemateId: string, eventId: string,
+  event: { summary: string; location: string; description: string; start: Date; end: Date }): Promise<string> {
+  type Saved = { id: string; status?: string; start: { dateTime: string }; end: { dateTime: string } };
+  const path = `/calendars/primary/events/${eventId}`;
+  const read = () => calendarFetch<Saved>(housemateId, path);
+  const validate = (saved: Saved) => {
+    if (saved.status === "cancelled" || Date.parse(saved.start.dateTime) !== event.start.getTime() || Date.parse(saved.end.dateTime) !== event.end.getTime()) {
+      throw new GoogleError("The saved tour event was changed; review it before syncing", 409);
+    }
+    return saved.id;
+  };
+  try { return validate(await read()); }
+  catch (error) { if (!(error instanceof GoogleError) || error.status !== 404) throw error; }
+  const range = { start: event.start.getTime(), end: event.end.getTime() };
+  if ((await busyIntervals(housemateId, range)).some((b) => b.start < range.end && b.end > range.start)) {
+    throw new GoogleError("Calendar changed since the call; review the booked time", 409);
+  }
+  try {
+    return validate(await calendarFetch<Saved>(housemateId, "/calendars/primary/events", {
+      id: eventId, summary: event.summary, location: event.location, description: event.description,
+      start: { dateTime: event.start.toISOString() }, end: { dateTime: event.end.toISOString() }, reminders: { useDefault: true },
+    }));
+  } catch (error) {
+    if (error instanceof GoogleError && error.status === 409) return validate(await read());
+    throw error;
+  }
 }
