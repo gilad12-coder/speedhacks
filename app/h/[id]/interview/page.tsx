@@ -55,6 +55,7 @@ export default async function InterviewPage({ params }: { params: Promise<{ id: 
             householdId={id}
             initial={interview.messages}
             initialDone={interview.done}
+            initialResult={{ mustHaves: me.mustHaves, niceToHaves: me.niceToHaves, dealBreakers: me.dealBreakers, wishes: me.wishes }}
             locked={Boolean(state.searchRequestedAt)}
           />
         </div>

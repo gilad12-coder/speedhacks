@@ -330,10 +330,18 @@ h3 {
 @keyframes msg-in { from { opacity: 0; transform: translateY(4px); } }
 .msg-in { animation: msg-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .choices-in { animation: msg-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes summary-badge { from { transform: scale(0.4) rotate(-30deg); opacity: 0; } }
+@keyframes summary-chip { from { opacity: 0; transform: translateY(6px) scale(0.96); } }
+.summary-badge { animation: summary-badge 520ms var(--ease-out-expo) 120ms both; }
+.summary-indicator { transition: transform 420ms var(--ease-out-expo); }
+.summary-track { transition: transform 520ms var(--ease-out-expo); }
+.summary-chip { animation: summary-chip 360ms var(--ease-out-expo) both; }
+.summary-dot { transition: width 320ms var(--ease-out-expo), background-color 320ms; }
 @keyframes fade-in { from { opacity: 0; } }
 .fade-in { animation: fade-in 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @media (prefers-reduced-motion: reduce) {
-  .ember-ripple, .ember-core, .msg-in, .choices-in, .fade-in { animation: none; }
+  .ember-ripple, .ember-core, .msg-in, .choices-in, .fade-in, .summary-badge, .summary-chip { animation: none; }
+  .summary-indicator, .summary-track, .summary-dot { transition: none; }
   .ember-ripple { opacity: 0; }
 }
 

@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CalendarCheck, CalendarX, CircleAlert, Users } from "lucide-react";
 import { confirmHouseholdBrief, startSearch } from "@/app/actions";
 import { ProfileMenu } from "@/components/profile-menu";
@@ -60,6 +60,8 @@ export default async function HouseholdPage({
   const me = household.housemates.find((h) => h.id === meId)!;
   const account = await getAccount();
   const interview = await getInterview(me.id);
+  // The household page comes after the interview; until it's done (and while answers can still change), send them back to it.
+  if (!interview.done && !searchRequestedAt) redirect(`/h/${id}/interview`);
   const run = searchRequestedAt ? await getAgentRun(id) : null;
   const list = run ? shortlist(run) : [];
   const [booked, proposed] = await Promise.all([
@@ -126,24 +128,6 @@ export default async function HouseholdPage({
 
         <main className="overflow-y-auto px-12 pt-10 pb-24">
           {searching && <AutoRefresh />}
-          {!interview.done && !searchRequestedAt && (
-            <Callout tone="amber">
-              <a href={`/h/${id}/interview`} className="font-medium underline">
-                {interview.messages.length ? "Finish your interview" : "Do your interview"}
-              </a>{" "}
-              so Keyhunt knows what matters to you beyond the basics.
-            </Callout>
-          )}
-          {!me.calendarConnected && (
-            <Callout tone="amber">
-              Connect Google Calendar in{" "}
-              <a href={`/h/${id}/settings`} className="font-medium underline">
-                Settings
-              </a>{" "}
-              so Keyhunt only offers tour times you&apos;re free for.
-            </Callout>
-          )}
-
           {!searchRequestedAt && (
             <BriefSection household={household} brief={brief} />
           )}
