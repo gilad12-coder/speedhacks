@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_flags.html" import flag_list, flag_styles %}
 {% block title %}Searches · KeyHunt{% endblock %}
 {% block style %}
+{{ flag_styles() }}
 <style>
   .grid-cards { display:grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
   a.search-card { display:flex; flex-direction:column; gap: 12px; color: inherit; margin: 0;
@@ -26,6 +28,20 @@
   <a class="btn" href="/searches/new">{{ icon("plus", 16) }}New search</a>
 </div>
 
+{% if flags %}
+<section class="card needs-you" id="needs-you">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:4px">
+    <h3 style="margin:0">{{ icon("flag", 16) }} Needs you <span class="pill">{{ flags | length }}</span></h3>
+    <a class="small" href="/phone">{{ icon("mic", 13) }} Hear this as a phone call</a>
+  </div>
+  {{ flag_list(flags, 8) }}
+</section>
+{% elif searches %}
+<section class="card needs-you" id="needs-you"><h3 style="margin:0">{{ icon("flag", 16) }} Nothing needs you right now</h3>
+  <p class="muted small" style="margin:4px 0 0">Your agent will flag anything that needs a decision or a reply.</p></section>
+{% endif %}
+
+<h2>Your searches</h2>
 {% if searches %}
 <div class="grid-cards">
   {% for row, c, n in searches %}

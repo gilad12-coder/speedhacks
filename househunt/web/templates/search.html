@@ -363,7 +363,7 @@
           </form>
         {% endif %}
         {% if call %}<span class="pill {{ call.status }}">{{ icon("phone", 12) }}{{ call.status.replace("_", " ") }}</span>{% endif %}
-        {% if call and call.error %}<div class="err">{{ call.error }}</div>{% endif %}
+        {% if call and call.error %}<div class="err" title="{{ call.error }}">{{ call.error | short_error }}</div>{% endif %}
         {% if call and call.transcript %}<details data-id="t-{{ l.key }}"><summary>Call transcript{% if call.mode == 'dry_run' %} · synthetic{% endif %}</summary>
           {% if o and o.transcript_turns %}{% for line in o.transcript_turns %}<p id="call-{{ call.id }}-{{ line.t }}"><strong>{{ line.t }}s · {{ line.speaker }}</strong> {{ line.text }}</p>{% endfor %}
           {% else %}<pre>{{ call.transcript }}</pre>{% endif %}</details>{% endif %}

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_flags.html" import flag_list, flag_styles %}
+{% block title %}Phone briefing · KeyHunt{% endblock %}
+{% block style %}
+{{ flag_styles() }}
+<style>
+  .two { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .two .card { margin: 0; display:flex; flex-direction: column; gap: 10px; }
+  .two .card p { margin: 0; }
+  .two .card form, .two .card .row { margin-top: auto; display:flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .big-ic { width: 40px; height: 40px; border-radius: 11px; display:grid; place-items:center; background: var(--accent-soft); color: var(--accent); }
+  .status-on { color: var(--accent); font-weight: 600; }
+  .facts { white-space: pre-wrap; font-size: 13px; line-height: 1.6; background: var(--sunken); padding: 14px; border-radius: 10px; margin: 0; }
+  .inbound li { padding: 12px 0; border-top: 1px solid var(--line); list-style: none; scroll-margin-top: 20px; }
+  .inbound li:first-child { border-top: 0; }
+  .inbound li:target { background: var(--accent-soft); border-radius: 8px; padding: 12px; }
+  .inbound ul { margin: 0; padding: 0; }
+  .inbound .head { display:flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .inbound form { margin: 0; }
+  @media (max-width: 800px) { .two { grid-template-columns: minmax(0, 1fr); } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Phone briefing</h1>
+    <p class="muted">Hear where your search stands, your leads, and what needs you, by phone.</p>
+  </div>
+</div>
+{% if msg %}<p class="flash">{{ msg }}</p>{% endif %}
+{% if error %}<p class="flash error">{{ error }}</p>{% endif %}
+
+<div class="two">
+  <div class="card">
+    <div class="big-ic">{{ icon("phone", 20) }}</div>
+    <h3>Call me now</h3>
+    <p class="muted small">Your agent calls {{ settings.notify_number or "your phone" }} and walks you through the update below, then answers questions about any place.</p>
+    {% if configured and settings.notify_number %}
+      <form method="post" action="/phone/call-me"><button type="submit">{{ icon("phone", 15) }}Call me with my update</button></form>
+    {% else %}
+      <p class="warn small">Set <code>DIAL_API_KEY</code> and <code>NOTIFY_NUMBER</code> in <code>.env</code>, then restart.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="big-ic">{{ icon("mic", 20) }}</div>
+    <h3>Call in anytime {% if enabled %}<span class="pill viable">on</span>{% else %}<span class="pill">off</span>{% endif %}</h3>
+    {% if enabled %}
+      <p class="small">Call <strong>{{ number }}</strong> and say you're {{ settings.renter_name }}, then your passcode. The briefing refreshes every few minutes{% if synced_at %} (last updated {{ synced_at | when }}){% endif %}.</p>
+      <p class="muted small">Landlords calling this number back get a polite message-taker instead, and their messages show up below.</p>
+      <div class="row">
+        <form method="post" action="/phone/sync"><button type="submit" class="secondary">Refresh now</button></form>
+        <form method="post" action="/phone/disable"><button type="submit" class="secondary">Turn off</button></form>
+      </div>
+    {% elif not configured %}
+      <p class="warn small">Set <code>DIAL_API_KEY</code> in <code>.env</code> first.</p>
+    {% elif not settings.briefing_pin %}
+      <p class="small">Your KeyHunt number also calls landlords, so they'll call it back too. A passcode keeps your briefing private.</p>
+      <p class="warn small">Add <code>BRIEFING_PIN=</code> (4 to 6 digits) to <code>.env</code> and restart, then turn this on.</p>
+    {% else %}
+      <p class="small">Your KeyHunt number answers with your briefing after you say your passcode. Anyone else (like a landlord calling back) can only leave a message.</p>
+      <p class="muted small">This replaces the number's current greeting; turning it off puts the old one back.</p>
+      <form method="post" action="/phone/enable"><button type="submit">Turn on call-in briefings</button></form>
+    {% endif %}
+  </div>
+</div>
+
+<h2>What needs you</h2>
+<div class="card" style="margin-top:0">
+  {% if flags %}{{ flag_list(flags) }}{% else %}<p class="muted" style="margin:0">Nothing right now.</p>{% endif %}
+</div>
+
+{% if inbound %}
+<h2>Calls to your KeyHunt number</h2>
+<div class="card inbound" style="margin-top:0">
+  <ul>
+    {% for c in inbound %}
+    <li id="call-{{ c.id }}">
+      <div class="head">
+        <div><strong>{{ "You" if c.kind == "renter" else (c.caller or "Unknown caller") }}</strong>
+          <span class="muted small">· {{ c.started_at | when if c.started_at else "" }}{% if c.listing_key %} · about <a href="/searches/{{ c.search_id }}#{{ c.listing_key }}">{{ c.listing_key }}</a>{% endif %}</span></div>
+        {% if c.kind != "renter" and not c.handled %}<form method="post" action="/phone/calls/{{ c.id }}/handled"><button type="submit" class="secondary">Mark handled</button></form>
+        {% elif c.handled %}<span class="pill">handled</span>{% endif %}
+      </div>
+      {% if c.transcript %}<details {{ "open" if not c.handled and c.kind != "renter" }}><summary>What was said</summary><pre>{{ c.transcript }}</pre></details>
+      {% else %}<p class="muted small" style="margin:4px 0 0">Transcript not available yet.</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<h2>What your agent will say</h2>
+<p class="muted small" style="margin-top:-4px">The facts the phone agent works from, as of now. It speaks them conversationally, leading with what needs you.</p>
+<pre class="facts">{{ facts }}</pre>
+{% endblock %}

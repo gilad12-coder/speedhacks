@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Leads · KeyHunt{% endblock %}
+{% block style %}
+<style>
+  .filters { display:flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .filters button { background: var(--surface); color: var(--muted); border-color: var(--line); font-weight: 500; padding: 5px 12px; }
+  .filters button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  .lead { margin: 0 0 12px; scroll-margin-top: 20px; }
+  .lead:target { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .lead .top { display:flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .lead .t { font-weight: 600; font-size: 15.5px; color: var(--fg); display:inline-flex; gap: 6px; align-items:center; }
+  .lead .t .icon { color: var(--faint); }
+  .lead .meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .lead .price { font-weight: 600; color: var(--fg); }
+  .state { text-align: right; }
+  .state .ago { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .pill.s-action { background: var(--accent-soft); color: var(--accent); }
+  .pill.s-waiting { background: var(--amber-soft); color: var(--amber); }
+  .pill.s-new { background: var(--blue-soft); color: var(--blue); }
+  .timeline { list-style: none; margin: 12px 0 0; padding: 0; display:flex; flex-wrap: wrap; gap: 6px; }
+  .timeline li { display:inline-flex; align-items:center; gap: 6px; font-size: 12.5px; padding: 3px 10px; border-radius: 99px;
+    background: var(--sunken); color: var(--muted); }
+  .timeline li.good { color: var(--accent); background: var(--accent-soft); }
+  .timeline li.bad { color: var(--warn); background: var(--warn-soft); }
+  .timeline li time { opacity: .75; }
+  .lead .notes { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .lead .notes b { color: var(--fg); font-weight: 500; }
+  .step { margin-top: 12px; padding: 10px 12px; border-radius: 8px; border-left: 3px solid var(--accent); background: var(--sunken); }
+  .step b { display:block; font-size: 13.5px; }
+  .step span { font-size: 12.5px; color: var(--muted); }
+  .lead .acts { display:flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .lead .acts form { margin: 0; }
+  .lead .acts .spacer { flex: 1; }
+  details.remove > summary { list-style: none; }
+  details.remove > summary::-webkit-details-marker { display: none; }
+  details.remove > summary.btn { color: var(--warn); }
+  details.remove[open] { flex-basis: 100%; order: 10; }
+  details.remove form { margin-top: 10px; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--sunken);
+    display:grid; gap: 10px; }
+  .reasons { display:flex; flex-wrap: wrap; gap: 6px; }
+  .reasons label { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; padding: 5px 10px; border-radius: 99px;
+    border: 1px solid var(--line); background: var(--surface); cursor: pointer; }
+  .reasons input { accent-color: var(--warn); margin: 0; }
+  button.danger { background: var(--warn); border-color: var(--warn); color: #fff; justify-self: start; }
+  .removed li { display:flex; align-items:center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .removed li:first-child { border-top: 0; }
+  .removed form { margin: 0; }
+  @media (max-width: 640px) { .state { text-align: left; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Leads</h1>
+    <p class="muted">Places you're interested in that don't have a viewing yet. Keep after them, or drop the ones that went quiet.</p>
+  </div>
+  <a class="btn secondary" href="/calls">Calls {{ icon("arrow", 14) }}</a>
+</div>
+
+{% if items %}
+{% set n = namespace(action=0, waiting=0, new=0) %}
+{% for i in items %}{% if i.outreach.status == "action" %}{% set n.action = n.action + 1 %}{% elif i.outreach.status == "waiting" %}{% set n.waiting = n.waiting + 1 %}{% else %}{% set n.new = n.new + 1 %}{% endif %}{% endfor %}
+<div class="filters" role="group" aria-label="Filter leads">
+  <button type="button" data-f="all" aria-pressed="true">All {{ items | length }}</button>
+  <button type="button" data-f="action">Needs you {{ n.action }}</button>
+  <button type="button" data-f="waiting">Waiting on them {{ n.waiting }}</button>
+  <button type="button" data-f="new">Not contacted {{ n.new }}</button>
+</div>
+
+{% for i in items %}
+{% set a, l, o = i.app, i.listing, i.outreach %}
+<article class="card lead" id="lead-{{ a.id }}" data-status="{{ o.status }}">
+  <div class="top">
+    <div>
+      {% if a.url %}<a class="t" href="{{ a.url }}" target="_blank" rel="noopener">{{ a.title }} {{ icon("external", 13) }}</a>{% else %}<span class="t">{{ a.title }}</span>{% endif %}
+      <div class="meta">
+        {% if a.price %}<span class="price">${{ "{:,}".format(a.price) }}</span>/mo · {% endif %}{% if a.address %}{{ a.address }} · {% endif %}{% if a.search_id %}<a href="/searches/{{ a.search_id }}#{{ a.listing_key }}">Search #{{ a.search_id }}</a>{% else %}Added by you{% endif %}
+        {% if l and l.contact and (l.contact.name or l.contact.phone) %} · {{ l.contact.name or l.contact.phone }}{% endif %}
+      </div>
+    </div>
+    <div class="state">
+      <span class="pill s-{{ o.status }}">{{ o.label }}</span>
+      {% if o.days_since is not none %}<div class="ago">Last contact {{ "today" if o.days_since == 0 else ("yesterday" if o.days_since == 1 else o.days_since ~ " days ago") }}</div>{% endif %}
+    </div>
+  </div>
+
+  {% if o.attempts %}
+  <ul class="timeline">
+    {% for t in o.attempts %}<li class="{{ t.tone }}">{{ icon("phone" if t.kind == "call" else "mail", 12) }}{{ t.result }} <time>{{ t.when | when("%b %-d") }}</time></li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if i.notes %}<div class="notes"><b>Your notes:</b> {{ i.notes | join(" · ") }}</div>{% endif %}
+
+  {% if i.step %}<div class="step"><b>Next: {{ i.step.label }}</b><span>{{ i.step.why }}</span></div>{% endif %}
+
+  <div class="acts">
+    {% if i.can_call %}
+      <form method="post" action="/searches/{{ a.search_id }}/listings/{{ a.listing_key }}/call">
+        <input type="hidden" name="next" value="/leads#lead-{{ a.id }}">
+        <button type="submit" class="{{ '' if i.step and i.step.action == 'call' else 'secondary' }}">{{ icon("phone", 14) }}{{ "Call again" if o.attempts | selectattr("kind", "equalto", "call") | list else "Call" }}</button></form>
+    {% endif %}
+    {% if l %}
+      {% if i.email and i.email.status != "sent" %}
+        <a class="btn {{ '' if o.label.startswith('Approve') else 'secondary' }}" href="/emails/{{ i.email.id }}">{{ icon("mail", 14) }}Review email draft</a>
+      {% else %}
+        <form method="post" action="/searches/{{ a.search_id }}/listings/{{ a.listing_key }}/email">
+          <button type="submit" class="{{ '' if i.step and i.step.action == 'email' else 'secondary' }}">{{ icon("mail", 14) }}{{ "Send a follow-up" if i.email else "Draft email" }}</button></form>
+      {% endif %}
+      {% if i.step and i.step.href %}<a class="btn secondary" href="{{ i.step.href }}" target="_blank" rel="noopener">{{ icon("external", 14) }}{{ i.step.label }}</a>{% endif %}
+      <form method="post" action="/searches/{{ a.search_id }}/listings/{{ a.listing_key }}/chat">
+        <button type="submit" class="secondary">{{ icon("chat", 14) }}Discuss</button></form>
+    {% else %}
+      <a class="btn secondary" href="/applications#app-{{ a.id }}">Edit on board</a>
+    {% endif %}
+    <span class="spacer"></span>
+    <details class="remove">
+      <summary class="btn secondary">{{ icon("x", 14) }}Remove from leads</summary>
+      <form method="post" action="/leads/{{ a.id }}/remove">
+        <div class="reasons">
+          {% for value, label in reasons.items() %}<label><input type="radio" name="reason" value="{{ value }}" {{ "checked" if loop.first }}>{{ label }}</label>{% endfor %}
+        </div>
+        <input name="detail" placeholder="Anything to remember? (optional)">
+        <button type="submit" class="danger">Remove</button>
+      </form>
+    </details>
+  </div>
+</article>
+{% endfor %}
+{% else %}
+<div class="card empty">
+  {{ icon("star", 36) }}
+  <p>No leads right now. Press <strong>I'm interested</strong> on a listing in a search and it shows up here until a viewing is booked.</p>
+  <a class="btn" href="/">{{ icon("list", 16) }}Go to searches</a>
+</div>
+{% endif %}
+
+{% if removed %}
+<details class="card removed" style="margin-top:20px">
+  <summary style="font-size:14px; font-weight:600; color: var(--fg)">Removed leads ({{ removed | length }})</summary>
+  <ul style="list-style:none; margin: 10px 0 0; padding: 0">
+    {% for a in removed %}
+    <li><div><strong>{{ a.title }}</strong><div class="muted small">{% for line in (a.notes or "").splitlines() if "Removed from leads" in line %}{% if loop.last %}{{ line }}{% endif %}{% endfor %}</div></div>
+      <form method="post" action="/leads/{{ a.id }}/restore"><button type="submit" class="secondary">Restore</button></form></li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  document.querySelectorAll(".filters button").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll(".filters button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    document.querySelectorAll(".lead").forEach(c => c.hidden = !(b.dataset.f === "all" || c.dataset.status === b.dataset.f));
+  }));
+</script>
+{% endblock %}

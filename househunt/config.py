@@ -26,6 +26,7 @@ class Settings:
     renter_name: str
     app_password: str | None         # HTTP basic auth for the deployed app
     claude_model: str
+    briefing_pin: str | None         # passcode to hear your briefing when you call your KeyHunt number
     geocode: bool                    # place listings on the map via OpenStreetMap Nominatim
     google_client_id: str | None
     google_client_secret: str | None
@@ -57,6 +58,7 @@ def load() -> Settings:
         renter_name=env("RENTER_NAME", "my client"),
         app_password=env("APP_PASSWORD"),
         claude_model=env("CLAUDE_MODEL", "claude-opus-5-5"),
+        briefing_pin=(env("BRIEFING_PIN") or "").strip() or None,
         geocode=env("GEOCODE", "1") == "1",
         google_client_id=env("GOOGLE_CLIENT_ID"),
         google_client_secret=env("GOOGLE_CLIENT_SECRET"),

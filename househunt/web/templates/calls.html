@@ -50,7 +50,7 @@
       <div class="meta">{{ c.city }} search #{{ call.search_id }}{% if l and l.price %} · ${{ "{:,}".format(l.price) }}/mo{% endif %}{% if l and l.contact and l.contact.name %} · {{ l.contact.name }}{% endif %} · {{ call.created_at | when }}</div>
       {% if o %}<div class="sum">{{ o.summary }}</div>
         {% if o.tradeoffs %}<div class="trade">Tradeoffs: {{ o.tradeoffs | join("; ") }}</div>{% endif %}
-      {% elif call.error %}<div class="sum warn small">{{ call.error }}</div>{% endif %}
+      {% elif call.error %}<div class="sum warn small" title="{{ call.error }}">{{ call.error | short_error }}</div>{% endif %}
       {% if call.transcript %}<details><summary>Transcript</summary><pre>{{ call.transcript }}</pre></details>{% endif %}
     </div>
     <div class="side">
