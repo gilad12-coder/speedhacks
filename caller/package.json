@@ -1,0 +1,22 @@
+{
+  "name": "@keyhunt/caller",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node --import tsx src/server.ts",
+    "demo": "node --import tsx src/cli.ts demo",
+    "preview": "node --import tsx src/cli.ts preview",
+    "call": "node --import tsx src/cli.ts call",
+    "check": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.1",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.7.3" }
+}

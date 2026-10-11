@@ -1,0 +1,383 @@
+@import "tailwindcss";
+
+:root {
+  --ground: #f6f2ea;
+  --surface: #fffdf9;
+  --sunk: #efe9de;
+  --ink: #221f1a;
+  --ink-2: #5b5449;
+  --ink-3: #6f675b;
+  --line: #e2dacc;
+  --line-strong: #cfc5b4;
+
+  --green: #1d4a39;
+  --green-hover: #163a2d;
+  --green-soft: #e2ece5;
+  --green-ink: #1d4a39;
+  --on-green: #f4f7f2;
+  --on-green-2: #c3d4c9;
+
+  --amber-soft: #f6ead0;
+  --amber-ink: #7a5208;
+  --red-soft: #f5e0dc;
+  --red-ink: #93352b;
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-sunk: var(--sunk);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-green: var(--green);
+  --color-green-hover: var(--green-hover);
+  --color-green-soft: var(--green-soft);
+  --color-green-ink: var(--green-ink);
+  --color-on-green: var(--on-green);
+  --color-on-green-2: var(--on-green-2);
+  --color-amber-soft: var(--amber-soft);
+  --color-amber-ink: var(--amber-ink);
+  --color-red-soft: var(--red-soft);
+  --color-red-ink: var(--red-ink);
+  /* Three voices: serif for headlines and what people said on calls,
+     sans for everything you read and type, mono for checked facts. */
+  --font-sans: var(--font-text-face), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display-face), ui-serif, Georgia, serif;
+  --font-mono: var(--font-data-face), ui-monospace, monospace;
+  --shadow-lift: 0 1px 2px rgb(34 31 26 / 0.05), 0 8px 24px -12px rgb(34 31 26 / 0.18);
+  --shadow-panel: -12px 0 40px -16px rgb(34 31 26 / 0.28);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html {
+  color-scheme: light;
+  background: var(--ground);
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--green);
+  color: var(--on-green);
+}
+
+:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+input,
+select,
+textarea {
+  caret-color: var(--green);
+  accent-color: var(--green);
+}
+
+/* Fields show focus through their border, not an outline ring. */
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--line-strong);
+}
+
+a {
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+* {
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(2px);
+  }
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+.arrive {
+  animation: rise 520ms var(--ease-out-expo) both;
+}
+
+.panel-in {
+  animation: slide-in 360ms var(--ease-out-expo) both;
+}
+
+/* Question handoff: the old step drifts out fast, the new one's title,
+   hint and field arrive in a short stagger from the travel direction. */
+@keyframes step-arrive {
+  from {
+    opacity: 0;
+    transform: translateX(var(--step-from));
+    filter: blur(3px);
+  }
+}
+
+@keyframes step-leave {
+  to {
+    opacity: 0;
+    transform: translateX(var(--step-to));
+    filter: blur(2px);
+  }
+}
+
+.step-in-forward {
+  --step-from: 40px;
+}
+
+.step-in-back {
+  --step-from: -40px;
+}
+
+.step-in > * {
+  animation: step-arrive 520ms var(--ease-out-expo) both;
+}
+
+.step-in > :nth-child(1) {
+  animation-delay: 140ms;
+}
+
+.step-in > :nth-child(2) {
+  animation-delay: 190ms;
+}
+
+.step-in > :nth-child(3) {
+  animation-delay: 250ms;
+}
+
+.step-out {
+  position: absolute;
+  inset: 0 auto auto 0;
+  pointer-events: none;
+  animation: step-leave 200ms cubic-bezier(0.5, 0, 0.75, 0) both;
+}
+
+.step-out-forward {
+  --step-to: -32px;
+}
+
+.step-out-back {
+  --step-to: 32px;
+}
+
+/* Buildings rise from behind the street once; transform-box keeps translate in the building's own units. */
+@keyframes house-rise {
+  from {
+    transform: translateY(var(--rise-from, 160px));
+  }
+}
+
+.house {
+  transform-box: fill-box;
+  animation: house-rise 900ms var(--ease-out-expo) both;
+  animation-delay: var(--rise-delay, 0ms);
+}
+
+/* The skyline behind rises slower, which reads as distance. */
+.tower {
+  animation-duration: 1400ms;
+}
+
+/* Long, uneven cycles so the street never visibly loops. Animating the window's own
+   fill (not an overlay) keeps its edges and frame lines crisp. */
+@keyframes window-glow {
+  0%,
+  38%,
+  100% {
+    fill: var(--green);
+  }
+  46%,
+  86% {
+    fill: var(--amber-soft);
+  }
+}
+
+.window-glow {
+  animation: window-glow var(--dur, 14s) ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes cloud-drift {
+  from {
+    transform: translateX(-320px);
+  }
+  to {
+    transform: translateX(3520px);
+  }
+}
+
+.cloud {
+  animation: cloud-drift var(--dur, 140s) linear infinite;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes sun-breathe {
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.sun {
+  animation: sun-breathe 9s ease-in-out infinite;
+}
+
+/* Fills over one carousel interval; restarts on each slide via a React key. */
+/* "Who's moving?" cards: picking one draws the roof, then the people rise into it. */
+@keyframes art-roof-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes art-person-rise { from { opacity: 0; transform: translateY(8px); } }
+.art-roof { stroke-dasharray: 1; }
+.art-person { transform-box: fill-box; }
+.group:has(:checked) .art-roof { animation: art-roof-draw 420ms var(--ease-out-expo) both; }
+.group:has(:checked) .art-person { animation: art-person-rise 380ms var(--ease-out-expo) var(--d, 0ms) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .art-roof,
+  .art-person {
+    animation: none !important;
+  }
+
+  .arrive,
+  .panel-in,
+  .step-in > *,
+  .step-out,
+  .house,
+  .window-glow,
+  .cloud,
+  .sun {
+    animation: none;
+  }
+
+  .cloud {
+    transform: translateX(var(--rest, 400px));
+  }
+
+  /* The carousel doesn't auto-advance under reduced motion, so there's no timer to show. */
+  .step-out {
+    display: none;
+  }
+}
+
+/* The stepper draws its own -/+ buttons, so hide the browser's spin arrows. */
+.stepper-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.stepper-input::-webkit-inner-spin-button,
+.stepper-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+@keyframes select-pop {
+  from {
+    opacity: 0;
+    transform: translateY(var(--pop-from, -4px)) scale(0.98);
+  }
+}
+
+.select-pop {
+  transform-origin: top;
+  animation: select-pop 160ms var(--ease-out-expo) both;
+}
+
+.select-pop-up {
+  --pop-from: 4px;
+  transform-origin: bottom;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .select-pop {
+    animation: none;
+  }
+}
+
+/* Agent interview: the "Ember" thinking glyph, and messages and choices settling in. */
+@keyframes ember-ripple { from { transform: scale(0.6); opacity: 0.55; } to { transform: scale(1.9); opacity: 0; } }
+.ember-ripple { animation: ember-ripple 1.6s ease-out infinite; }
+@keyframes ember-core { 50% { transform: scale(1.18); box-shadow: 0 0 7px color-mix(in srgb, var(--green) 55%, transparent); } }
+.ember-core { animation: ember-core 1.6s ease-in-out infinite; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(4px); } }
+.msg-in { animation: msg-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.choices-in { animation: msg-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes fade-in { from { opacity: 0; } }
+.fade-in { animation: fade-in 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .ember-ripple, .ember-core, .msg-in, .choices-in, .fade-in { animation: none; }
+  .ember-ripple { opacity: 0; }
+}
+
+/* Signed-out landing: chips settle in once, then drift forever, like Skynet's login halo. */
+@keyframes halo-enter { from { opacity: 0; scale: 0.9; translate: 0 10px; } }
+@keyframes halo-drift {
+  50% { transform: translate(var(--xamp), calc(var(--amp) * -1)) rotate(var(--wob)); }
+}
+.halo-chip {
+  transform: rotate(var(--rot));
+  animation:
+    halo-enter 700ms var(--ease-out-expo) var(--enter) both,
+    halo-drift var(--dur) ease-in-out var(--float) infinite;
+}
+@keyframes signin-panel-in { from { opacity: 0; transform: translateY(18px) scale(0.985); } }
+.signin-panel { animation: signin-panel-in 600ms var(--ease-out-expo) both; }
+@media (max-width: 767px), (max-height: 639px) {
+  .halo-chip { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .halo-chip, .signin-panel { animation: none; }
+}
+
+/* Logo: the white wordmark sits on the cream ground like a sticker, so it gets a soft green lift. */
+.logo-stacked .logo-word { filter: drop-shadow(0 3px 0 color-mix(in oklab, var(--green) 22%, transparent)); }
+.logo-stacked .logo-key { filter: drop-shadow(0 4px 6px color-mix(in oklab, var(--green) 18%, transparent)); }
+
+/* Sign-in: the key stays still; the name rises in, then its letters keep hopping in a wave, left to right. */
+@keyframes logo-word-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+/* Units are the wordmark's own (about 2.6 per screen pixel), so -18 lifts a letter roughly 7px. */
+@keyframes logo-letter-hop {
+  0% { transform: none; animation-timing-function: var(--ease-out-expo); }
+  11% { transform: translateY(-18px); animation-timing-function: cubic-bezier(0.5, 0, 0.75, 0); }
+  22%, 100% { transform: none; }
+}
+.signin-panel .logo-word { animation: logo-word-rise 560ms var(--ease-out-expo) 200ms both; }
+.signin-panel .logo-letter {
+  transform-box: fill-box;
+  animation: logo-letter-hop 3.2s linear infinite;
+  animation-delay: calc(900ms + var(--i) * 80ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .signin-panel .logo-word, .signin-panel .logo-letter { animation: none; }
+}

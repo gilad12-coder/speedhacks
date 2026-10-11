@@ -1,0 +1,9 @@
+main.py
+notes
+codedb.snapshot
+.env*
+!.env.example
+data/
+caller/data/
+.venv/
+__pycache__/
