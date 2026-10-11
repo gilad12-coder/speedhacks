@@ -101,6 +101,9 @@ class CraigslistSource(ListingSource):
         sqft = re.search(r"(\d{3,5})\s*ft2", post.get_text(" "))
         if sqft:
             listing.sqft = int(sqft.group(1))
+        from househunt.research.web import canonical_url
+        listing.photo_urls = [u for m in post.select('meta[property="og:image"]')
+                              if (u := canonical_url(m.get('content','')))]
         # Ephemeral source text: the research stage extracts quoted facts before storage.
         for junk in post.select('script, style, nav, footer, header, .avoid-scams'):
             junk.decompose()

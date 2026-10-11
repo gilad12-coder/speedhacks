@@ -6,17 +6,20 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => {
 }, 'Invalid calendar date');
 const text = z.string().trim().min(1).max(2000);
 export const phoneSchema = z.string().regex(/^\+1[2-9]\d{9}$/, 'Use a US E.164 number');
-const commute = z.object({ destination: text, mode: z.enum(['caltrain', 'transit', 'drive', 'bike', 'walk']), maxMinutes: z.number().positive() });
+const mode = z.enum(['walk', 'bike', 'scooter', 'drive', 'caltrain', 'metro', 'bus', 'tram', 'ferry', 'transit']);
+const commute = z.object({ destination: text, mode, modes: z.array(mode).optional(), maxMinutes: z.number().positive() })
+  .transform(v => ({ ...v, modes: v.modes ?? [v.mode] }));
 export const briefSchema = z.object({
-  householdId: text, occupants: z.number().int().min(2).max(6), maxTotalRentUsd: z.number().positive(),
+  householdId: text, occupants: z.number().int().min(1).max(6), maxTotalRentUsd: z.number().positive(),
+  renterName: text.optional(), location: z.string().default(''), wishes: z.array(text).default([]),
   moveInFrom: isoDate, moveInTo: isoDate, commute,
   mustHaves: z.array(text).max(20), dealBreakers: z.array(text).max(20), niceToHaves: z.array(text).max(20),
   householdIncomeBandUsd: z.object({ min: z.number().nonnegative(), max: z.number().nonnegative() })
 }).strict().refine(v => v.moveInFrom <= v.moveInTo, 'Move-in dates are reversed')
-  .refine(v => v.householdIncomeBandUsd.min <= v.householdIncomeBandUsd.max, 'Income range is reversed') satisfies z.ZodType<SearchBrief>;
+  .refine(v => v.householdIncomeBandUsd.min <= v.householdIncomeBandUsd.max, 'Income range is reversed') satisfies z.ZodType<SearchBrief, z.ZodTypeDef, unknown>;
 export const listingSchema = z.object({
   id: text, source: z.enum(['curated', 'live_search']), sourceUrl: z.string().url(), address: text,
-  neighborhood: text, rentUsd: z.number().positive(), bedrooms: z.number().nonnegative(), bathrooms: z.number().nonnegative(),
+  neighborhood: text, rentUsd: z.number().positive().nullable(), bedrooms: z.number().nonnegative().nullable(), bathrooms: z.number().nonnegative().nullable(),
   photoUrls: z.array(z.string().url()).max(20),
   contact: z.object({ name: text, role: z.enum(['landlord', 'broker', 'property_manager']), phone: z.string().max(40) }),
   commuteMinutes: z.number().nonnegative().nullable(),

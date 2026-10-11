@@ -78,6 +78,9 @@ def requirements(c: SearchCriteria) -> list[dict]:
     if c.occupants:
         result.append({"key": "occupancy", "group": "fit", "question": f"Can {c.occupants} housemates rent and occupy the unit?"})
     result.extend({"key": f"must:{i}", "group": "matches", "question": f"Required: {item}. Please confirm."} for i, item in enumerate(c.must_haves))
+    result.extend({"key": f"avoid:{i}", "group": "matches", "question": f"Deal-breaker to avoid: {item}. Confirm this is NOT present."} for i, item in enumerate(c.deal_breakers))
+    if c.move_in_from and c.move_in_by:
+        result.append({"key":"move_window", "group":"matches", "question":f"Can the tenancy start between {c.move_in_from} and {c.move_in_by}?"})
     return result
 
 

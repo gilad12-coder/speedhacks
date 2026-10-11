@@ -6,7 +6,7 @@ import ipaddress
 import re
 import socket
 import ssl
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
@@ -42,6 +42,8 @@ class Page:
     url: str
     title: str
     text: str
+    links: list[str] = field(default_factory=list)
+    images: list[str] = field(default_factory=list)
 
 
 def fetch_page(url: str) -> Page | None:
@@ -77,12 +79,15 @@ def fetch_page(url: str) -> Page | None:
                     return None
                 soup = BeautifulSoup(data, "html.parser")
                 title = soup.title.get_text(" ", strip=True) if soup.title else host(url)
+                links = list(dict.fromkeys(canonical_url(urljoin(url, a['href'])) for a in soup.select('a[href]')))
+                links = [u for u in links if u and re.search(r'property|properties|listing|apartment|rental|homedetails|/view/d|/b/', u, re.I)][:60]
+                images = [canonical_url(urljoin(url, m.get('content', ''))) for m in soup.select('meta[property="og:image"]')]
                 for el in soup(["script", "style", "noscript", "nav", "footer", "header"]):
                     el.decompose()
                 text = re.sub(r"\s+", " ", soup.get_text(" ", strip=True))[:60000]
                 if len(text) < 100 or re.search(r"^(Access denied|Just a moment|Verify you are human)", title, re.I):
                     return None
-                return Page(url=url, title=title[:250], text=text)
+                return Page(url=url, title=title[:250], text=text, links=links, images=[u for u in images if u][:5])
             finally:
                 sock.close()
     except (OSError, ValueError, http.client.HTTPException):

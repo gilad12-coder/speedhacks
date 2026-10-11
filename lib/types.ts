@@ -9,6 +9,7 @@ export type CommuteMode =
 
 export interface SearchBrief {
   householdId: string;
+  renterName?: string; // spoken by the AI assistant; optional for older workers
   occupants: number; // 1–6
   location: string; // city or area to search, free text
   maxTotalRentUsd: number; // sum of personal budgets
@@ -34,15 +35,26 @@ export interface Listing {
   sourceUrl: string;
   address: string;
   neighborhood: string;
-  rentUsd: number;
-  bedrooms: number;
-  bathrooms: number;
+  rentUsd: number | null; // unknown is never represented as a zero-dollar rental
+  bedrooms: number | null;
+  bathrooms: number | null;
   photoUrls: string[];
   contact: { name: string; role: "landlord" | "broker" | "property_manager"; phone: string };
   commuteMinutes: number | null;
   status: ListingStatus;
   ruledOutReason?: RuledOutReason;
   ruledOutNote?: string; // one plain sentence, shown in "Ruled out"
+  research?: RentalResearch;
+}
+
+export interface RentalResearch {
+  status: "not_checked" | "checking" | "unconfirmed" | "cross_referenced" | "concerns_found" | "error";
+  checkedAt: string | null;
+  findings: { kind: string; summary: string; quote: string; sourceUrl: string }[];
+  facts: { field: string; quote: string; sourceUrl: string }[];
+  limitations: string;
+  medianComparableRent: number | null;
+  comparableCount: number;
 }
 
 export interface TranscriptLine {
@@ -87,6 +99,8 @@ export interface AgentRun {
   calls: Call[];
   checks: Check[];
   offeredWindows: OfferedWindow[];
+  progress?: string[];
+  warnings?: string[];
 }
 
 // ---------- Part 3 → Part 1: household and tours ----------

@@ -6,6 +6,7 @@ import json
 import re
 import logging
 import secrets
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -32,6 +33,11 @@ security = HTTPBasic(auto_error=False)
 def require_auth(request: Request,
                  creds: HTTPBasicCredentials | None = Depends(security)) -> None:
     """Basic auth when APP_PASSWORD is set: the app can place real phone calls."""
+    if request.url.path.startswith('/agent/'):
+        key = os.environ.get('AGENT_API_KEY', '')
+        if not key or not secrets.compare_digest(request.headers.get('authorization',''), 'Bearer '+key):
+            raise HTTPException(401, 'Unauthorized agent request')
+        return
     if not settings.app_password or request.url.path == "/healthz":
         return
     if not (creds and secrets.compare_digest(creds.password, settings.app_password)):
@@ -202,6 +208,28 @@ def call_recording(call_id: int):
     if path is None or not path.is_file():
         raise HTTPException(404, "Recording not imported")
     return FileResponse(path, media_type="audio/wav", headers={"Cache-Control": "private, no-store"})
+
+
+@app.post('/agent/households/{household_id}/listings/{key}/call')
+def household_call(background: BackgroundTasks, household_id: str, key: str):
+    search_id = db.household_search(household_id)
+    if search_id is None:
+        raise HTTPException(404, 'Household search not found')
+    listing = db.get_listing(search_id, key)
+    if not listing or not listing.contact or not listing.contact.phone:
+        raise HTTPException(400, 'A listing contact phone is required')
+    if not settings.mock_sources and settings.call_mode.value != 'dry_run' and listing.contact.phone not in settings.dial_allowed_numbers:
+        raise HTTPException(400, 'This contact has not been enabled for calling by the operator')
+    call_listing(background, search_id, key)
+    return {'ok':True}
+
+
+@app.get('/agent/households/{household_id}/calls/{call_id}/recording')
+def household_recording(household_id: str, call_id: int):
+    search_id = db.household_search(household_id)
+    if search_id is None or not any(c['id'] == call_id for c in db.calls_for_search(search_id).values()):
+        raise HTTPException(404)
+    return call_recording(call_id)
 
 
 @app.post("/searches/{search_id}/listings/{key}/track")

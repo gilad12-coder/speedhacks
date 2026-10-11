@@ -85,6 +85,16 @@ def test_matching_price_ranges_and_platform_warnings_are_not_risk_flags():
     assert result['status'] == 'unconfirmed' and not result['findings']
 
 
+def test_building_price_difference_does_not_claim_same_unit_conflict():
+    listing=target()
+    listing.address='100 Pine Street'
+    page=Page('https://rentals.example.org/one','Rental','100 Pine Street. Rent $9,000/month.')
+    review=Review(findings=[{'kind':'rent_conflict','url':page.url,'quote':'Rent $9,000/month.',
+        'explanation':'Same unit','same_unit':True,'supports_finding':True}],comparables=[])
+    finding=validate_review(review,[page],listing)['findings'][0]
+    assert finding['kind']=='price_difference' and finding['same_unit'] is False
+
+
 def test_dedupe_keeps_different_units_with_same_leasing_phone():
     from househunt.collect import dedupe
     a, b = target(), target()
@@ -114,3 +124,18 @@ def test_renter_identity_is_used_but_not_sent_to_web_search():
     assert 'Reed' in prompt and 'Someone Else' not in prompt
     assert 'Do not claim to be the renter' in prompt
     assert 'Reed' not in public_criteria(criteria) and 'private calendar detail' not in public_criteria(criteria)
+
+
+def test_discovery_uses_provider_citations_not_generated_links(monkeypatch):
+    import httpx
+    from dataclasses import replace
+    import househunt.config
+    from househunt.research.provider import ask,Links
+    monkeypatch.setattr(househunt.config,'settings',replace(househunt.config.settings,openai_api_key='test'))
+    body={'status':'completed','output':[
+        {'type':'web_search_call','status':'completed'},
+        {'type':'message','content':[{'type':'output_text','text':'https://invented.example.com/',
+          'annotations':[{'type':'url_citation','url':'https://observed.example.com/rental','title':'Observed'}]}]}]}
+    monkeypatch.setattr(httpx,'post',lambda *a,**k:httpx.Response(200,json=body))
+    result=ask('find rentals',Links,search=True)
+    assert [l.url for l in result.links]==['https://observed.example.com/rental']

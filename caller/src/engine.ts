@@ -22,9 +22,9 @@ export class CallerEngine {
     const listings = structuredClone(parsed.listings), issues: string[] = [];
     for (const listing of listings) {
       if (listing.status === 'ruled_out') continue;
-      if (listing.rentUsd > parsed.brief.maxTotalRentUsd || (listing.commuteMinutes !== null && listing.commuteMinutes > parsed.brief.commute.maxMinutes)) {
+      if ((listing.rentUsd !== null && listing.rentUsd > parsed.brief.maxTotalRentUsd) || (listing.commuteMinutes !== null && listing.commuteMinutes > parsed.brief.commute.maxMinutes)) {
         listing.status = 'ruled_out'; listing.ruledOutReason = 'breaks_must_have';
-        listing.ruledOutNote = listing.rentUsd > parsed.brief.maxTotalRentUsd ? 'Advertised rent exceeds the household ceiling' : 'Listed commute exceeds the household limit';
+        listing.ruledOutNote = listing.rentUsd !== null && listing.rentUsd > parsed.brief.maxTotalRentUsd ? 'Advertised rent exceeds the household ceiling' : 'Listed commute exceeds the household limit';
       }
     }
     const seen = new Set<string>();

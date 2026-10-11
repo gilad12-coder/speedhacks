@@ -13,6 +13,11 @@ from househunt.config import settings
 from househunt.models import Listing, SearchCriteria
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS household_jobs (
+    household_id TEXT PRIMARY KEY,
+    search_id INTEGER NOT NULL UNIQUE,
+    published_hash TEXT
+);
 CREATE TABLE IF NOT EXISTS search_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     search_id INTEGER NOT NULL,
@@ -189,6 +194,12 @@ def search_event(search_id: int, message: str) -> None:
 def search_events(search_id: int) -> list:
     with conn() as c:
         return c.execute("SELECT * FROM search_events WHERE search_id = ? ORDER BY id DESC LIMIT 30", (search_id,)).fetchall()[::-1]
+
+
+def household_search(household_id: str) -> int | None:
+    with conn() as c:
+        row = c.execute("SELECT search_id FROM household_jobs WHERE household_id = ?", (household_id,)).fetchone()
+    return row['search_id'] if row else None
 
 
 # --- listings ---------------------------------------------------------------

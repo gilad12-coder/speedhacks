@@ -75,8 +75,10 @@ def timestamp() -> str:
 
 
 def number_in_quote(value: float, quote: str) -> bool:
-    numbers = re.findall(r"(?<!\w)\d+(?:,\d{3})*(?:\.\d+)?(?!\w)", quote)
-    return any(float(n.replace(",", "")) == value for n in numbers)
+    numbers = re.findall(r"(?<!\w)\d+(?:,\d{3})*(?:\.\d+)?", quote)
+    words = ['zero','one','two','three','four','five','six','seven','eight','nine','ten']
+    return any(float(n.replace(",", "")) == value for n in numbers) or any(
+        i == value and re.search(r'\b'+word+r'\b', quote, re.I) for i,word in enumerate(words))
 
 
 def evidence(field: str, quote: str, page: Page) -> dict:
@@ -88,7 +90,7 @@ def parse_rental(rental: Rental, page: Page, criteria: SearchCriteria) -> Listin
         return None
     source, source_id = identify(page.url)
     listing = Listing(source=source or Source.OTHER, source_id=source_id, url=page.url,
-                      title=page.title, provenance=[page.url])
+                      title=page.title, provenance=[page.url], photo_urls=page.images)
     accepted = []
     for fact in rental.facts:
         if not exact_quote(fact.quote, page):
@@ -124,7 +126,7 @@ def parse_rental(rental: Rental, page: Page, criteria: SearchCriteria) -> Listin
                 setattr(listing, fact.key, value)
         accepted.append(evidence(fact.key, fact.quote, page))
     matches = []
-    for requirement in criteria.must_haves:
+    for requirement in [*criteria.must_haves, *[f"Must not have: {d}" for d in criteria.deal_breakers]]:
         m = next((m for m in rental.requirements if m.requirement == requirement), None)
         matches.append({"requirement": requirement,
                         "matched": m.matched if m and exact_quote(m.quote, page) else None,
@@ -150,6 +152,7 @@ def read_rentals(pages: list[Page], criteria: SearchCriteria) -> list[Listing]:
         "Return exact contiguous quotes for every fact. Missing fields are omitted. A street address includes apartment/unit when stated. "
         "Phone/email must belong to the property contact, not portal support. No contact guessing. "
         "Check each must-have with true/false/null: absence of a statement is null; 'laundry' doesn't prove in-unit laundry. "
+        "Also check each deal-breaker, naming its requirement 'Must not have: [deal-breaker]'; matched means the forbidden feature is absent. "
         "Availability unknown unless page explicitly offers it for rent or says no availability. Check city (SF means San Francisco). "
         "Do not infer freshness from today's date. Criteria: " + public_criteria(criteria)
         + "\nPages: " + json.dumps([vars(p) for p in pages]), Rentals)
@@ -192,6 +195,17 @@ def discover(criteria: SearchCriteria, progress=lambda message: None) -> tuple[l
         blocked = len(urls) - len(pages)
         if blocked:
             errors.append(f"{blocked} web pages could not be read (blocked, removed or unavailable); no facts inferred")
+        # Follow one level of observed inventory links, never model-invented paths.
+        available_links = list(dict.fromkeys(u for p in pages for u in p.links if u not in seen))
+        if available_links:
+            selected = ask("Choose up to 8 specific rental detail pages likely to match " + public_criteria(criteria)
+                + ". Use ONLY URLs in this observed inventory; no search/catalog/contact pages or invented paths. "
+                + json.dumps(available_links), Links)
+            follow = list(dict.fromkeys(l.url for l in selected.links if l.url in available_links))[:8]
+            seen.update(follow)
+            progress(f"Following {len(follow)} observed property links from source inventories")
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                pages.extend(p for p in pool.map(fetch_page, follow) if p)
         for i in range(0, len(pages), 4):
             found = dedupe(found + read_rentals(pages[i:i + 4], criteria))
         usable = [l for l in found if passes_filters(l, criteria)[0] and l.price is not None and l.address]
@@ -228,7 +242,15 @@ def validate_review(review: Review, pages: list[Page], listing: Listing) -> dict
             if not contact or not ((contact.phone and extract_phone(f.quote) == contact.phone)
                     or (contact.email and contact.email.casefold() in f.quote.casefold())):
                 continue
-        findings.append({**f.model_dump(), "url": page.url})
+        finding = {**f.model_dump(), "url": page.url}
+        if f.kind == "rent_conflict":
+            unit = re.search(r'(?:#|\bunit\b|\bapt\b|\bapartment\b)\s*([a-z0-9-]+)', listing.address or '', re.I)
+            exact_unit = unit and re.search(r'(?:#|\bunit\b|\bapt\b|\bapartment\b)\s*'+re.escape(unit.group(1))+r'\b',page.text,re.I)
+            if not exact_unit:
+                # A building address can cover multiple units, sizes and lease terms.
+                finding.update(kind='price_difference',same_unit=False,
+                    explanation='Other advertised rents at this address differ substantially. The exact unit and terms are not established; check them before treating this as a contradiction.')
+        findings.append(finding)
     comps, addresses = [], set()
     for c in review.comparables:
         page = by_url.get(canonical_url(c.url))

@@ -5,9 +5,12 @@ calls the listing contact with a [Dial](https://getdial.ai) AI voice agent, extr
 
 Phase 1 vertical slice of the [build plan](https://claude.ai/artifact/N1Ew2deuaGcwKiim1JbLdj).
 
+The current integration includes the household Next.js app from `app-ui-form-and-login` and the Python agent worker from `ui-refresh`. See [agent integration and deployment](docs/agent-integration.md) for the shared API, required settings, live search evidence, and voice support.
+
 ```
-sources (zillow · craigslist · facebook)
+sources (citation-backed web search · public property pages · craigslist · Gmail alerts)
    └─> collect: normalize, pull phone from text, dedupe, filter, score
+         └─> cross-search: address/contact corroboration, conflicting terms, comparable rents
          └─> call (Dial POST /api/v1/calls, poll GET /api/v1/calls/{id})
                └─> extract (OpenAI/Anthropic: facts + exact transcript evidence)
                      └─> unbooked tour offers + optional renter notification
@@ -75,8 +78,9 @@ Dial's dashboard provides recordings through expiring signed links; the document
 | Source | Status |
 | --- | --- |
 | Craigslist | Live: no-JS search page + each posting. Phone numbers only when written in the description |
-| Zillow | Mock only. Needs a scraping API or Playwright |
-| Facebook Marketplace | Mock only. Needs a logged-in browser session; contact is Messenger-only |
+| Web discovery | OpenAI web search citations, followed by public-page reads and exact-quote fact validation. One level of observed inventory links, up to two discovery rounds |
+| Zillow / other portals | Public pages can be discovered by web search; blocked pages are reported, not bypassed. Gmail Zillow alerts and manual imports remain available |
+| Facebook Marketplace | No logged-in automated browsing. Manual import supported; mock fixture available in mock mode |
 
 ## Layout
 
@@ -90,7 +94,9 @@ househunt/
     dial.py          Dial REST client + FakeDialClient for dry runs
     extract.py       transcript -> cited CallSummary via OpenAI/Anthropic
     verification.py  exact-quote, timestamp, requirement and tour-window checks
-  pipeline.py        orchestration (background threads, 2 concurrent calls)
+  research/          bounded web discovery, page evidence and rental screening
+  platform.py        SearchBrief polling and AgentRun publishing to Next.js
+  pipeline.py        orchestration (parallel research, serialized calls)
   tours.py           .ics invites
   db.py              SQLite
   web/               FastAPI app + Jinja templates

@@ -44,7 +44,7 @@ def source_listings(criteria: SearchCriteria, progress=lambda message: None) -> 
             if not settings.mock_sources and settings.web_research and src.name == "craigslist":
                 from househunt.research.engine import read_rentals
                 from househunt.research.web import Page
-                pages = [Page(l.url, l.title, l.research["page_text"]) for l in found if l.research.get("page_text")]
+                pages = [Page(l.url, l.title, l.research["page_text"], images=l.photo_urls) for l in found if l.research.get("page_text")]
                 progress(f"Checking city, unit, rent and requirements on {len(pages)} Craigslist pages")
                 found = [l for i in range(0, len(pages), 4) for l in read_rentals(pages[i:i+4], criteria)]
             for listing in found:
@@ -84,8 +84,13 @@ def calendar_availability() -> list[str]:
         return []
 
 
-def run_search(search_id: int) -> None:
+def run_search(search_id: int, on_update=lambda: None) -> None:
     criteria, _ = db.get_search(search_id)
+    def publish():
+        try:
+            on_update()
+        except Exception:
+            log.warning('Search %s publication delayed; local evidence is saved',search_id)
     try:
         db.set_search_status(search_id, "sourcing")
         raw, errors = source_listings(criteria, lambda message: db.search_event(search_id, message))
@@ -96,6 +101,7 @@ def run_search(search_id: int) -> None:
             log.exception("geocoding failed")
         for l in listings:
             db.upsert_listing(search_id, l)
+        publish()
 
         if not settings.mock_sources and settings.web_research:
             db.set_search_status(search_id, "screening")
@@ -104,6 +110,7 @@ def run_search(search_id: int) -> None:
             with ThreadPoolExecutor(max_workers=2) as pool:
                 list(pool.map(lambda l: screen_listing(search_id, l.key), candidates))
             listings = db.list_listings(search_id)
+            publish()
 
         callable_ = [l for l in listings
                      if l.status == ListingStatus.CANDIDATE and l.contact and l.contact.phone]
@@ -116,9 +123,11 @@ def run_search(search_id: int) -> None:
                        for l in callable_[: settings.max_auto_calls]]
             for f in futures:
                 f.result()
+                publish()
 
         db.set_search_status(search_id, "done", "; ".join(errors) or None)
         db.search_event(search_id, f"Search complete: {len(listings)} listings. Unconfirmed facts and risk flags require review.")
+        publish()
         notify_summary(search_id)
     except Exception as e:  # surface in the UI rather than dying silently in a worker
         log.exception("search %s failed", search_id)
