@@ -1,0 +1,27 @@
+{% from "_icons.html" import icon %}
+{% macro flag_list(flags, limit=None) %}
+<ul class="flags">
+  {% for f in (flags[:limit] if limit else flags) %}
+  <li class="flag {{ f.severity }}">
+    <span class="sev">{{ icon("flag", 14) }}</span>
+    <div class="what"><b>{{ f.title }}</b><span>{{ f.detail }}</span></div>
+    <a class="btn {{ '' if f.severity == 'urgent' else 'secondary' }}" href="{{ f.href }}" {% if f.href.startswith('http') %}target="_blank" rel="noopener"{% endif %}>{{ f.action }}</a>
+  </li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+{% macro flag_styles() %}
+<style>
+  .flags { list-style: none; margin: 0; padding: 0; }
+  .flag { display:grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 0;
+    border-top: 1px solid var(--line); }
+  .flag:first-child { border-top: 0; }
+  .flag .sev { width: 28px; height: 28px; border-radius: 8px; display:grid; place-items:center; background: var(--sunken); color: var(--muted); }
+  .flag.urgent .sev { background: var(--warn-soft); color: var(--warn); }
+  .flag.todo .sev { background: var(--amber-soft); color: var(--amber); }
+  .flag .what b { display:block; font-weight: 600; font-size: 14px; }
+  .flag .what span { font-size: 13px; color: var(--muted); }
+  .flag .btn { padding: 5px 12px; font-size: 13px; white-space: nowrap; }
+  @media (max-width: 640px) { .flag { grid-template-columns: 28px minmax(0, 1fr); } .flag .btn { grid-column: 2; justify-self: start; } }
+</style>
+{% endmacro %}

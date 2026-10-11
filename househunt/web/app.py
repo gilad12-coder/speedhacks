@@ -40,8 +40,12 @@ def require_auth(request: Request,
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    from househunt import phone
+
     db.init()
+    stop = phone.start_background()   # keeps the call-in briefing fresh, when switched on
     yield
+    stop.set()
 
 
 app = FastAPI(title="KeyHunt", lifespan=lifespan, dependencies=[Depends(require_auth)])
@@ -49,6 +53,7 @@ app = FastAPI(title="KeyHunt", lifespan=lifespan, dependencies=[Depends(require_
 # Sidebar tabs: (path, label, icon). A tab shows up once its route exists.
 NAV = [("/", "Searches", "list"), ("/leads", "Leads", "star"), ("/calls", "Calls", "phone"), ("/viewings", "Viewings", "calendar"),
        ("/applications", "Applications", "clipboard"), ("/chats/agent", "Ask your agent", "chat"),
+       ("/phone", "Phone briefing", "mic"),
        ("/connections", "Connections", "plug")]
 
 
@@ -94,6 +99,17 @@ def recent_chats() -> list:
     return [c for c in db.list_chats(8) if c["listing_key"]][:5]
 
 
+def needs_you_count() -> int:
+    from househunt import flags
+
+    try:
+        return sum(1 for f in flags.compute() if f.severity in ("urgent", "todo"))
+    except Exception:  # never let a flag bug break every page's sidebar
+        logging.getLogger(__name__).exception("computing flags failed")
+        return 0
+
+
+templates.env.globals["needs_you_count"] = needs_you_count
 templates.env.globals.update(nav_items=nav_items, recent_searches=recent_searches,
                              recent_chats=recent_chats, settings=settings)
 
@@ -112,8 +128,10 @@ def index(request: Request):
     counts = db.listing_counts()
     searches = [(r, json.loads(r["criteria"]), counts.get(r["id"], {}))
                 for r in db.list_searches()]
+    from househunt import flags
+
     return templates.TemplateResponse(request, "index.html", {
-        "searches": searches, "settings": settings,
+        "searches": searches, "settings": settings, "flags": flags.compute(),
     })
 
 
@@ -305,6 +323,66 @@ def restore_lead(app_id: int):
         raise HTTPException(404)
     leads.restore(app_id)
     return RedirectResponse(f"/leads#lead-{app_id}", status_code=303)
+
+
+# --- phone briefing -----------------------------------------------------------
+
+@app.get("/phone", response_class=HTMLResponse)
+def phone_page(request: Request, msg: str | None = None, error: str | None = None):
+    from househunt import briefing, flags, phone
+
+    return templates.TemplateResponse(request, "phone.html", {
+        "settings": settings, "msg": msg, "error": error, "configured": phone.configured(),
+        "enabled": phone.enabled(), "number": db.get_state("phone_number"),
+        "synced_at": db.get_state("inbound_synced_at"), "facts": briefing.facts(),
+        "flags": flags.compute(), "inbound": db.inbound_calls(),
+    })
+
+
+def _phone_action(fn, ok: str):
+    try:
+        fn()
+    except Exception as e:  # surface Dial errors on the page instead of a 500
+        logging.getLogger(__name__).exception("phone action failed")
+        return RedirectResponse(f"/phone?error={quote_plus(f'{ok.split()[0]} failed: {e}')}", 303)
+    return RedirectResponse(f"/phone?msg={quote_plus(ok)}", 303)
+
+
+@app.post("/phone/call-me")
+def phone_call_me():
+    from househunt import phone
+
+    return _phone_action(phone.call_me, "Calling you now with your update")
+
+
+@app.post("/phone/enable")
+def phone_enable():
+    from househunt import phone
+
+    return _phone_action(phone.enable, "Your KeyHunt number now answers with your briefing")
+
+
+@app.post("/phone/disable")
+def phone_disable():
+    from househunt import phone
+
+    return _phone_action(phone.disable, "Call-in briefings are off; your number's old greeting is back")
+
+
+@app.post("/phone/sync")
+def phone_sync():
+    from househunt import phone
+
+    def run():
+        phone.sync(force=True)
+        phone.poll_inbound()
+    return _phone_action(run, "Briefing refreshed and new calls checked")
+
+
+@app.post("/phone/calls/{call_id}/handled")
+def phone_call_handled(call_id: str):
+    db.mark_inbound_handled(call_id)
+    return RedirectResponse("/phone", 303)
 
 
 # --- agent chats & place notes ----------------------------------------------

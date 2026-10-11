@@ -46,6 +46,11 @@
       padding: 8px 10px; border-radius: 8px; background: #6fbf93; color: #0f1a14; font-weight: 600; }
     .sidebar a.new-search:hover { filter: brightness(1.08); text-decoration: none; }
     .sidebar a.recent .icon { opacity: .5; }
+    .sidebar a.needs { display:flex; align-items:center; gap: 10px; margin: -4px 2px 10px; padding: 7px 10px; border-radius: 8px;
+      background: rgba(228,138,108,.14); color: #f2b29b; font-weight: 500; font-size: 13.5px; }
+    .sidebar a.needs:hover { background: rgba(228,138,108,.22); text-decoration: none; }
+    .sidebar a.needs span { flex: 1; }
+    .sidebar a.needs b { background: #e48a6c; color: #1f140f; border-radius: 99px; padding: 0 7px; font-size: 12px; }
     .sidebar a.nav { display:flex; align-items:center; gap: 10px; padding: 8px 10px; border-radius: 8px;
       color: var(--side-fg); font-weight: 500; }
     .sidebar a.nav:hover, .sidebar a.recent:hover { background: var(--side-hover); text-decoration: none; }
@@ -131,6 +136,8 @@
   <aside class="sidebar" id="sidebar">
     <a class="brand" href="/"><span class="logo">{{ icon("key", 18) }}</span>KeyHunt</a>
     <a class="new-search {{ 'active' if path == '/searches/new' }}" href="/searches/new">{{ icon("plus", 16) }}New search</a>
+    {% set needs = needs_you_count() %}
+    {% if needs %}<a class="needs" href="/#needs-you">{{ icon("flag", 15) }}<span>Needs you</span><b>{{ needs }}</b></a>{% endif %}
     {% for href, label, ic in nav_items() %}
       {% set active = path == href or (href == "/" and path.startswith("/searches/") and path != "/searches/new")
                       or (href == "/chats/agent" and chat is defined and chat and not chat.listing_key) %}

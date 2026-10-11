@@ -90,6 +90,21 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     display TEXT,                             -- what the chat page shows; NULL = hidden turn
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS app_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS inbound_calls (
+    id TEXT PRIMARY KEY,                      -- Dial call id
+    caller TEXT,
+    started_at TEXT,
+    transcript TEXT,
+    kind TEXT NOT NULL DEFAULT 'unknown',     -- renter | callback | unknown
+    search_id INTEGER,                        -- matched listing, for callbacks
+    listing_key TEXT,
+    handled INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS geocache (
     query TEXT PRIMARY KEY,
     lat REAL,                                 -- NULL = looked up, no match
@@ -427,6 +442,26 @@ def emails_for_listing(search_id: int, listing_key: str) -> list[sqlite3.Row]:
                          "AND status != 'discarded' ORDER BY id", (search_id, listing_key)).fetchall()
 
 
+def draft_emails() -> list[sqlite3.Row]:
+    with conn() as c:
+        return c.execute("SELECT * FROM emails WHERE status = 'draft' ORDER BY id").fetchall()
+
+
+def listing_by_phone(phone: str) -> tuple[int, "Listing"] | None:
+    """The most recent listing whose contact has this phone number, for matching callbacks."""
+    digits = "".join(ch for ch in phone if ch.isdigit())[-10:]
+    if len(digits) < 10:
+        return None
+    with conn() as c:
+        rows = c.execute("SELECT search_id, data FROM listings ORDER BY search_id DESC").fetchall()
+    for r in rows:
+        l = Listing.from_dict(json.loads(r["data"]))
+        if l.contact and l.contact.phone and \
+                "".join(ch for ch in l.contact.phone if ch.isdigit())[-10:] == digits:
+            return r["search_id"], l
+    return None
+
+
 def all_calls() -> list[sqlite3.Row]:
     """Every call across searches, newest first (all attempts, not just the latest)."""
     with conn() as c:
@@ -436,6 +471,51 @@ def all_calls() -> list[sqlite3.Row]:
 def all_tours() -> list[sqlite3.Row]:
     with conn() as c:
         return c.execute("SELECT * FROM tours ORDER BY start").fetchall()
+
+
+# --- app state & inbound calls -----------------------------------------------
+
+def get_state(key: str, default: str | None = None) -> str | None:
+    with conn() as c:
+        row = c.execute("SELECT value FROM app_state WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_state(key: str, value: str | None) -> None:
+    with conn() as c:
+        if value is None:
+            c.execute("DELETE FROM app_state WHERE key = ?", (key,))
+        else:
+            c.execute("INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)", (key, value))
+
+
+def save_inbound_call(call_id: str, caller: str | None, started_at: str | None,
+                      transcript: str | None, kind: str, search_id: int | None,
+                      listing_key: str | None) -> bool:
+    """Insert once per Dial call id; later polls fill in a transcript that arrived late."""
+    with conn() as c:
+        cur = c.execute(
+            "INSERT OR IGNORE INTO inbound_calls (id, caller, started_at, transcript, kind, "
+            "search_id, listing_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (call_id, caller, started_at, transcript, kind, search_id, listing_key, now()))
+        if not cur.rowcount and transcript:
+            c.execute("UPDATE inbound_calls SET transcript = ?, kind = ?, search_id = ?, "
+                      "listing_key = ? WHERE id = ? AND transcript IS NULL",
+                      (transcript, kind, search_id, listing_key, call_id))
+        return bool(cur.rowcount)
+
+
+def inbound_calls(unhandled_only: bool = False) -> list[sqlite3.Row]:
+    sql = "SELECT * FROM inbound_calls"
+    if unhandled_only:
+        sql += " WHERE handled = 0 AND kind != 'renter'"
+    with conn() as c:
+        return c.execute(sql + " ORDER BY started_at DESC").fetchall()
+
+
+def mark_inbound_handled(call_id: str) -> None:
+    with conn() as c:
+        c.execute("UPDATE inbound_calls SET handled = 1 WHERE id = ?", (call_id,))
 
 
 # --- geocode cache ----------------------------------------------------------

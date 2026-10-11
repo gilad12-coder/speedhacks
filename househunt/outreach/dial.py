@@ -4,6 +4,9 @@ Endpoints used (same ones the `dial` CLI wraps):
   POST /api/v1/calls        {to, fromNumber|fromNumberId, outboundInstruction, ...} -> {call}
   GET  /api/v1/calls/{id}   -> {call: {id, status, transcript, transcriptTurns, ...}}
   POST /api/v1/messages     {to, body, fromNumber|fromNumberId} -> SMS/iMessage
+  GET  /api/v1/numbers      -> {numbers: [{id, number, inboundInstruction, ...}], defaultNumberId}
+  PATCH /api/v1/numbers/{id} {inboundInstruction} -> what inbound callers' agent says
+  GET  /api/v1/calls?direction=inbound&since=... -> {calls: [...]}
 """
 
 from __future__ import annotations
@@ -92,6 +95,36 @@ class DialClient:
         res = self.http.post("/api/v1/messages", json={"to": to, "body": body, **self._from()})
         res.raise_for_status()
         return res.json()
+
+    def own_number(self) -> dict:
+        """The account number KeyHunt calls from (DIAL_FROM_NUMBER, else the default)."""
+        res = self.http.get("/api/v1/numbers")
+        res.raise_for_status()
+        data = res.json()
+        numbers = data.get("numbers") or []
+        ref = self.from_number or data.get("defaultNumberId")
+        for n in numbers:
+            if ref in (n.get("id"), n.get("number"), n.get("nickname")):
+                return n
+        if not numbers:
+            raise RuntimeError("No phone numbers on this Dial account")
+        return numbers[0]
+
+    def set_inbound_instruction(self, number_id: str, instruction: str) -> None:
+        res = self.http.patch(f"/api/v1/numbers/{number_id}",
+                              json={"inboundInstruction": instruction})
+        res.raise_for_status()
+
+    def inbound_calls(self, number_id: str | None = None, since: str | None = None) -> list[dict]:
+        """Each call has id, from, to, direction, createdAt, duration, status, transcript."""
+        params = {"direction": "inbound"}
+        if number_id:
+            params["numberId"] = number_id
+        if since:
+            params["since"] = since
+        res = self.http.get("/api/v1/calls", params=params)
+        res.raise_for_status()
+        return res.json().get("calls") or []
 
 
 class FakeDialClient:
