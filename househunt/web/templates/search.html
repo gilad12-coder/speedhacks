@@ -172,19 +172,27 @@
           <a href="/tours/{{ tour.id }}.ics">Add to calendar</a></div>
       {% endif %}
       {% if o %}
-        <div class="outcome {{ 'good' if o.viable else 'bad' }}">{{ o.summary }}
+        <div class="outcome {{ 'good' if o.viable else ('bad' if o.verification_status == 'ruled_out' else '') }}">{{ o.summary }}
           {% if o.tradeoffs %}<div class="tradeoffs">Tradeoffs: {{ o.tradeoffs | join("; ") }}</div>{% endif %}
+          {% for check in o.checks or [] %}
+          <div style="margin-top:8px"><strong>{{ check.kind | capitalize }} · {{ 'Confirmed' if check.passed == true else ('Does not match' if check.passed == false else 'Unknown') }}</strong>: {{ check.summary }}
+            {% if check.evidence %}<div class="muted small"><a href="#call-{{ call.id }}-{{ check.evidence.t }}">{{ check.evidence.t }}s</a> · “{{ check.evidence.quote }}”</div>{% endif %}
+          </div>
+          {% endfor %}
+          {% for window in o.offered_windows or [] %}
+          <div class="tour">{{ icon("calendar", 16) }} Offered: {{ window.start | when }} – {{ window.end | when }} · confirmation needed</div>
+          {% endfor %}
         </div>
       {% endif %}
       {% set notes = l.notes | reject("equalto", o.summary if o else None) | select | list %}
       {% if notes %}<div class="notes">{% for n in notes %}<div>{{ n }}</div>{% endfor %}</div>{% endif %}
-      {% set can_call = l.contact and l.contact.phone and l.status.value in ("candidate", "contacted", "not_viable") and not (call and call.status in ("queued", "in_progress")) %}
+      {% set can_call = l.contact and l.contact.phone and l.status.value in ("candidate", "contacted", "not_viable") and (not call or call.status in ("attention", "failed")) %}
       {% set app = tracked.get(l.key) %}
       {% if call or can_call or app or email or l.status.value != "filtered" %}
       <div class="actions">
         {% if can_call %}
           <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/call">
-            <button type="submit" class="{{ 'secondary' if call }}" title="{{ l.contact.phone }}">{{ icon("phone", 14) }}{{ "Call again" if call else "Call" }}</button>
+            <button type="submit" class="{{ 'secondary' if call }}" title="{{ l.contact.phone }}">{{ icon("phone", 14) }}{{ "Resume saved call" if call else "Call" }}</button>
           </form>
         {% elif not (l.contact and l.contact.phone) and l.status.value == "candidate" %}
           <span class="muted small">No phone number in listing</span>
@@ -207,7 +215,9 @@
         {% endif %}
         {% if call %}<span class="pill {{ call.status }}">{{ icon("phone", 12) }}{{ call.status.replace("_", " ") }}</span>{% endif %}
         {% if call and call.error %}<div class="err">{{ call.error }}</div>{% endif %}
-        {% if call and call.transcript %}<details data-id="t-{{ l.key }}"><summary>Call transcript</summary><pre>{{ call.transcript }}</pre></details>{% endif %}
+        {% if call and call.transcript %}<details data-id="t-{{ l.key }}"><summary>Call transcript{% if call.mode == 'dry_run' %} · synthetic{% endif %}</summary>
+          {% if o and o.transcript_turns %}{% for line in o.transcript_turns %}<p id="call-{{ call.id }}-{{ line.t }}"><strong>{{ line.t }}s · {{ line.speaker }}</strong> {{ line.text }}</p>{% endfor %}
+          {% else %}<pre>{{ call.transcript }}</pre>{% endif %}</details>{% endif %}
       </div>
       {% endif %}
     </article>

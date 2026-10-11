@@ -1,4 +1,6 @@
-# Keyhunt caller — Part 2b
+# Keyhunt caller — shared-contract harness
+
+**Current app integration:** the team has committed a Python/FastAPI app on `ui-refresh`. Its Call button uses `househunt/outreach/` directly; see the root README. This isolated Node package remains useful for the original `AgentRun` contract and does not need to run alongside the Python app.
 
 Accepts the team's `SearchBrief` and Lucy's `Listing[]`, places Dial verification calls, and returns the unchanged `AgentRun` contract from `../lib/types.ts`.
 

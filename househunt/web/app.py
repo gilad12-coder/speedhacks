@@ -41,6 +41,7 @@ def require_auth(request: Request,
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     db.init()
+    db.recover_calls()
     yield
 
 
@@ -116,12 +117,14 @@ def create_search(
     must_haves: str = Form(""),
     move_in_by: str = Form(""),
     tour_availability: str = Form(""),
+    occupants: int | None = Form(None, ge=1, le=20),
 ):
     criteria = SearchCriteria(
         city=city, max_price=max_price, min_price=min_price, min_beds=min_beds,
         min_baths=min_baths, neighborhoods=_split(neighborhoods),
         must_haves=_split(must_haves), move_in_by=move_in_by or None,
         tour_availability=_split(tour_availability),
+        occupants=occupants,
     )
     search_id = db.create_search(criteria)
     background.add_task(pipeline.run_search, search_id)
@@ -161,9 +164,14 @@ def show_search(request: Request, search_id: int):
 
 @app.post("/searches/{search_id}/listings/{key}/call")
 def call_listing(background: BackgroundTasks, search_id: int, key: str):
+    listing = db.get_listing(search_id, key)
+    if not listing:
+        raise HTTPException(404, "Listing not found")
+    if listing.status == ListingStatus.FILTERED_OUT:
+        raise HTTPException(400, "Listing is already ruled out")
     existing = db.calls_for_search(search_id).get(key)
-    if existing and existing["status"] in ("queued", "in_progress"):
-        raise HTTPException(409, "call already in progress")
+    if existing and existing["status"] not in ("attention", "failed"):
+        raise HTTPException(409, "Call already exists; no replacement call was started")
     background.add_task(pipeline.call_listing, search_id, key)
     return RedirectResponse(f"/searches/{search_id}", status_code=303)
 

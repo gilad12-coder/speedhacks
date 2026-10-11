@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from urllib.parse import quote
 from dataclasses import dataclass
 
 import httpx
@@ -33,11 +34,11 @@ def _parse_call(call: dict) -> DialCall:
         state = status.get("state") or ""
         termination = status.get("terminationType")
         label = status.get("label") or state or "unknown"
-        ended = state == "Terminated" or termination is not None
+        ended = state.lower() in {"terminated", "completed", "failed", "no-answer", "busy", "canceled", "cancelled", "ended"} or termination is not None
     else:
         termination = None
         label = str(status)
-        ended = label.lower() in {"completed", "failed", "no-answer", "busy", "canceled", "ended"}
+        ended = label.lower() in {"terminated", "completed", "failed", "no-answer", "busy", "canceled", "cancelled", "ended"}
     return DialCall(
         id=call["id"], ended=ended, label=label, termination=termination,
         transcript=call.get("transcript"), raw=call,
@@ -46,8 +47,10 @@ def _parse_call(call: dict) -> DialCall:
 
 class DialClient:
     def __init__(self, s: Settings):
-        if not s.dial_api_key:
-            raise RuntimeError("DIAL_API_KEY is not set")
+        if not s.dial_api_key or not s.dial_from_number:
+            raise RuntimeError("Set DIAL_API_KEY and DIAL_FROM_NUMBER")
+        if s.dial_api_url.rstrip("/") != "https://api.getdial.ai":
+            raise RuntimeError("Live Dial credentials must be sent only to https://api.getdial.ai")
         self.from_number = s.dial_from_number
         self.http = httpx.Client(
             base_url=s.dial_api_url,
@@ -69,23 +72,28 @@ class DialClient:
                   "maxCallDurationSeconds": max_seconds, **self._from()},
             headers={"idempotency-key": idempotency_key or str(uuid.uuid4())},
         )
-        res.raise_for_status()
+        if not res.is_success:
+            raise RuntimeError(f"Dial placement HTTP {res.status_code}; retry the saved attempt, never create a new key")
         return _parse_call(res.json()["call"])
 
     def get_call(self, call_id: str) -> DialCall:
-        res = self.http.get(f"/api/v1/calls/{call_id}")
-        res.raise_for_status()
+        res = self.http.get(f"/api/v1/calls/{quote(call_id, safe='')}")
+        if not res.is_success:
+            raise RuntimeError(f"Dial lookup HTTP {res.status_code}; saved call can be resumed")
         return _parse_call(res.json()["call"])
 
     def wait_for_call(self, call_id: str, timeout: float = 600, poll: float = 5) -> DialCall:
         deadline = time.monotonic() + timeout
+        terminal_at = None
         while True:
             call = self.get_call(call_id)
             # Transcript can land a moment after the call terminates.
-            if call.ended and (call.transcript or time.monotonic() > deadline - 60):
-                return call
+            if call.ended:
+                terminal_at = terminal_at or time.monotonic()
+                if call.raw.get("transcriptTurns") or time.monotonic() - terminal_at >= 60:
+                    return call
             if time.monotonic() > deadline:
-                return call
+                raise RuntimeError("Dial polling timed out; resume the existing call, do not redial")
             time.sleep(poll)
 
     def send_message(self, to: str, body: str) -> dict:

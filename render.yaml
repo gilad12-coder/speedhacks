@@ -18,6 +18,10 @@ services:
         sync: false
       - key: DIAL_FROM_NUMBER
         sync: false
+      - key: DIAL_ALLOWED_NUMBERS
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
       - key: NOTIFY_NUMBER
         sync: false
       - key: ANTHROPIC_API_KEY

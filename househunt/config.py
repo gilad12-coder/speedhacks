@@ -30,6 +30,12 @@ class Settings:
     google_client_id: str | None
     google_client_secret: str | None
     public_base_url: str | None      # e.g. https://househunt.onrender.com (for OAuth redirect)
+    openai_api_key: str | None
+    openai_model: str
+    dial_allowed_numbers: tuple[str, ...]
+    call_max_seconds: int
+    call_timezone: str
+    max_calls_per_number_per_day: int
 
 
 def load() -> Settings:
@@ -50,6 +56,12 @@ def load() -> Settings:
         google_client_id=env("GOOGLE_CLIENT_ID"),
         google_client_secret=env("GOOGLE_CLIENT_SECRET"),
         public_base_url=env("PUBLIC_BASE_URL"),
+        openai_api_key=env("OPENAI_API_KEY"),
+        openai_model=env("OPENAI_MODEL", "gpt-4.1-mini"),
+        dial_allowed_numbers=tuple(n.strip() for n in env("DIAL_ALLOWED_NUMBERS", "").split(",") if n.strip()),
+        call_max_seconds=max(60, min(300, int(env("CALL_DURATION_SECONDS", "180")))),
+        call_timezone=env("CALLER_TIMEZONE", "America/Los_Angeles"),
+        max_calls_per_number_per_day=max(1, min(5, int(env("MAX_CALLS_PER_NUMBER_PER_DAY", "1")))),
     )
 
 

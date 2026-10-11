@@ -37,6 +37,7 @@ class SearchCriteria:
     must_haves: list[str] = field(default_factory=list)   # e.g. "in-unit laundry", "pets"
     move_in_by: str | None = None                          # ISO date
     tour_availability: list[str] = field(default_factory=list)  # e.g. "weekdays after 6pm"
+    occupants: int | None = None
 
 
 @dataclass

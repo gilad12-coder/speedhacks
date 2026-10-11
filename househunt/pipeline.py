@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import logging
+import json
+import re
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -12,15 +15,16 @@ from househunt import db, geo
 from househunt.collect import collect
 from househunt.config import CallMode, settings
 from househunt.models import AppStage, Listing, ListingStatus, SearchCriteria
-from househunt.outreach.dial import DialClient, FakeDialClient
-from househunt.outreach.extract import CallSummary, extract
+from househunt.outreach.dial import DialClient, FakeDialClient, _parse_call
+from househunt.outreach.extract import CallSummary, extract, has_credentials
 from househunt.outreach.script import build_instruction
 from househunt.sources import ALL_SOURCES
 
 log = logging.getLogger(__name__)
 
-# Free Dial accounts allow 2 concurrent calls.
-_call_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="dial")
+# One call at a time in the single-worker deployment.
+_call_lock = threading.Lock()
+_call_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dial")
 
 
 def dial_client():
@@ -88,49 +92,81 @@ def run_search(search_id: int) -> None:
 
 
 def call_listing(search_id: int, key: str) -> None:
-    criteria, _ = db.get_search(search_id)
-    listing = db.get_listing(search_id, key)
-    if not (listing and listing.contact and listing.contact.phone):
-        return
-    call_id = db.create_call(search_id, key)
-    try:
-        dial = dial_client()
-        if not criteria.tour_availability:
-            criteria.tour_availability = calendar_availability()
-        instruction = build_instruction(listing, criteria, settings.renter_name)
-        placed = dial.place_call(listing.contact.phone, instruction, max_seconds=300,
-                                 idempotency_key=f"search{search_id}-{key}-{call_id}")
-        db.update_call(call_id, dial_call_id=placed.id, status="in_progress")
-        listing.status = ListingStatus.CONTACTED
-        db.upsert_listing(search_id, listing)
+    with _call_lock:
+        _call_listing(search_id, key)
 
-        ended = dial.wait_for_call(placed.id)
-        if not ended.transcript:
-            db.update_call(call_id, status="failed", error=f"no transcript ({ended.label})")
-            return
-        summary = extract(ended.transcript, listing, criteria, call_date=datetime.now())
-        db.update_call(call_id, status="ended", transcript=ended.transcript,
-                       outcome=summary.model_dump())
+
+def _call_listing(search_id: int, key: str) -> None:
+    found = db.get_search(search_id)
+    listing = db.get_listing(search_id, key)
+    if not found or not listing or not listing.contact or not listing.contact.phone:
+        return
+    if listing.status == ListingStatus.FILTERED_OUT:
+        return
+    criteria, _ = found
+    dry_run = settings.call_mode == CallMode.DRY_RUN or settings.mock_sources
+    row = db.claim_call(search_id, key, listing.contact.phone, "dry_run" if dry_run else "live")
+    if row is None:
+        return
+    call_id = row["id"]
+    try:
+        if not dry_run and not has_credentials():
+            raise RuntimeError("Set OPENAI_API_KEY or ANTHROPIC_API_KEY before live calls")
+        dial = dial_client()
+        # Saved terminal transcripts can be re-extracted without a new call or poll.
+        saved = _parse_call(json.loads(row["raw"])) if row["raw"] else None
+        if saved and saved.ended and saved.raw.get("transcriptTurns"):
+            ended = saved
+        else:
+            provider_id = row["dial_call_id"]
+            if not provider_id:
+                if not dry_run:
+                    phone = listing.contact.phone
+                    if not re.fullmatch(r"\+1[2-9]\d{9}", phone) or re.fullmatch(r"\+1\d{3}55501\d{2}", phone):
+                        raise RuntimeError("A real US E.164 contact number is required")
+                    if phone not in settings.dial_allowed_numbers:
+                        raise RuntimeError("Contact is not in DIAL_ALLOWED_NUMBERS")
+                    if db.contact_blocked(phone):
+                        raise RuntimeError("Contact requested no further calls")
+                    if db.contact_called_today(phone, call_id):
+                        raise RuntimeError("Daily call limit reached for this contact")
+                if not criteria.tour_availability:
+                    criteria.tour_availability = calendar_availability()
+                instruction = row["instruction"] or build_instruction(listing, criteria, settings.renter_name)
+                db.update_call(call_id, instruction=instruction)
+                placed = dial.place_call(listing.contact.phone, instruction,
+                    max_seconds=settings.call_max_seconds, idempotency_key=row["attempt_key"])
+                provider_id = placed.id
+                db.update_call(call_id, dial_call_id=provider_id, raw=placed.raw)
+                listing.status = ListingStatus.CONTACTED
+                db.upsert_listing(search_id, listing)
+            ended = dial.wait_for_call(provider_id)
+        transcript = ended.transcript or "\n".join(f'{t.get("speaker", "unknown")}: {t.get("text", "")}' for t in ended.raw.get("transcriptTurns") or [])
+        # Save evidence BEFORE model work, so extraction failures never lose the call.
+        db.update_call(call_id, raw=ended.raw, transcript=transcript, status="extracting")
+        contact_text = " ".join(t.get("text", "") for t in ended.raw.get("transcriptTurns") or [] if t.get("speaker") in ("user", "contact"))
+        if re.search(r"\b(do not|don't|stop) call(ing)?|remove (me|my number)|never call", contact_text, re.I):
+            db.block_contact(listing.contact.phone)
+        if not transcript:
+            raise RuntimeError(f"No transcript available ({ended.label}); inspect the saved call")
+        started_at = datetime.fromisoformat(ended.raw["createdAt"]) if ended.raw.get("createdAt") else datetime.fromisoformat(row["created_at"])
+        summary = extract(transcript, listing, criteria, call_date=started_at, raw=ended.raw, dry_run=dry_run)
+        if summary.do_not_call:
+            db.block_contact(listing.contact.phone)
+        db.update_call(call_id, status="ended", outcome=summary.model_dump(), error=None)
         apply_outcome(search_id, listing, summary)
     except Exception as e:
-        log.exception("call for %s failed", key)
-        db.update_call(call_id, status="failed", error=repr(e))
+        # Provider bodies, credentials and arbitrary model outputs never enter UI errors.
+        message = str(e) if isinstance(e, RuntimeError) else f"Call processing failed ({type(e).__name__}); saved evidence can be retried"
+        log.warning("Call %s needs attention (%s)", call_id, type(e).__name__)
+        db.update_call(call_id, status="attention", error=message)
 
 
 def apply_outcome(search_id: int, listing: Listing, s: CallSummary) -> None:
     listing.notes.append(s.summary)
-    listing.status = ListingStatus.VIABLE if s.viable else ListingStatus.NOT_VIABLE
-    if s.viable and s.tour_booked and s.tour_start:
-        try:
-            datetime.fromisoformat(s.tour_start)
-            db.create_tour(search_id, listing.key, s.tour_start, listing.address,
-                           listing.contact.name if listing.contact else None,
-                           listing.contact.phone if listing.contact else None)
-            listing.status = ListingStatus.TOUR_SCHEDULED
-            track_viewing(search_id, listing, s.tour_start)
-            add_to_calendar(listing, s)
-        except ValueError:
-            listing.notes.append(f"tour time unparseable: {s.tour_start}")
+    listing.status = (ListingStatus.VIABLE if s.viable else
+                      ListingStatus.NOT_VIABLE if s.verification_status == "ruled_out" else ListingStatus.CONTACTED)
+    # Offers are not appointments. The calendar owner handles explicit confirmation.
     db.upsert_listing(search_id, listing)
 
 
