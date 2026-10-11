@@ -6,9 +6,9 @@
 {% if search.error %}<p class="warn">{{ search.error }}</p>{% endif %}
 
 <div class="wrap"><table>
-  <tr><th>Listing</th><th>Rent</th><th>Beds/Baths</th><th>Status</th><th>Call</th><th>Score</th></tr>
+  <tr><th>Listing</th><th>Rent</th><th>Beds/Baths</th><th>Status</th><th>Call</th><th>Email</th><th>Score</th></tr>
   {% for l in listings %}
-  {% set call = calls.get(l.key) %}{% set o = outcomes.get(l.key) %}{% set tour = tours.get(l.key) %}
+  {% set call = calls.get(l.key) %}{% set email = emails.get(l.key) %}{% set o = outcomes.get(l.key) %}{% set tour = tours.get(l.key) %}
   <tr>
     <td>
       <a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.title }}</a>
@@ -36,10 +36,21 @@
         <span class="muted">no phone</span>
       {% endif %}
     </td>
+    <td>
+      {% if email and email.status == "sent" %}
+        <a href="/emails/{{ email.id }}"><span class="pill viable">sent</span></a>
+      {% elif email %}
+        <a href="/emails/{{ email.id }}"><span class="pill">draft</span> review</a>
+      {% elif l.status.value != "filtered" %}
+        <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/email">
+          <button class="secondary" type="submit">Draft email</button>
+        </form>
+      {% endif %}
+    </td>
     <td>{{ "%.2f"|format(l.score) }}</td>
   </tr>
   {% else %}
-  <tr><td colspan="6" class="muted">No listings yet.</td></tr>
+  <tr><td colspan="7" class="muted">No listings yet.</td></tr>
   {% endfor %}
 </table></div>
 {% endblock %}

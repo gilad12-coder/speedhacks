@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 from datetime import datetime
 
 import anthropic
 from pydantic import BaseModel, Field
 
+from househunt import llm
 from househunt.models import Listing, SearchCriteria
 
 log = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ SYSTEM = (
 def extract(transcript: str, listing: Listing, criteria: SearchCriteria,
             call_date: datetime | None = None) -> CallSummary:
     call_date = call_date or datetime.now()
-    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+    if not llm.has_credentials():
         log.warning("No Anthropic credentials; using heuristic transcript extraction")
         return heuristic_extract(transcript, listing, criteria, call_date)
 
@@ -62,18 +62,21 @@ def extract(transcript: str, listing: Listing, criteria: SearchCriteria,
         f"move in by: {criteria.move_in_by or 'flexible'}\n\n"
         f"<transcript>\n{transcript}\n</transcript>"
     )
-    client = anthropic.Anthropic()
-    response = client.beta.messages.parse(
-        model=settings.claude_model,
-        max_tokens=16000,
-        system=SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-        output_format=CallSummary,
-        output_config={"effort": "low"},
-        # Re-run on a fallback model if a safety classifier declines the request.
-        betas=["server-side-fallback-2026-07-01"],
-        fallbacks="default",
-    )
+    try:
+        response = llm.client().beta.messages.parse(
+            model=settings.claude_model,
+            max_tokens=16000,
+            system=SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+            output_format=CallSummary,
+            output_config={"effort": "low"},
+            # Re-run on a fallback model if a safety classifier declines the request.
+            betas=["server-side-fallback-2026-07-01"],
+            fallbacks="default",
+        )
+    except anthropic.APIError:
+        log.exception("Claude transcript extraction failed; falling back to heuristic")
+        return heuristic_extract(transcript, listing, criteria, call_date)
     if response.stop_reason == "refusal" or response.parsed_output is None:
         log.warning("Claude declined/failed transcript extraction; falling back to heuristic")
         return heuristic_extract(transcript, listing, criteria, call_date)

@@ -40,9 +40,22 @@ def source_listings(criteria: SearchCriteria) -> tuple[list[Listing], list[str]]
             raw.extend(found)
         except NotImplementedError:
             errors.append(f"{src.name}: not implemented yet (skipped)")
-        except httpx.HTTPError as e:
+        except (httpx.HTTPError, RuntimeError) as e:
             errors.append(f"{src.name}: {e}")
     return raw, errors
+
+
+def calendar_availability() -> list[str]:
+    """Free slots from the connected Google Calendar, or [] if not connected."""
+    from househunt.connectors import google
+
+    if not google.connection():
+        return []
+    try:
+        return google.free_windows()
+    except Exception:
+        log.exception("could not read calendar availability")
+        return []
 
 
 def run_search(search_id: int) -> None:
@@ -78,6 +91,8 @@ def call_listing(search_id: int, key: str) -> None:
     call_id = db.create_call(search_id, key)
     try:
         dial = dial_client()
+        if not criteria.tour_availability:
+            criteria.tour_availability = calendar_availability()
         instruction = build_instruction(listing, criteria, settings.renter_name)
         placed = dial.place_call(listing.contact.phone, instruction, max_seconds=300,
                                  idempotency_key=f"search{search_id}-{key}-{call_id}")
@@ -108,9 +123,29 @@ def apply_outcome(search_id: int, listing: Listing, s: CallSummary) -> None:
                            listing.contact.name if listing.contact else None,
                            listing.contact.phone if listing.contact else None)
             listing.status = ListingStatus.TOUR_SCHEDULED
+            add_to_calendar(listing, s)
         except ValueError:
             listing.notes.append(f"tour time unparseable: {s.tour_start}")
     db.upsert_listing(search_id, listing)
+
+
+def add_to_calendar(listing: Listing, s: CallSummary) -> None:
+    from househunt.connectors import google
+
+    if not google.connection():
+        return
+    contact = listing.contact
+    desc = "\n".join(x for x in [
+        s.summary,
+        f"Contact: {contact.name or ''} {contact.phone or ''}".strip() if contact else None,
+        listing.url,
+    ] if x)
+    try:
+        link = google.add_event(s.tour_start, f"Viewing: {listing.title}", listing.address, desc)
+        listing.notes.append(f"added to Google Calendar: {link}")
+    except Exception:
+        log.exception("could not add viewing to calendar")
+        listing.notes.append("could not add viewing to Google Calendar")
 
 
 def notify_summary(search_id: int) -> None:

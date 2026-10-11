@@ -49,6 +49,29 @@ CREATE TABLE IF NOT EXISTS tours (
     contact_phone TEXT,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS emails (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    search_id INTEGER NOT NULL,
+    listing_key TEXT NOT NULL,
+    to_addr TEXT NOT NULL DEFAULT '',
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',   -- draft | sent | failed | discarded
+    gmail_message_id TEXT,
+    gmail_thread_id TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    sent_at TEXT
+);
+CREATE TABLE IF NOT EXISTS connections (
+    provider TEXT PRIMARY KEY,
+    account TEXT,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    expires_at REAL NOT NULL,
+    scope TEXT,
+    connected_at TEXT NOT NULL
+);
 """
 
 
@@ -179,4 +202,67 @@ def get_tour(tour_id: int) -> sqlite3.Row | None:
 def tours_for_search(search_id: int) -> dict[str, sqlite3.Row]:
     with conn() as c:
         rows = c.execute("SELECT * FROM tours WHERE search_id = ?", (search_id,)).fetchall()
+    return {r["listing_key"]: r for r in rows}
+
+
+# --- connections (OAuth tokens) --------------------------------------------
+
+def save_connection(provider: str, account: str | None, access_token: str,
+                    refresh_token: str | None, expires_at: float, scope: str) -> None:
+    with conn() as c:
+        c.execute(
+            "INSERT INTO connections (provider, account, access_token, refresh_token, "
+            "expires_at, scope, connected_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(provider) DO UPDATE SET account=excluded.account, "
+            "access_token=excluded.access_token, "
+            "refresh_token=COALESCE(excluded.refresh_token, connections.refresh_token), "
+            "expires_at=excluded.expires_at, scope=excluded.scope",
+            (provider, account, access_token, refresh_token, expires_at, scope, now()),
+        )
+
+
+def get_connection(provider: str) -> sqlite3.Row | None:
+    with conn() as c:
+        try:
+            return c.execute(
+                "SELECT * FROM connections WHERE provider = ?", (provider,)).fetchone()
+        except sqlite3.OperationalError:  # db not initialised yet
+            return None
+
+
+def delete_connection(provider: str) -> None:
+    with conn() as c:
+        c.execute("DELETE FROM connections WHERE provider = ?", (provider,))
+
+
+# --- emails (drafts await explicit approval before sending) -----------------
+
+def create_email(search_id: int, listing_key: str, to_addr: str, subject: str, body: str) -> int:
+    with conn() as c:
+        cur = c.execute(
+            "INSERT INTO emails (search_id, listing_key, to_addr, subject, body, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (search_id, listing_key, to_addr, subject, body, now()),
+        )
+        return cur.lastrowid
+
+
+def get_email(email_id: int) -> sqlite3.Row | None:
+    with conn() as c:
+        return c.execute("SELECT * FROM emails WHERE id = ?", (email_id,)).fetchone()
+
+
+def update_email(email_id: int, **fields) -> None:
+    cols = ", ".join(f"{k} = ?" for k in fields)
+    with conn() as c:
+        c.execute(f"UPDATE emails SET {cols} WHERE id = ?", (*fields.values(), email_id))
+
+
+def emails_for_search(search_id: int) -> dict[str, sqlite3.Row]:
+    """Latest non-discarded email per listing."""
+    with conn() as c:
+        rows = c.execute(
+            "SELECT * FROM emails WHERE search_id = ? AND status != 'discarded' ORDER BY id",
+            (search_id,),
+        ).fetchall()
     return {r["listing_key"]: r for r in rows}
