@@ -2,12 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 
+// Columns that keep the cards in even rows: 2 side by side, 3 in a row, 4 as two pairs, 5–6 in rows of three.
+const COLUMNS = ["", "grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-2", "grid-cols-3", "grid-cols-3"];
+
 export interface Choice {
   label: string;
   description?: string;
 }
 
-// 2–4 option cards under the agent's question, picked by click, digit key, or arrows then Enter.
+// However many option cards the agent sends (up to 6) under its question, picked by click, digit key, or arrows then Enter.
 // The composer below is always the "something else" path, so there's no "other" card.
 export function QuestionChoices({
   options,
@@ -48,7 +51,7 @@ export function QuestionChoices({
           onSelect(options[Number(e.key) - 1].label);
         }
       }}
-      className="choices-in grid grid-cols-2 gap-2 border-t border-line pt-3"
+      className={`choices-in grid gap-2 border-t border-line pt-3 ${COLUMNS[Math.min(options.length, 6)]}`}
     >
       {options.map((o, i) => (
         <button

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { commuteModeLabel, FEATURE_LABELS } from "./features";
+import { commuteModeLabel, FEATURE_LABELS, INCOME_BANDS } from "./features";
 import type { Housemate } from "./types";
 
 export interface InterviewChoice {
@@ -27,8 +27,8 @@ export type AgentStep =
 export class InterviewError extends Error {}
 
 const MODEL = process.env.INTERVIEW_MODEL ?? "anthropic/claude-sonnet-5.5";
-// Past this many answers the agent is told to wrap up, so the interview can't run on forever.
-const MAX_ANSWERS = 10;
+// A short interview: past this many answers only the finish tool is offered.
+export const MAX_ANSWERS = 6;
 
 const choiceSchema = z.object({
   label: z.string().trim().min(1).max(60),
@@ -37,7 +37,7 @@ const choiceSchema = z.object({
 
 const askSchema = z.object({
   message: z.string().trim().min(1).max(600),
-  choices: z.array(choiceSchema).max(4).default([]),
+  choices: z.array(choiceSchema).max(6).default([]),
 });
 
 const featureList = z.array(z.string()).default([]).transform((list) => [...new Set(list)].filter((f) => FEATURE_LABELS.includes(f)));
@@ -50,63 +50,62 @@ const finishSchema = z.object({
   wishes: z.array(z.string().trim().min(1).max(140)).max(10).default([]),
 });
 
-const tools = [
-  {
-    type: "function",
-    function: {
-      name: "ask",
-      description: "Ask the person one question. Offer 2–4 short choices when the answer is likely one of a few; they can always type their own.",
-      parameters: {
-        type: "object",
-        properties: {
-          message: { type: "string", description: "A short acknowledgement of their last answer, if any, then one question. Plain text, no markdown." },
-          choices: {
-            type: "array",
-            maxItems: 4,
-            items: {
-              type: "object",
-              properties: {
-                label: { type: "string", description: "1–5 words" },
-                description: { type: "string", description: "Optional, one short line" },
-              },
-              required: ["label"],
+const askTool = {
+  type: "function",
+  function: {
+    name: "ask",
+    description: "Ask the person one question. Offer exactly as many choices as the real answers to it: 2 for yes/no, up to 6 when there are more. Send no choices for an open question. They can always type their own.",
+    parameters: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "A short acknowledgement of their last answer, if any, then one question. Plain text, no markdown." },
+        choices: {
+          type: "array",
+          maxItems: 6,
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", description: "1–5 words" },
+              description: { type: "string", description: "Optional, one short line" },
             },
+            required: ["label"],
           },
         },
-        required: ["message"],
       },
+      required: ["message"],
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "finish",
-      description: "End the interview and save what you learned.",
-      parameters: {
-        type: "object",
-        properties: {
-          message: { type: "string", description: "A one or two sentence wrap-up for the person. Plain text." },
-          mustHaves: { type: "array", items: { type: "string", enum: FEATURE_LABELS }, description: "Fixed features they need" },
-          niceToHaves: { type: "array", items: { type: "string", enum: FEATURE_LABELS } },
-          dealBreakers: { type: "array", items: { type: "string", enum: FEATURE_LABELS }, description: "Features that rule a place out for them" },
-          wishes: {
-            type: "array",
-            items: { type: "string" },
-            description: "Everything else that matters to them, each a short phrase a listing or landlord could be checked against, e.g. \"Quiet street\", \"Bedroom gets morning light\".",
-          },
+};
+
+const finishTool = {
+  type: "function",
+  function: {
+    name: "finish",
+    description: "End the interview and save what you learned.",
+    parameters: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "A one or two sentence wrap-up for the person. Plain text." },
+        mustHaves: { type: "array", items: { type: "string", enum: FEATURE_LABELS }, description: "Fixed features they need" },
+        niceToHaves: { type: "array", items: { type: "string", enum: FEATURE_LABELS } },
+        dealBreakers: { type: "array", items: { type: "string", enum: FEATURE_LABELS }, description: "Features that rule a place out for them" },
+        wishes: {
+          type: "array",
+          items: { type: "string" },
+          description: "Everything else that matters to them, each a short phrase a listing or landlord could be checked against, e.g. \"Quiet street\", \"Bedroom gets morning light\".",
         },
-        required: ["message", "mustHaves", "niceToHaves", "dealBreakers", "wishes"],
       },
+      required: ["message", "mustHaves", "niceToHaves", "dealBreakers", "wishes"],
     },
   },
-];
+};
 
 export interface InterviewContext {
   me: Housemate;
   groupSize: number;
 }
 
-export function systemPrompt({ me, groupSize }: InterviewContext, answers: number): string {
+export function systemPrompt({ me, groupSize }: InterviewContext, mustFinish: boolean): string {
   const solo = groupSize === 1;
   const known = [
     `Name: ${me.name}`,
@@ -115,28 +114,31 @@ export function systemPrompt({ me, groupSize }: InterviewContext, answers: numbe
     `Rent: up to $${me.maxBudgetUsd}/month${solo ? "" : " for their share"}`,
     `Move-in: between ${me.moveInFrom} and ${me.moveInTo}`,
     `Commute: to ${me.commute.destination}, by ${me.commute.modes.map(commuteModeLabel).join(" or ")}, at most ${me.commute.maxMinutes} min`,
+    `Yearly income: ${INCOME_BANDS.find((b) => b.min === me.incomeBandUsd.min)?.label ?? "not given"}`,
   ];
   const earlier = [...me.mustHaves.map((f) => `needs ${f}`), ...me.niceToHaves.map((f) => `would like ${f}`), ...me.dealBreakers.map((f) => `rules out ${f}`), ...me.wishes];
 
-  return `You are Keyhunt's interviewer. Keyhunt finds rentals in the United States and phones landlords to check them. The person already filled in a form with these hard filters, so never ask about them again:
-${known.map((k) => `- ${k}`).join("\n")}
-${earlier.length ? `\nFrom an earlier interview they said: ${earlier.join("; ")}. Confirm or update these rather than starting over.\n` : ""}
-Your job is to learn everything else that makes a place right or wrong for them, in a short, friendly conversation.
+  const unasked = FEATURE_LABELS.filter((f) => ![...me.mustHaves, ...me.niceToHaves, ...me.dealBreakers].includes(f));
 
-Cover, in an order that feels natural:
-- These fixed features, as need / nice to have / rule out / don't mind: ${FEATURE_LABELS.join(", ")}.
-- Their life at home: working from home, pets, cooking, guests, noise, sleep schedule, light.
-- The building and area: floor, elevator, accessibility, safety, nearby shops, parks or nightlife.
-${solo ? "- Whether they want a whole place, or a room in a shared place." : "- Living with the others: shared spaces, bedroom sizes, how chores and guests should work."}
-- Anything else they care about. Let them lead; they may want things no form would ask.
+  return `You are Keyhunt's interviewer. Keyhunt finds rentals in the United States and phones landlords to check them. Everything below is already known, from their form${earlier.length ? " and an earlier interview" : ""}. Never ask about any of it again, not even to confirm:
+${known.map((k) => `- ${k}`).join("\n")}${earlier.length ? `\n- Already said: ${earlier.join("; ")}` : ""}
+
+Your job is a short, friendly interview, 3 to 5 questions, about only what Keyhunt doesn't know yet. Pick the questions that would change which places fit them most, and skip the rest:
+${unasked.length ? `- These fixed features, as need / nice to have / rule out / don't mind: ${unasked.join(", ")}. Group several into one question.\n` : ""}- Their life at home: working from home, pets, guests, noise, light.
+${solo ? "- Whether they want a whole place, or a room in a shared place." : "- Living with the others: shared spaces, bedroom sizes, chores and guests."}
+- Anything else they care about. Let them lead.
 
 Rules:
 - Call a tool on every turn: "ask" for one question at a time, "finish" when done.
+- Exactly one question per message, never two joined with "and" or "also".
+- If they answer something else or skip a question, take that as their answer and move on; never repeat a question.
+- Use what they already told you, in the form and in this conversation. Never ask something they have answered, and build on their earlier picks instead of starting a topic over.
 - Keep each message under 40 words. Plain text, no markdown, no lists.
-- Offer choices when they fit, but treat a typed answer as just as good.
-- If they say they're done, or you have covered the list, call "finish".
+- Fit the choices to the question: as many as its real answers, 2 to 6, each distinct, with no filler or "Other" (they can always type). No choices for an open question. A typed answer is just as good.
+- The interview always ends with "finish". Call it when they say they're done, or once you have covered the list.
+- Before finishing on your own, ask one last "Anything else?" with a "That's everything" choice.
 - In "finish", map answers to the fixed features exactly as named, and put everything else in "wishes".
-- Never invent a preference they didn't state.${answers >= MAX_ANSWERS ? '\n\nYou have asked enough. Call "finish" now.' : ""}`;
+- Never invent a preference they didn't state.${mustFinish ? '\n\nThe interview is over. Call "finish" now with everything you learned; do not ask anything else.' : ""}`;
 }
 
 export function parseToolCall(name: string, rawArgs: string): AgentStep {
@@ -162,23 +164,15 @@ export function parseToolCall(name: string, rawArgs: string): AgentStep {
   throw new InterviewError("The interviewer called an unknown tool.");
 }
 
-export async function nextAgentStep(ctx: InterviewContext, history: InterviewMessage[]): Promise<AgentStep> {
+type ModelMessage = { content?: string | null; tool_calls?: { function?: { name?: string; arguments?: string } }[] };
+
+async function callModel(messages: { role: string; content: string }[], tools: object[]): Promise<ModelMessage | undefined> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new InterviewError("The interview isn't set up yet: OPENROUTER_API_KEY is missing.");
 
-  const answers = history.filter((m) => m.role === "user").length;
-  const messages = [
-    { role: "system", content: systemPrompt(ctx, answers) },
-    // The model needs a user turn to start from; the person never sees this one.
-    ...(history[0]?.role === "user" ? [] : [{ role: "user", content: "Hi, I'm ready." }]),
-    ...history.map((m) => ({
-      role: m.role === "agent" ? "assistant" : "user",
-      content: m.choices?.length ? `${m.text}\nChoices: ${m.choices.map((c) => c.label).join(" / ")}` : m.text,
-    })),
-  ];
-
   let res: Response;
   try {
+    // tool_choice stays "auto": the provider behind this model rejects a forced tool call.
     res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "Keyhunt" },
@@ -192,16 +186,38 @@ export async function nextAgentStep(ctx: InterviewContext, history: InterviewMes
     console.error("interview model call failed", res.status, (await res.text()).slice(0, 300));
     throw new InterviewError("The interviewer isn't answering right now.");
   }
-  const body = (await res.json()) as {
-    choices?: { message?: { content?: string | null; tool_calls?: { function?: { name?: string; arguments?: string } }[] } }[];
-  };
-  const message = body.choices?.[0]?.message;
-  const call = message?.tool_calls?.[0]?.function;
-  // Some providers reject a forced tool call, so the model may answer in plain text; treat that as a question.
-  if (!call?.name) {
+  const body = (await res.json()) as { choices?: { message?: ModelMessage }[] };
+  return body.choices?.[0]?.message;
+}
+
+// wrapUp: the person asked to stop. Either way, past MAX_ANSWERS only "finish" is on offer.
+export async function nextAgentStep(ctx: InterviewContext, history: InterviewMessage[], wrapUp = false): Promise<AgentStep> {
+  const mustFinish = wrapUp || history.filter((m) => m.role === "user").length >= MAX_ANSWERS;
+  const messages = [
+    { role: "system", content: systemPrompt(ctx, mustFinish) },
+    // The model needs a user turn to start from; the person never sees this one.
+    ...(history[0]?.role === "user" ? [] : [{ role: "user", content: "Hi, I'm ready." }]),
+    ...history.map((m) => ({
+      role: m.role === "agent" ? "assistant" : "user",
+      content: m.choices?.length ? `${m.text}\nChoices: ${m.choices.map((c) => c.label).join(" / ")}` : m.text,
+    })),
+    ...(wrapUp ? [{ role: "user", content: "That's all I want to say. Please wrap up." }] : []),
+  ];
+
+  // A model that answers in text when it must finish gets one more try before the turn fails.
+  for (let attempt = 0; attempt < (mustFinish ? 2 : 1); attempt++) {
+    const message = await callModel(messages, mustFinish ? [finishTool] : [askTool, finishTool]);
+    const call = message?.tool_calls?.[0]?.function;
+    if (call?.name) {
+      const step = parseToolCall(call.name, call.arguments ?? "{}");
+      if (!mustFinish || step.kind === "finish") return step;
+      continue;
+    }
+    if (mustFinish) continue;
+    // Some providers answer in plain text instead of calling a tool; treat that as a question.
     const text = message?.content?.trim();
     if (!text) throw new InterviewError("The interviewer sent an empty reply.");
     return { kind: "ask", text: text.slice(0, 600), choices: [] };
   }
-  return parseToolCall(call.name, call.arguments ?? "{}");
+  throw new InterviewError("The interviewer couldn't wrap up. Try again.");
 }
