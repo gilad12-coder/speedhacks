@@ -47,7 +47,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="KeyHunt", lifespan=lifespan, dependencies=[Depends(require_auth)])
 
 # Sidebar tabs: (path, label, icon). A tab shows up once its route exists.
-NAV = [("/", "Searches", "list"), ("/calls", "Calls", "phone"), ("/viewings", "Viewings", "calendar"),
+NAV = [("/", "Searches", "list"), ("/leads", "Leads", "star"), ("/calls", "Calls", "phone"), ("/viewings", "Viewings", "calendar"),
        ("/applications", "Applications", "clipboard"), ("/chats/agent", "Ask your agent", "chat"),
        ("/connections", "Connections", "plug")]
 
@@ -77,6 +77,19 @@ def when(value: str | None, fmt: str | None = None) -> str:
 
 
 templates.env.filters["when"] = when
+
+
+def short_error(value: str | None) -> str:
+    """Turn a stored exception repr into the API's own message, when there is one."""
+    import re
+
+    if not value:
+        return ""
+    m = re.search(r"'message': ['\"](.+?)['\"][,}]", value)
+    return m.group(1) if m else value
+
+
+templates.env.filters["short_error"] = short_error
 def recent_chats() -> list:
     return [c for c in db.list_chats(8) if c["listing_key"]][:5]
 
@@ -168,12 +181,14 @@ def show_search(request: Request, search_id: int):
 
 
 @app.post("/searches/{search_id}/listings/{key}/call")
-def call_listing(background: BackgroundTasks, search_id: int, key: str):
+def call_listing(background: BackgroundTasks, search_id: int, key: str, next: str = Form("")):
     existing = db.calls_for_search(search_id).get(key)
     if existing and existing["status"] in ("queued", "in_progress"):
         raise HTTPException(409, "call already in progress")
     background.add_task(pipeline.call_listing, search_id, key)
-    return RedirectResponse(f"/searches/{search_id}", status_code=303)
+    # Only same-site paths, so the form can't bounce anyone to another site.
+    back = next if next.startswith("/") and not next.startswith("//") else f"/searches/{search_id}"
+    return RedirectResponse(back, status_code=303)
 
 
 @app.post("/searches/{search_id}/listings/{key}/track")
@@ -238,6 +253,58 @@ def viewings_page(request: Request):
         "settings": settings, "upcoming": [i for i in items if i["start"] >= now],
         "past": [i for i in items if i["start"] < now][::-1],
     })
+
+
+# --- leads ------------------------------------------------------------------
+
+@app.get("/leads", response_class=HTMLResponse)
+def leads_page(request: Request):
+    from househunt import leads, next_step
+
+    items, removed = [], []
+    for a in db.list_applications():
+        if a["stage"] == AppStage.WITHDRAWN.value and "Removed from leads" in (a["notes"] or ""):
+            removed.append(a)
+        if a["stage"] != AppStage.INTERESTED.value:
+            continue
+        sid, key = a["search_id"], a["listing_key"]
+        listing = db.get_listing(sid, key) if sid else None
+        call = db.calls_for_search(sid).get(key) if listing else None
+        email = db.emails_for_search(sid).get(key) if listing else None
+        items.append({
+            "app": a, "listing": listing, "outreach": leads.outreach(sid, key),
+            "notes": db.place_notes(sid, key) if listing else [],
+            "step": next_step.recommend(listing, call, email) if listing else None,
+            "can_call": bool(listing and listing.contact and listing.contact.phone
+                             and not (call and call["status"] in ("queued", "in_progress"))),
+            "email": email,
+        })
+    order = {"action": 0, "new": 1, "waiting": 2}
+    items.sort(key=lambda i: (order[i["outreach"].status], -(i["outreach"].days_since or 0)))
+    return templates.TemplateResponse(request, "leads.html", {
+        "settings": settings, "items": items, "removed": removed[:10],
+        "reasons": leads.DROP_REASONS,
+    })
+
+
+@app.post("/leads/{app_id}/remove")
+def remove_lead(app_id: int, reason: str = Form("no_response"), detail: str = Form("")):
+    from househunt import leads
+
+    if not db.get_application(app_id):
+        raise HTTPException(404)
+    leads.drop(app_id, reason, detail)
+    return RedirectResponse("/leads", status_code=303)
+
+
+@app.post("/leads/{app_id}/restore")
+def restore_lead(app_id: int):
+    from househunt import leads
+
+    if not db.get_application(app_id):
+        raise HTTPException(404)
+    leads.restore(app_id)
+    return RedirectResponse(f"/leads#lead-{app_id}", status_code=303)
 
 
 # --- agent chats & place notes ----------------------------------------------

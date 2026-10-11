@@ -325,7 +325,7 @@
           </form>
         {% endif %}
         {% if call %}<span class="pill {{ call.status }}">{{ icon("phone", 12) }}{{ call.status.replace("_", " ") }}</span>{% endif %}
-        {% if call and call.error %}<div class="err">{{ call.error }}</div>{% endif %}
+        {% if call and call.error %}<div class="err" title="{{ call.error }}">{{ call.error | short_error }}</div>{% endif %}
         {% if call and call.transcript %}<details data-id="t-{{ l.key }}"><summary>Call transcript</summary><pre>{{ call.transcript }}</pre></details>{% endif %}
       </div>
     </article>

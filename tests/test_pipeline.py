@@ -637,3 +637,50 @@ def test_interested_next_step_and_log_viewing():
         assert db.find_application(sid, "facebook:fb-42")["stage"] == "viewing"
         page = client.get("/viewings").text
         assert "calendar.google.com/calendar/render" in page
+
+
+def test_leads_track_outreach_and_can_be_removed():
+    from fastapi.testclient import TestClient
+
+    from househunt import db, leads, pipeline
+    from househunt.models import SearchCriteria
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        assert "No leads right now" in client.get("/leads").text
+        sid = db.create_search(SearchCriteria(city="sf", max_price=3000, min_beds=1))
+        pipeline.run_search(sid)
+        # Interested in a place nobody has called, and one the dry run already called.
+        client.post(f"/searches/{sid}/listings/facebook:fb-42/track")
+        client.post(f"/searches/{sid}/listings/zillow:z-1001/track")
+        assert leads.outreach(sid, "facebook:fb-42").status == "new"
+        called = leads.outreach(sid, "zillow:z-1001")
+        assert called.attempts and called.attempts[0].kind == "call"
+
+        page = client.get("/leads").text
+        assert "Room in 3BR" in page and "Sunny 2BR" in page and "Remove from leads" in page
+
+        # A failed call reads as "no response yet", with the API's message on the Calls page.
+        cid = db.create_call(sid, "facebook:fb-42")
+        db.update_call(cid, status="failed", error="""BadRequestError("Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low.'}}")""")
+        o = leads.outreach(sid, "facebook:fb-42")
+        assert o.status == "waiting" and "no response yet" in o.label
+        assert "Your credit balance is too low." in client.get("/calls").text
+
+        # Calling from Leads comes back to Leads.
+        r = client.post(f"/searches/{sid}/listings/zillow:z-1001/call",
+                        data={"next": "/leads"}, follow_redirects=False)
+        assert r.headers["location"] == "/leads"
+        r = client.post(f"/searches/{sid}/listings/zillow:z-1001/call",
+                        data={"next": "https://evil.example"}, follow_redirects=False)
+        assert r.headers["location"] == f"/searches/{sid}"
+
+        app_id = db.find_application(sid, "facebook:fb-42")["id"]
+        client.post(f"/leads/{app_id}/remove", data={"reason": "no_response", "detail": "3 tries"})
+        row = db.get_application(app_id)
+        assert row["stage"] == "withdrawn" and "No response (3 tries)" in row["notes"]
+        page = client.get("/leads").text
+        assert "Removed leads (1)" in page and 'id="lead-%d"' % app_id not in page
+
+        client.post(f"/leads/{app_id}/restore")
+        assert db.get_application(app_id)["stage"] == "interested"

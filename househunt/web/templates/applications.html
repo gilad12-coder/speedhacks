@@ -190,7 +190,7 @@
 <div class="board">
   {% for s in stages if not s.closed %}
   <section class="col" data-stage="{{ s.value }}">
-    <h3><span>{{ s.label }}</span><span class="n">{{ board[s] | length }}</span></h3>
+    <h3><span>{{ s.label }}{% if s.value == "interested" %} <a class="small" href="/leads" style="font-weight:500">Leads →</a>{% endif %}</span><span class="n">{{ board[s] | length }}</span></h3>
     {% for a in board[s] %}{{ app_card(a) }}{% else %}<div class="hint">Drop a card here</div>{% endfor %}
   </section>
   {% endfor %}

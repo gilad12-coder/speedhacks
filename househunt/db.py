@@ -414,6 +414,19 @@ def chat_messages(chat_id: int) -> list[sqlite3.Row]:
                          (chat_id,)).fetchall()
 
 
+def calls_for_listing(search_id: int, listing_key: str) -> list[sqlite3.Row]:
+    """Every call attempt for one listing, oldest first."""
+    with conn() as c:
+        return c.execute("SELECT * FROM calls WHERE search_id = ? AND listing_key = ? ORDER BY id",
+                         (search_id, listing_key)).fetchall()
+
+
+def emails_for_listing(search_id: int, listing_key: str) -> list[sqlite3.Row]:
+    with conn() as c:
+        return c.execute("SELECT * FROM emails WHERE search_id = ? AND listing_key = ? "
+                         "AND status != 'discarded' ORDER BY id", (search_id, listing_key)).fetchall()
+
+
 def all_calls() -> list[sqlite3.Row]:
     """Every call across searches, newest first (all attempts, not just the latest)."""
     with conn() as c:
