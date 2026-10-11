@@ -12,7 +12,4 @@ def has_credentials() -> bool:
 
 
 def client() -> anthropic.Anthropic:
-    # Keys that aren't scoped to a workspace must name one on every request.
-    workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID")
-    headers = {"anthropic-workspace-id": workspace} if workspace else None
-    return anthropic.Anthropic(default_headers=headers)
+    return anthropic.Anthropic()
