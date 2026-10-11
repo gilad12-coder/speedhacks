@@ -203,6 +203,9 @@ def _call_listing(search_id: int, key: str) -> None:
             provider_id = row["dial_call_id"]
             if not provider_id:
                 if not dry_run:
+                    from househunt.voice import store as voice_store
+                    if voice_store.enabled():
+                        voice_store.preflight(search_id)
                     phone = listing.contact.phone
                     if not re.fullmatch(r"\+1[2-9]\d{9}", phone) or re.fullmatch(r"\+1\d{3}55501\d{2}", phone):
                         raise RuntimeError("A real US E.164 contact number is required")

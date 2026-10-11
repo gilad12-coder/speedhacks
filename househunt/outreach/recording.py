@@ -22,13 +22,15 @@ def recording_path(call_id: int) -> Path | None:
         row = c.execute('SELECT dial_call_id FROM calls WHERE id=?', (call_id,)).fetchone()
     if not row or not row['dial_call_id'] or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}', row['dial_call_id']):
         return None
-    return Path(settings.db_path).resolve().parent / 'recordings' / f"{row['dial_call_id']}.wav"
+    base = Path(settings.db_path).resolve().parent / 'recordings' / row['dial_call_id']
+    return base.with_suffix('.mp3') if base.with_suffix('.mp3').is_file() else base.with_suffix('.wav')
 
 
 def import_recording(call_id: int, source: Path) -> Path:
     target = recording_path(call_id)
     if target is None:
         raise ValueError('No saved Dial call with that ID')
+    target = target.with_suffix('.wav')
     if not 12 <= source.stat().st_size <= 100_000_000:
         raise ValueError('Expected a WAV recording smaller than 100 MB')
     with source.open('rb') as f:

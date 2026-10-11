@@ -50,9 +50,40 @@ The search stage runs independently from calling. This supports Lucy's manually 
 
 ## Using the renter's own voice
 
-Dial's [managed call API](https://docs.getdial.ai/api-reference/rest-api/calls/make-call) currently documents `voiceGender`, not a cloned-voice ID. [Self-hosted audio](https://docs.getdial.ai/documentation/platform/self-hosted) supports an external voice stack but requires per-account approval. The integration continues to use managed calls. No custom-voice switch is presented as working.
+The optional `househunt.voice` service connects Dial's approved [self-hosted audio](https://docs.getdial.ai/documentation/platform/self-hosted) to ElevenLabs Agents. Dial's official SDK validates signatures and audio frames; ElevenLabs provides speech recognition, turn-taking, interruptions, the language model and cloned speech. The adapter uses 16 kHz mono PCM in both directions. It clears Dial playback on interruptions and discards late audio from interrupted turns. There is no custom speech model to train or maintain.
 
-After access is granted, the remaining work is a consenting voice sample and a TTS provider/voice ID, a hosted audio WebSocket bridge with signature verification and interruptions, and our own timestamped transcripts/recordings. Dial does not generate transcripts or recordings in self-hosted audio mode, and enabling that mode affects all new account calls. Keep managed calling until the complete replacement path has been rehearsed. The assistant must still identify itself as AI while using the renter's own voice.
+The initial enrollment uses ElevenLabs' existing recording/Instant Voice Clone screen, then an operator binds the approved voice to a specific search. An embedded KeyHunt microphone/enrollment screen is not yet implemented. Record 1–2 minutes of clean, conversational speech from the consenting speaker, with consistent microphone position and no background voices or music. The voice lives in the ElevenLabs account used to create it. Instant cloning needs a listening check; professional cloning requires more audio, an eligible plan and processing time. Neither option guarantees indistinguishable speech over a phone connection.
+
+```sh
+pip install -r requirements-voice.txt
+# Save ELEVENLABS_API_KEY privately in .env; never expose it to browser code.
+# Create the clone in ElevenLabs, or upload a specifically consented local sample:
+python -m househunt.voice.setup clone --sample /path/to/own-voice.wav --name 'KeyHunt voice' --consent
+python -m househunt.voice.setup preview --voice-id YOUR_CLONE_ID
+# Only after the speaker listens and approves:
+python -m househunt.voice.setup enroll --search-id SEARCH_ID --voice-id YOUR_CLONE_ID --speaker-name RENTER_NAME --consent --approve-audition
+python -m househunt.voice.setup prepare-agent --voice-id YOUR_CLONE_ID
+```
+
+The setup tool creates an authenticated agent, defaults to `eleven_v4_turbo`, and saves its ID privately. Set `ELEVENLABS_TTS_MODEL` before creation to audition another supported model. No stock voice is substituted for a missing enrollment. Each search must have its own explicit consent and approved audition; this prevents another household from inheriting somebody else's voice.
+
+Run the bridge in a **single process on the same private data volume as the Python caller**. The separate listener exposes only health and signed audio WebSockets, so an audio tunnel does not publish the operator console. `Dockerfile.voice` packages this listener; separate services on unrelated disks will not work with the local SQLite design.
+
+```sh
+# Obtain a reachable HTTPS/WSS hostname first; /audio is the endpoint prefix.
+python -m househunt.voice.setup configure-dial --ws-url wss://YOUR_HOST/audio
+# Saves the endpoint and signing secret; does not activate account-wide routing.
+VOICE_MODE=elevenlabs .venv/bin/uvicorn househunt.voice.bridge:app --env-file .env --host 127.0.0.1 --port 8790 --no-access-log --ws-max-size 100000
+# After enrollment, reachability/authentication checks, and readiness to rehearse:
+python -m househunt.voice.setup activate --ws-url wss://YOUR_HOST/audio --search-id SEARCH_ID --confirm-account-wide
+# Restart the caller using the updated .env after activation.
+```
+
+Activation routes **all new calls on the Dial account** through this endpoint. Unknown, inbound, unenrolled, duplicate and wrongly signed calls are rejected. For rollback, disable Self-Hosted in Dial and set `VOICE_MODE=managed` in the caller. Quick tunnels are suitable for development only; their hostname changes on restart, and the local machine must remain awake.
+
+The provider conversation ID is saved privately before audio output. After hangup, the caller imports ElevenLabs' finalized timestamped transcript and, when available, recording into the existing quote-validation and authenticated playback paths. Provider response bodies and signed URLs are never logged. If evidence is still processing, retry the saved attempt; no new call is placed. Dial socket reconnects preserve a live provider session for up to 16 seconds; process restarts safely end the old conversation instead of repeating its introduction. Private recordings and profiles require the same retention/access controls as the existing call database; no raw voice sample is committed to Git.
+
+The assistant still introduces itself as the renter's **AI assistant**, and tour offers remain unbooked until the household confirms separately. Custom voice is optional and remains inactive until the real clone and phone path have been rehearsed.
 
 ## Validation
 

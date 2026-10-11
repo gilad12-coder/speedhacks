@@ -215,7 +215,8 @@ def call_recording(call_id: int):
     path = recording_path(call_id)
     if path is None or not path.is_file():
         raise HTTPException(404, "Recording not imported")
-    return FileResponse(path, media_type="audio/wav", headers={"Cache-Control": "private, no-store"})
+    return FileResponse(path, media_type="audio/mpeg" if path.suffix == ".mp3" else "audio/wav",
+                        headers={"Cache-Control": "private, no-store"})
 
 
 @app.post('/agent/households/{household_id}/listings/{key}/call')

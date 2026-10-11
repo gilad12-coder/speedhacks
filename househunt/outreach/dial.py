@@ -66,6 +66,14 @@ class DialClient:
 
     def place_call(self, to: str, instruction: str, max_seconds: int = 300,
                    idempotency_key: str | None = None) -> DialCall:
+        from househunt.voice import store as voice_store
+        if voice_store.enabled():
+            status = self.http.get("/api/v1/self-hosted")
+            if not status.is_success:
+                raise RuntimeError("Could not verify Dial custom-audio mode; no call placed")
+            state = status.json()
+            if state.get("enabled") is not True or state.get("activeMode") != "audio":
+                raise RuntimeError("Dial custom-audio mode is inactive; no call placed")
         res = self.http.post(
             "/api/v1/calls",
             json={"to": to, "outboundInstruction": instruction,
@@ -90,6 +98,15 @@ class DialClient:
             # Transcript can land a moment after the call terminates.
             if call.ended:
                 terminal_at = terminal_at or time.monotonic()
+                from househunt.voice import store as voice_store
+                binding = voice_store.read("sessions", call_id)
+                if binding:
+                    from househunt.voice.evidence import enrich
+                    evidence = enrich(call.raw)
+                    if evidence:
+                        return _parse_call(evidence)
+                    if time.monotonic() - terminal_at >= 60:
+                        raise RuntimeError("Custom voice transcript still processing; retry the saved call without redialing")
                 if call.raw.get("transcriptTurns") or time.monotonic() - terminal_at >= 60:
                     return call
             if time.monotonic() > deadline:
