@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +13,17 @@ from househunt.config import settings
 from househunt.models import Listing, SearchCriteria
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS household_jobs (
+    household_id TEXT PRIMARY KEY,
+    search_id INTEGER NOT NULL UNIQUE,
+    published_hash TEXT
+);
+CREATE TABLE IF NOT EXISTS search_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    search_id INTEGER NOT NULL,
+    message TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS searches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     criteria TEXT NOT NULL,
@@ -38,6 +50,10 @@ CREATE TABLE IF NOT EXISTS calls (
     error TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS do_not_call (
+    phone TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS tours (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -156,6 +172,17 @@ def conn():
 def init() -> None:
     with conn() as c:
         c.executescript(SCHEMA)
+        columns = {r[1] for r in c.execute("PRAGMA table_info(calls)")}
+        for name, kind in {"raw": "TEXT", "attempt_key": "TEXT", "phone": "TEXT", "mode": "TEXT", "instruction": "TEXT"}.items():
+            if name not in columns:
+                c.execute(f"ALTER TABLE calls ADD COLUMN {name} {kind}")
+    Path(settings.db_path).chmod(0o600)
+
+
+def recover_calls() -> None:
+    """Single-worker app startup: interrupted calls require explicit resume, never redial."""
+    with conn() as c:
+        c.execute("UPDATE calls SET status='attention', error='Worker restarted; resume the saved call' WHERE status IN ('queued', 'in_progress', 'extracting')")
 
 
 # --- searches ---------------------------------------------------------------
@@ -203,6 +230,23 @@ def set_search_status(search_id: int, status: str, error: str | None = None) -> 
         c.execute("UPDATE searches SET status = ?, error = ? WHERE id = ?", (status, error, search_id))
 
 
+def search_event(search_id: int, message: str) -> None:
+    with conn() as c:
+        c.execute("INSERT INTO search_events(search_id, message, created_at) VALUES (?, ?, ?)",
+                  (search_id, message[:500], now()))
+
+
+def search_events(search_id: int) -> list:
+    with conn() as c:
+        return c.execute("SELECT * FROM search_events WHERE search_id = ? ORDER BY id DESC LIMIT 30", (search_id,)).fetchall()[::-1]
+
+
+def household_search(household_id: str) -> int | None:
+    with conn() as c:
+        row = c.execute("SELECT search_id FROM household_jobs WHERE household_id = ?", (household_id,)).fetchone()
+    return row['search_id'] if row else None
+
+
 # --- listings ---------------------------------------------------------------
 
 def upsert_listing(search_id: int, l: Listing) -> None:
@@ -243,7 +287,43 @@ def create_call(search_id: int, listing_key: str) -> int:
         return cur.lastrowid
 
 
+def claim_call(search_id: int, listing_key: str, phone: str, mode: str) -> sqlite3.Row | None:
+    """Reserve once across concurrent button clicks; retries retain the provider key."""
+    with conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        existing = c.execute("SELECT * FROM calls WHERE search_id=? AND listing_key=? ORDER BY id DESC LIMIT 1", (search_id, listing_key)).fetchone()
+        if existing:
+            if existing["phone"] != phone:
+                return None
+            if existing["status"] not in ("attention", "failed") or not existing["attempt_key"] or existing["mode"] != mode:
+                return None
+            call_id = existing["id"]
+            c.execute("UPDATE calls SET status='in_progress', error=NULL WHERE id=?", (call_id,))
+        else:
+            call_id = c.execute("INSERT INTO calls (search_id,listing_key,status,created_at,updated_at,attempt_key,phone,mode) VALUES (?,?,'in_progress',?,?,?,?,?)",
+                (search_id, listing_key, now(), now(), f"keyhunt-{uuid.uuid4().hex}", phone, mode)).lastrowid
+        return c.execute("SELECT * FROM calls WHERE id=?", (call_id,)).fetchone()
+
+
+def contact_blocked(phone: str) -> bool:
+    with conn() as c:
+        return c.execute("SELECT 1 FROM do_not_call WHERE phone=?", (phone,)).fetchone() is not None
+
+
+def block_contact(phone: str) -> None:
+    with conn() as c:
+        c.execute("INSERT OR IGNORE INTO do_not_call VALUES (?,?)", (phone, now()))
+
+
+def contact_called_today(phone: str, except_id: int) -> bool:
+    with conn() as c:
+        count = c.execute("SELECT COUNT(*) FROM calls WHERE phone=? AND id<>? AND mode='live' AND substr(created_at,1,10)=?", (phone, except_id, now()[:10])).fetchone()[0]
+        return count >= settings.max_calls_per_number_per_day
+
+
 def update_call(call_id: int, **fields) -> None:
+    if "raw" in fields and not isinstance(fields["raw"], str):
+        fields["raw"] = json.dumps(fields["raw"])
     if "outcome" in fields and not isinstance(fields["outcome"], str):
         fields["outcome"] = json.dumps(fields["outcome"])
     fields["updated_at"] = now()

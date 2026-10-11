@@ -38,6 +38,12 @@ class SearchCriteria:
     must_haves: list[str] = field(default_factory=list)   # e.g. "in-unit laundry", "pets"
     move_in_by: str | None = None                          # ISO date
     tour_availability: list[str] = field(default_factory=list)  # e.g. "weekdays after 6pm"
+    occupants: int | None = None
+    renter_name: str = ""
+    deal_breakers: list[str] = field(default_factory=list)
+    nice_to_haves: list[str] = field(default_factory=list)
+    move_in_from: str | None = None
+    commute: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -71,6 +77,10 @@ class Listing:
     score: float = 0.0
     notes: list[str] = field(default_factory=list)
     scraped_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    provenance: list[str] = field(default_factory=list)
+    research: dict = field(default_factory=dict)
+    screening: dict = field(default_factory=dict)
+    photo_urls: list[str] = field(default_factory=list)
 
     @property
     def key(self) -> str:

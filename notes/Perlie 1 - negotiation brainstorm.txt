@@ -1,0 +1,1185 @@
+# lang=en p=0.99 dur=1198s
+[00:00] This is such a tech-pro thing to do, record all your conversations.
+[00:04] Truly, I found so much advantage by doing that,
+[00:07] because I'm just able to give it to the agent,
+[00:10] and then I'm like, what do I need to do?
+[00:11] I need to do this, this, this, this, and then it's easy.
+[00:14] I mean, we could make a really cool thing,
+[00:17] but this is overkill, I feel like,
+[00:19] but it will be cool for the demo.
+[00:21] It's essentially if you build a negotiation agency on your behalf.
+[00:25] So it basically scans all of your stuff.
+[00:27] You have one that is always idle,
+[00:30] but ideally, you also have one for recurring things.
+[00:33] So the insurance companies, they change policy.
+[00:35] So proactively, you can watch out for that,
+[00:39] watch out in the specific month's expenditure,
+[00:42] and be like, oh, something changed, dial.
+[00:45] Stuff like that.
+[00:45] You can have a different agent for different verticals of your life.
+[00:48] Exactly, exactly.
+[00:50] What else can you negotiate on, though?
+[00:52] If I'm going to the grocery store,
+[00:53] I can't really negotiate my grocery bill, you know what I mean?
+[00:57] Like, electricity, like utilities you could dispute, potentially?
+[01:00] Yeah, so I actually have Claude opened where I asked him this question.
+[01:04] So he says, so he says like, internet, internet and cable,
+[01:09] cell phone plans, credit cards, credit cards.
+[01:13] Credit cards, okay.
+[01:14] I mean, negotiation does allow you.
+[01:17] Let's, like, if we compare, simply,
+[01:19] we should actually check out if there is, like, a cool, um,
+[01:23] I'm sure there is someone that went ahead and done a blog
+[01:26] that is like, if you negotiate all of these things,
+[01:29] you gain this amount of money.
+[01:30] We could literally just go for an interview,
+[01:32] not an interview, an article like that,
+[01:34] figure out what he did, how much he saved,
+[01:36] and literally automate that.
+[01:38] And we could automate it, probably.
+[01:40] Unless it's in person.
+[01:42] Yeah.
+[01:42] Yeah.
+[01:43] Another cool thing that is using multiple things
+[01:46] is perhaps having a swarm of agents.
+[01:50] It doesn't have to be a swarm, but, like, several agents
+[01:52] where it's basically you have one that is over the phone,
+[01:55] you have the knowledge graph that you work in context,
+[01:58] which is good, but it's also dynamic.
+[02:00] So you have another agent that listens to the conversation
+[02:02] and is able to give advice and search the web,
+[02:04] do some stuff like that.
+[02:06] And I think, to be honest,
+[02:07] that gives you a much more upper hand in negotiation.
+[02:10] Like, that would be really, really great.
+[02:12] Like, you'd have several tools,
+[02:13] essentially, like, sub-agent calling.
+[02:15] You'd be able to call you, like, the user itself,
+[02:19] to get you onto the conversation as well.
+[02:22] You could do a bunch of stuff.
+[02:24] I guess right now what I'm thinking is,
+[02:25] first of all, negotiation is incredibly important.
+[02:28] I think it's going to help me be incredibly helpful for a lot of people.
+[02:31] It's just that, like, back to what you were saying,
+[02:37] I don't think there's, like, a widespread everyday use.
+[02:39] And I'm not sure if this is a...
+[02:40] Yes, I agree.
+[02:41] Yeah, if this is, like, a required thing, even.
+[02:44] Yes.
+[02:44] But I just, I don't know.
+[02:45] I mean, like, to go back a little bit,
+[02:50] I think one of you guys mentioned something
+[02:51] that's definitely really funny about.
+[02:54] Yeah, like, having an agent for, like,
+[02:56] each different, like, vertical in your life, kind of.
+[02:58] Yeah.
+[02:58] And, I mean, yeah, like, what if you can sort of,
+[03:01] I don't know, like, build an orchestration platform
+[03:03] that's able to create one,
+[03:06] depending on, like, I don't know,
+[03:08] a specific piece that you would have.
+[03:10] Yeah.
+[03:10] Yeah, yeah, yeah.
+[03:11] I'd better argue that's almost similar to what Luis is doing, basically.
+[03:14] You're just basically telling Luis, hey,
+[03:16] I need a region to, like, watch this.
+[03:18] But this is okay.
+[03:19] I wanted to...
+[03:19] That's true.
+[03:21] That's true.
+[03:22] I wanted to integrate.
+[03:23] I don't think we should think from, like,
+[03:26] if we're talking from a mode perspective,
+[03:32] but I don't think we should worry about modes.
+[03:34] Yeah, not concerned about it.
+[03:35] Like, not concerned about it.
+[03:36] Like, if we're looking,
+[03:37] even if we're looking at the speedrun project,
+[03:40] I think the only project with a serious mode is dial.
+[03:43] It's the only one.
+[03:44] I don't think the rest have a serious mode.
+[03:45] Sure.
+[03:46] So I would just, like,
+[03:49] make something that is useful and, like, forget about.
+[03:51] And ideally, useful means let's use integration.
+[03:55] So let's use Muse Connectors if we're able to build something.
+[03:57] Let's use an MCP server and bring it into Cloud
+[04:00] and bring it into Chattikiki.
+[04:01] This is good,
+[04:02] and this is not a liability, in my opinion.
+[04:04] This is, like,
+[04:05] this makes our project more useful.
+[04:08] Yeah.
+[04:08] I guess I would just be concerned, like,
+[04:10] even calling now is kind of going away.
+[04:13] Like, I don't...
+[04:13] I think about the last time I called someone,
+[04:15] I was, like, calling, like, fidelity or something.
+[04:17] But we don't do it.
+[04:18] Exactly.
+[04:19] Like, I agree.
+[04:20] I don't negotiate as a person.
+[04:21] I don't do it.
+[04:22] Oh, this is true.
+[04:23] That's, like, the thing that it's called...
+[04:24] It's, like,
+[04:25] there is this paradox where something is more abundant.
+[04:28] You tend to use it more.
+[04:29] It's exactly this.
+[04:30] It's, like,
+[04:30] it's just, like, coding,
+[04:32] where with coding,
+[04:33] it's not gonna,
+[04:33] in my opinion,
+[04:34] it's not gonna go away
+[04:35] due to...
+[04:37] You're just...
+[04:37] It's gonna be different,
+[04:38] but you're gonna do it more.
+[04:39] So here,
+[04:40] previously,
+[04:40] people just didn't have the...
+[04:42] Like,
+[04:42] people have wages and jobs
+[04:44] and, like,
+[04:45] jobs they have to do,
+[04:45] children they have to feed.
+[04:46] No one has the time
+[04:47] to go ahead and do this.
+[04:49] But if you're able to literally,
+[04:50] in three minutes,
+[04:51] scan,
+[04:52] make a pipeline
+[04:52] that scans using Plaid.
+[04:54] You scan the recurring expenditure
+[04:58] of money that someone has made.
+[05:00] You identify opportunities.
+[05:02] You call on their behalf
+[05:03] using the specific policy
+[05:04] that they have.
+[05:05] In my opinion,
+[05:06] that's, like,
+[05:07] massively,
+[05:08] massively,
+[05:08] massively useful.
+[05:10] And if,
+[05:10] even if it takes me
+[05:11] 30 minutes
+[05:12] and then it's able
+[05:12] to, like,
+[05:13] go ahead
+[05:13] and do this
+[05:14] recurringly for me
+[05:15] throughout the year,
+[05:16] I'll do it.
+[05:17] The only problem I'd have
+[05:19] is, like,
+[05:19] with,
+[05:19] of course,
+[05:21] privacy here
+[05:22] because, like,
+[05:23] all of my accounts,
+[05:24] you need to know,
+[05:25] like,
+[05:25] it needs to answer
+[05:26] those questions
+[05:27] or, like,
+[05:27] identify questions.
+[05:28] I realize...
+[05:29] How do you have data?
+[05:30] Yes.
+[05:31] I realize the problems.
+[05:33] There are definitely
+[05:33] problems here.
+[05:34] But if we're talking
+[05:36] strictly about
+[05:36] saving time
+[05:37] and this is our objective...
+[05:38] I think it should be just,
+[05:39] like,
+[05:39] the only thing we're
+[05:40] optimizing for is
+[05:41] just saving time
+[05:41] and everything else
+[05:42] and everything else
+[05:43] is we don't care.
+[05:44] Although, yeah.
+[05:45] So, let's...
+[05:45] You know what?
+[05:45] Yeah, I like that a lot.
+[05:47] Okay.
+[05:47] Do you have any other ideas?
+[05:49] I, honestly,
+[05:49] I think that...
+[05:50] I, yeah,
+[05:51] I think, yeah,
+[05:52] let's just jam with that.
+[05:54] Yeah.
+[05:55] See what happens.
+[05:55] Yeah, see what happens.
+[05:56] You know,
+[05:56] I feel like,
+[05:57] as we build,
+[05:57] we might...
+[05:58] come across something else.
+[06:00] Yeah.
+[06:00] Yeah, yeah, yeah.
+[06:01] This means...
+[06:02] Yeah.
+[06:03] Yeah.
+[06:03] These are Steve-Own folks, right?
+[06:05] Like, their goal here
+[06:06] is, like,
+[06:08] fun service, right?
+[06:09] Yeah.
+[06:10] And so, if you can, like,
+[06:11] yeah,
+[06:12] if you can, like,
+[06:12] build and ship
+[06:13] and build, like,
+[06:15] a product
+[06:15] that you can use
+[06:16] and actually stay styling,
+[06:17] yeah,
+[06:18] that's a winning...
+[06:19] That's a winning, yeah.
+[06:20] I do.
+[06:21] And I also think
+[06:21] even if we don't,
+[06:22] we'll probably get...
+[06:23] I think a lot of people
+[06:24] will go with dial,
+[06:25] I have a sense.
+[06:26] But I think
+[06:27] if we literally show
+[06:28] that we're able
+[06:29] to save money
+[06:30] from, like,
+[06:30] one call,
+[06:31] this could be a...
+[06:32] We just go up,
+[06:33] you press play.
+[06:35] That's it.
+[06:35] Like,
+[06:35] it needs my own voice as well.
+[06:37] Like,
+[06:37] if you can clone
+[06:38] the voice really well,
+[06:39] that would work.
+[06:40] Well,
+[06:40] if it's personal
+[06:41] to your own voice
+[06:42] or personal
+[06:43] to the way
+[06:43] that you talk,
+[06:44] kind of like
+[06:45] what we were talking about earlier
+[06:46] with...
+[06:46] Yeah,
+[06:47] you just do it
+[06:48] with 11 labs
+[06:49] because I have,
+[06:49] like,
+[06:50] a cloning,
+[06:50] voice cloning API,
+[06:51] just cloning your voice.
+[06:52] It works pretty well
+[06:53] from what I know.
+[06:55] And,
+[06:56] yeah.
+[06:57] So you just want to...
+[06:58] Yes.
+[07:01] Okay,
+[07:01] let's...
+[07:02] insurance specifically
+[07:03] to start.
+[07:04] I want to do it more negotiation.
+[07:07] I think, like,
+[07:07] the framework for it,
+[07:08] I think the framework,
+[07:09] the info for it
+[07:10] is pretty much the same.
+[07:11] So, like,
+[07:12] I would start with that,
+[07:13] actually.
+[07:13] So what do you actually need?
+[07:14] I think a plaid connection
+[07:15] is really important
+[07:17] to just identify
+[07:18] the opportunities.
+[07:19] I feel like
+[07:19] a negotiation agent
+[07:20] without that layer
+[07:21] would not save people
+[07:23] a lot of time
+[07:24] because they won't have
+[07:25] the proactive nature
+[07:26] to go ahead
+[07:27] and, like,
+[07:27] do that.
+[07:27] That's, like,
+[07:28] the start of the problem.
+[07:29] So I think it needs
+[07:30] to scan
+[07:31] your
+[07:32] recurring
+[07:33] expenses.
+[07:36] That's, like,
+[07:36] the first thing.
+[07:37] Okay.
+[07:38] Then,
+[07:38] so, like,
+[07:39] a plaid connection layer.
+[07:40] Plaid API
+[07:41] basically does it great.
+[07:43] Then,
+[07:44] we need to identify
+[07:44] opportunities.
+[07:45] Here we could simply
+[07:46] write a skill
+[07:46] that is...
+[07:48] that would be, like,
+[07:49] oh,
+[07:49] you need to find
+[07:50] opportunities
+[07:50] to optimize
+[07:52] the specific deal
+[07:53] that I have.
+[07:55] A problem
+[07:56] we might have here
+[07:57] is
+[07:57] deducing
+[07:59] the exact
+[08:00] subscription
+[08:00] that you have.
+[08:01] Why?
+[08:04] Meaning,
+[08:04] let's say that you
+[08:05] have an expense
+[08:06] from, like,
+[08:07] Xfinity or something.
+[08:08] You need to know
+[08:09] exactly, like,
+[08:10] the plan that you're
+[08:10] using and your status
+[08:12] in order to be
+[08:13] able to do that.
+[08:13] That's why I think
+[08:14] an integration with
+[08:16] Plaid is really,
+[08:17] really important
+[08:17] because it already
+[08:18] has memory of you.
+[08:19] So perhaps it knows
+[08:20] more of, like,
+[08:21] you in general.
+[08:22] Yeah.
+[08:23] Adrian could also
+[08:24] just ask you,
+[08:24] hey,
+[08:24] what, like,
+[08:25] yeah,
+[08:25] and also,
+[08:26] yeah,
+[08:26] but that doesn't say...
+[08:27] I could probably find it
+[08:27] on the website.
+[08:28] Yes,
+[08:28] but that doesn't
+[08:29] save a lot of time.
+[08:29] news to it.
+[08:30] Like,
+[08:30] when I download
+[08:31] news,
+[08:31] immediately you know
+[08:32] all the subscriptions
+[08:33] that I've been.
+[08:33] How the heck...
+[08:34] Yeah.
+[08:34] What subscriptions?
+[08:35] Probably searching
+[08:36] your email.
+[08:37] Oh,
+[08:38] searching your email.
+[08:39] Searching your email
+[08:39] is a great...
+[08:40] Wow.
+[08:40] Email,
+[08:41] email.
+[08:41] Right,
+[08:41] right,
+[08:41] right.
+[08:41] You're...
+[08:42] That's a great point.
+[08:43] Yes.
+[08:44] So,
+[08:44] email.
+[08:46] Yeah,
+[08:46] probably text too.
+[08:47] The email is a massive one.
+[08:49] Email is a massive one.
+[08:50] Okay,
+[08:50] so it scans your text.
+[08:51] Text is hard
+[08:52] just because it's not
+[08:53] connected,
+[08:54] but let's start with
+[08:55] just because it don't
+[08:56] have a great,
+[08:57] like,
+[08:57] MCP for it.
+[08:58] Are there connectors
+[08:58] for Muse?
+[08:59] Or no?
+[09:00] No.
+[09:00] There is nothing,
+[09:01] like,
+[09:01] even Muse cannot read
+[09:03] your WhatsApp,
+[09:03] for example.
+[09:04] Sure,
+[09:04] sure.
+[09:05] But I feel like
+[09:05] Gmail is the most
+[09:06] important one here,
+[09:07] actually.
+[09:07] Yeah,
+[09:07] you could probably
+[09:08] cover those.
+[09:09] So you connect that,
+[09:10] yes,
+[09:10] you deduce the opportunities,
+[09:11] you understand,
+[09:12] like,
+[09:12] oh,
+[09:12] I have this opportunity,
+[09:13] this opportunity,
+[09:13] this opportunity.
+[09:14] Then what I would love
+[09:15] to do is,
+[09:16] like,
+[09:16] based on the specific
+[09:17] application made,
+[09:19] you're able to
+[09:20] check out the web
+[09:22] for better options.
+[09:23] So you check out,
+[09:25] like,
+[09:25] that would be the first
+[09:26] thing,
+[09:26] like,
+[09:26] the ground,
+[09:27] like,
+[09:28] the beginning.
+[09:29] Do you remember Honey?
+[09:29] Like,
+[09:30] the Honey extension?
+[09:31] I don't know that.
+[09:32] What's that?
+[09:33] Do you remember Honey?
+[09:33] Yeah.
+[09:34] It's kind of a bot now,
+[09:35] but it basically would
+[09:36] search the web
+[09:37] for, like,
+[09:37] better tools for you.
+[09:38] Yeah,
+[09:39] so something like that.
+[09:40] I just think you do
+[09:40] just like start up.
+[09:41] Yeah,
+[09:42] they do that,
+[09:43] right?
+[09:43] Yeah.
+[09:43] Yeah,
+[09:44] I know,
+[09:46] I know.
+[09:47] Yeah,
+[09:47] no,
+[09:47] we're doing something
+[09:48] that is,
+[09:49] like,
+[09:49] just for this.
+[09:50] So you just search the web,
+[09:52] you see,
+[09:52] literally with a browser,
+[09:53] even,
+[09:54] you search the web
+[09:55] for, like,
+[09:55] better deals.
+[09:56] Like,
+[09:56] that's,
+[09:57] just so you have a baseline
+[09:59] if something can be,
+[10:00] like,
+[10:00] instantly optimized.
+[10:02] And then,
+[10:02] I think,
+[10:03] you go ahead
+[10:04] and study the actual,
+[10:05] like,
+[10:06] terms of your
+[10:07] exact subscription.
+[10:09] And then,
+[10:10] I do think,
+[10:11] and that is also
+[10:12] a really,
+[10:12] really great point,
+[10:13] hear me out,
+[10:14] that is really cool
+[10:15] in my opinion.
+[10:16] Sometimes a single call
+[10:17] is not enough
+[10:18] because one agent,
+[10:19] there is a human mistake
+[10:20] feature here,
+[10:24] which we can leverage,
+[10:25] where one support agent
+[10:26] does not know something
+[10:28] or it tells you something
+[10:28] that is different.
+[10:29] You could perhaps
+[10:30] seed,
+[10:31] do,
+[10:31] just like with,
+[10:32] like,
+[10:32] I'm coming from Amel,
+[10:33] so you do seed runs,
+[10:35] essentially,
+[10:36] different seed runs,
+[10:36] right?
+[10:37] So,
+[10:37] you're not only running
+[10:38] your agent once,
+[10:39] you're running it five times.
+[10:40] Best of five.
+[10:42] Same problem here.
+[10:43] Like,
+[10:43] you could try to optimize
+[10:45] the exact,
+[10:47] like,
+[10:47] details
+[10:49] and do it several times.
+[10:51] So,
+[10:51] it's not like you're
+[10:52] calling once
+[10:52] and then you're,
+[10:53] like,
+[10:53] fine.
+[10:54] You might be,
+[10:54] you might call once
+[10:55] and get more intelligence
+[10:56] out of the speaker
+[10:58] that you're talking to.
+[10:59] You'd be like,
+[10:59] you'd be asking questions.
+[11:00] Like,
+[11:00] one of the things
+[11:01] in selling
+[11:01] that is really,
+[11:03] people are doing
+[11:04] is,
+[11:04] like,
+[11:04] you should just listen
+[11:05] because people spill out
+[11:07] things that they should
+[11:08] not spill out.
+[11:09] Do you call the same person
+[11:10] several times?
+[11:11] It's not going to be
+[11:12] the same person.
+[11:12] That's the beauty of it
+[11:13] because it's a different
+[11:14] customer support.
+[11:14] Or it could be
+[11:16] the same bot.
+[11:17] Or it could be
+[11:18] the same bot.
+[11:18] But,
+[11:18] like,
+[11:19] it's increasingly
+[11:19] becoming the case.
+[11:20] Yes,
+[11:20] but it's also great
+[11:21] because,
+[11:22] either way,
+[11:23] yeah,
+[11:23] you're just making
+[11:24] a lot of calls
+[11:25] because you want
+[11:25] to understand
+[11:26] the specific terms.
+[11:26] There's an argument
+[11:26] that someone might make,
+[11:27] right?
+[11:27] Like,
+[11:28] so we're,
+[11:29] you know,
+[11:29] creating this,
+[11:30] but,
+[11:31] I mean,
+[11:31] eventually,
+[11:33] you know,
+[11:34] all these,
+[11:34] like,
+[11:34] businesses around,
+[11:35] all these what?
+[11:36] All these,
+[11:36] like,
+[11:37] all these entities
+[11:38] that we're using
+[11:39] are agents to call
+[11:39] are going to also use,
+[11:42] so they're going to
+[11:42] fire with fire.
+[11:44] Yeah.
+[11:45] That's okay.
+[11:46] So,
+[11:47] it will be less effective.
+[11:48] You could,
+[11:48] it's a,
+[11:49] it's a,
+[11:49] it would still be better
+[11:50] than,
+[11:50] like,
+[11:50] you making the negotiations.
+[11:51] Of course.
+[11:52] Of course it will be better.
+[11:53] And also,
+[11:54] I think another thing here
+[11:54] is that you should,
+[11:56] I mean,
+[11:57] this is,
+[11:58] like,
+[11:58] for more of the future,
+[11:59] but ideally,
+[12:00] you could make a really,
+[12:02] like,
+[12:03] that's a different startup
+[12:03] on its own,
+[12:04] but that's also really cool.
+[12:06] You could make fake calls.
+[12:07] Just,
+[12:08] not fake calls,
+[12:09] but,
+[12:09] like,
+[12:10] you could make a call
+[12:11] just to,
+[12:12] like,
+[12:12] deduce the different options.
+[12:14] Basically,
+[12:14] study the specific customer support engine
+[12:17] you're talking to.
+[12:18] So,
+[12:19] like,
+[12:20] because you're able,
+[12:20] to hack into those companies now.
+[12:22] You're just invoking,
+[12:23] not hacking,
+[12:24] but you're invoking it.
+[12:25] So,
+[12:25] you're,
+[12:25] like,
+[12:25] calling,
+[12:25] and then you're calling for this,
+[12:26] you're calling for that,
+[12:27] you're calling for that,
+[12:27] you're calling for that,
+[12:28] and then you gather more information
+[12:30] about how the company works.
+[12:33] And then you're just able,
+[12:34] like,
+[12:34] you,
+[12:34] you gain the upper,
+[12:35] we're bringing the upper hand
+[12:36] to the,
+[12:37] to the person at the end,
+[12:38] essentially.
+[12:39] Yeah.
+[12:41] Sort of?
+[12:42] Yeah.
+[12:42] Yeah.
+[12:43] Yeah.
+[12:43] Just,
+[12:44] like,
+[12:44] when searching the web,
+[12:45] but,
+[12:46] you could totally,
+[12:48] like,
+[12:49] you could totally waste someone's credits
+[12:50] by,
+[12:50] like,
+[12:52] you know what I mean?
+[12:52] Like,
+[12:53] because we're going to be using
+[12:54] a model to empower all the agents.
+[12:58] Yeah.
+[12:58] I did this to my friend,
+[12:59] you know,
+[12:59] he called me using his agent,
+[13:01] and I just kept wasting the credits.
+[13:02] I'm like,
+[13:02] you know,
+[13:02] like,
+[13:03] asking the prompt injection question.
+[13:06] Yeah.
+[13:07] So,
+[13:07] exactly.
+[13:08] And,
+[13:08] prompt injection is not a solved issue either.
+[13:11] So,
+[13:11] I would not do something like,
+[13:12] a privacy with,
+[13:13] like,
+[13:13] prompt injection.
+[13:14] I would not do that.
+[13:15] I would just focus on,
+[13:16] like,
+[13:17] so,
+[13:17] what parts would you like to focus on?
+[13:19] Would you like to go,
+[13:20] because this is another separate idea.
+[13:21] Would you like to,
+[13:22] basically do market intelligence
+[13:24] for,
+[13:24] like,
+[13:24] the voice agent?
+[13:25] Meaning,
+[13:26] like,
+[13:26] we call the out,
+[13:28] like,
+[13:29] the,
+[13:29] the specific call center
+[13:31] multiple,
+[13:31] multiple times,
+[13:32] just to do,
+[13:33] loose information.
+[13:34] Basically,
+[13:35] with a fake personality.
+[13:37] Let me ask this question.
+[13:38] Are you doing?
+[13:39] So,
+[13:39] can we generalize
+[13:41] a negotiation?
+[13:44] I think so.
+[13:44] Probably could.
+[13:45] Probably could.
+[13:46] I don't think.
+[13:49] But,
+[13:50] but,
+[13:50] okay,
+[13:51] but how?
+[13:52] Like,
+[13:52] because,
+[13:53] a given,
+[13:54] a given version is going to need
+[13:55] different pieces of information
+[13:57] depending on,
+[13:58] Right.
+[13:59] So,
+[13:59] I think you have
+[14:00] general principles,
+[14:01] and then,
+[14:01] I do agree
+[14:03] with the problem,
+[14:04] and it goes back to,
+[14:04] like,
+[14:05] why I thought about it
+[14:06] in the first place.
+[14:06] You told about,
+[14:07] you talked about game theory,
+[14:08] and I think it's really relevant.
+[14:09] The,
+[14:10] the thing with game theory
+[14:11] in perfect game scenarios,
+[14:12] like,
+[14:13] you could take,
+[14:14] like,
+[14:14] specific actions,
+[14:16] and those actions are actually,
+[14:17] you know,
+[14:18] based on the actions
+[14:18] that could happen
+[14:19] in the real world.
+[14:20] When you're calling
+[14:21] a support agent
+[14:21] from a different company,
+[14:24] you might not know
+[14:24] how they're,
+[14:25] like,
+[14:25] for the first time,
+[14:26] you might not know
+[14:26] how they're operating,
+[14:27] so this entire,
+[14:28] like,
+[14:28] thesis basically collapses
+[14:30] because,
+[14:30] like,
+[14:30] the agent will be just,
+[14:31] like,
+[14:32] left there alone,
+[14:35] struggling for how
+[14:36] to make things work.
+[14:36] And,
+[14:37] so,
+[14:38] so,
+[14:39] that's why I think
+[14:40] you do need this layer
+[14:42] of,
+[14:42] like,
+[14:42] calling multiple times
+[14:43] and trying to,
+[14:44] like,
+[14:45] be better the next time.
+[14:47] Oh,
+[14:48] oh,
+[14:48] oh,
+[14:49] oh,
+[14:49] that's actually,
+[14:50] another thing,
+[14:50] like,
+[14:51] with the swarms,
+[14:52] maybe,
+[14:52] you could call
+[14:53] on behalf of the person
+[14:54] to the specific provider
+[14:56] multiple times
+[14:56] for two things.
+[14:58] One,
+[14:58] you gain faster,
+[14:59] like,
+[15:00] place at the queue,
+[15:01] right?
+[15:01] That's the first thing
+[15:02] because if they're calling a lot,
+[15:04] that's one.
+[15:05] And then the second thing,
+[15:06] is you're able to share information
+[15:08] at the same time
+[15:09] between them
+[15:10] and be like,
+[15:11] oh,
+[15:11] I called that guy,
+[15:12] but he wasn't that nice.
+[15:13] You should avoid him.
+[15:15] Like,
+[15:15] if he answers your phone,
+[15:17] like,
+[15:17] these are all very good ideas.
+[15:19] Yeah,
+[15:19] but they're like,
+[15:20] you need to,
+[15:20] we need to work the MVP.
+[15:22] Yeah,
+[15:22] I guess we just,
+[15:23] yeah,
+[15:23] we just need,
+[15:24] like,
+[15:24] the more concrete,
+[15:25] sort of,
+[15:26] uses we can prove,
+[15:28] you know,
+[15:28] to help,
+[15:28] the better,
+[15:29] so.
+[15:30] I think insurance is a big one.
+[15:33] Potentially,
+[15:33] also,
+[15:34] housing an SF
+[15:35] is another big thing.
+[15:36] I would think,
+[15:37] for sure,
+[15:38] for sure.
+[15:38] There's a lot of it.
+[15:39] Housing is a very good thing.
+[15:40] I didn't realize this,
+[15:41] every other city I've lived in,
+[15:42] it doesn't matter,
+[15:43] you can just find it on
+[15:43] Apartments on Call,
+[15:44] Facebook,
+[15:45] Facebook groups.
+[15:46] Yes.
+[15:47] But actually,
+[15:48] if you're on Facebook,
+[15:50] you're just calling
+[15:50] other people on Facebook,
+[15:52] like,
+[15:52] hey,
+[15:52] it's truly the best.
+[15:53] An agent to advocate
+[15:54] on your behalf,
+[15:55] like,
+[15:55] hey,
+[15:55] that's a great person
+[15:56] to live with,
+[15:57] or also,
+[15:58] real estate agents here,
+[15:59] you have to call them
+[15:59] and be like,
+[16:00] hey,
+[16:00] I want to show up
+[16:01] to the show,
+[16:01] and,
+[16:01] you know,
+[16:01] like,
+[16:01] Saturday at 4 p.m.
+[16:03] or something.
+[16:04] That's really,
+[16:04] really on top of it.
+[16:05] Yeah,
+[16:06] basically,
+[16:07] it's exactly the paradox
+[16:09] we talked about,
+[16:09] where this unlocks
+[16:10] opportunities
+[16:11] that you simply
+[16:12] didn't have in the past,
+[16:13] because you're not able,
+[16:15] you're not having
+[16:16] a phone agency
+[16:16] on your behalf
+[16:18] the entire time,
+[16:18] but if you think about it
+[16:19] from that lens,
+[16:20] you do have it,
+[16:21] so you suddenly can
+[16:22] call a bunch of people,
+[16:24] like,
+[16:24] call for housing options
+[16:26] and negotiate.
+[16:26] We are calling back.
+[16:28] Yes.
+[16:28] We're bringing it back.
+[16:29] We got rid of it,
+[16:29] but we're bringing it back now.
+[16:30] I mean,
+[16:31] calling is happening
+[16:32] all the time,
+[16:33] but it's just not happening
+[16:34] at a massive scale,
+[16:35] from a single person.
+[16:36] Yeah,
+[16:37] I mean,
+[16:38] you know,
+[16:38] it's like,
+[16:39] SF might seem,
+[16:41] I feel like the rest of the world,
+[16:42] even in the countries,
+[16:44] still very much calls.
+[16:45] It's a lot of calls,
+[16:46] yeah,
+[16:47] you're still doing a lot of calls.
+[16:47] There are some people
+[16:48] who haven't ever touched AI before,
+[16:50] which is also kind of insane.
+[16:51] Yeah,
+[16:52] so I think calling,
+[16:53] let's think,
+[16:54] if you just have someone
+[16:55] who is able to call,
+[16:56] you're basically a personal agent,
+[16:57] that is you,
+[16:58] a clone of yourself,
+[16:59] that is able to call,
+[17:00] like,
+[17:00] anyone you want,
+[17:02] what would be the things
+[17:03] you would call for?
+[17:03] So housing,
+[17:04] I think,
+[17:04] is great.
+[17:05] Because you can negotiate that.
+[17:07] And not only negotiate,
+[17:08] but like understand,
+[17:09] maybe,
+[17:09] Yeah,
+[17:09] just understand like,
+[17:10] or hey,
+[17:11] I want to show up
+[17:11] for this showing,
+[17:12] or understand like,
+[17:13] oh,
+[17:13] is this,
+[17:14] like,
+[17:14] the service,
+[17:14] the limit?
+[17:15] Yes,
+[17:15] reserving spots at restaurants.
+[17:18] This is like,
+[17:18] a bit like,
+[17:19] but yeah,
+[17:20] I mean,
+[17:22] it happens.
+[17:23] Medical doctors,
+[17:24] reserving medical doctors,
+[17:25] I feel like,
+[17:26] like scheduling appointments,
+[17:27] happening a lot.
+[17:30] That is like,
+[17:31] less negotiation,
+[17:32] but like,
+[17:33] a use case for calling.
+[17:34] Like,
+[17:34] if you want to reserve an appointment
+[17:35] at the barber,
+[17:36] or like,
+[17:36] that's also,
+[17:38] stuff like that.
+[17:38] Yeah,
+[17:39] it's also a good one.
+[17:44] Yeah,
+[17:44] I mean,
+[17:45] yeah,
+[17:45] it's something,
+[17:45] you want to enroll your kids
+[17:46] in like,
+[17:47] I don't know,
+[17:47] like a nursery.
+[17:48] Right.
+[17:49] Sure,
+[17:49] sure.
+[17:50] But I do think we should focus
+[17:51] on the negotiation aspect,
+[17:53] specifically.
+[17:54] Yeah,
+[17:54] yeah,
+[17:55] I agree.
+[17:56] Yeah,
+[17:56] I agree.
+[17:57] I agree.
+[17:58] So we,
+[17:58] what if you're negotiating
+[17:59] your term sheet
+[18:00] with a VC?
+[18:01] Sure,
+[18:02] sure.
+[18:02] They'll want an in-person meeting.
+[18:06] They'll want an in-person meeting.
+[18:07] But like,
+[18:07] but that's also good.
+[18:08] Like,
+[18:09] I'd be fine.
+[18:10] I probably wouldn't let the agent
+[18:11] do that for me.
+[18:12] Yeah.
+[18:13] I mean,
+[18:13] how about,
+[18:13] let me ask,
+[18:14] let me ask this.
+[18:14] What if I'm like,
+[18:15] you know,
+[18:15] like a street market
+[18:16] or negotiating stuff
+[18:18] like a bargaining?
+[18:19] Oh,
+[18:20] I don't know.
+[18:22] Yeah,
+[18:23] I thought about it as well.
+[18:24] Like,
+[18:24] you have the concept
+[18:25] of cold emails.
+[18:26] Many people don't do,
+[18:27] like,
+[18:27] some people do outbound
+[18:28] with cold calls,
+[18:29] but I think this is
+[18:31] really great
+[18:32] for like that as well.
+[18:34] But,
+[18:34] this is from...
+[18:35] At a flea market?
+[18:36] What?
+[18:36] At a flea market?
+[18:37] I'm gonna call
+[18:38] an email.
+[18:39] No,
+[18:40] just like,
+[18:40] you call?
+[18:41] Talk to me agent.
+[18:42] No,
+[18:42] you just call,
+[18:43] no,
+[18:43] you just call everyone
+[18:44] in the neighborhood
+[18:44] for like,
+[18:45] you know,
+[18:45] if you want to sell services,
+[18:47] you know.
+[18:48] But I'm talking about like,
+[18:49] like,
+[18:49] virtually bargaining.
+[18:50] Yeah.
+[18:51] Like,
+[18:51] I'm...
+[18:51] Oh.
+[18:52] Yeah,
+[18:52] yeah,
+[18:53] yeah.
+[18:54] Oh,
+[18:54] I think so,
+[18:55] it was,
+[18:56] I would be,
+[18:56] I would love to like,
+[18:57] have like,
+[18:57] an airpod in my ear
+[18:58] and my agent is just telling me,
+[18:59] like,
+[19:02] that could work.
+[19:03] That could be fun.
+[19:04] That could be a feature.
+[19:05] Feature,
+[19:06] not a bug.
+[19:06] Yeah.
+[19:07] Okay,
+[19:08] so,
+[19:08] I think we should negotiate.
+[19:09] What do you think we should negotiate?
+[19:10] I feel like we should go for something
+[19:11] that is clear negotiation.
+[19:13] It's clear,
+[19:13] it's a very clear improvement route.
+[19:16] So,
+[19:16] we can do that.
+[19:17] Housing is also one of the bigger ones.
+[19:19] Housing is great.
+[19:20] Have you guys heard of a lease AI?
+[19:22] Lease?
+[19:22] No.
+[19:24] They do,
+[19:24] it looks like,
+[19:25] AI for,
+[19:27] like,
+[19:27] housing market,
+[19:28] but also healthcare.
+[19:29] So,
+[19:29] we can honestly use,
+[19:30] like,
+[19:32] it seems like they're very,
+[19:33] I would literally just be like,
+[19:36] I would literally call a hundred renters.
+[19:40] And be like,
+[19:40] I have this option.
+[19:41] Honestly,
+[19:42] yeah.
+[19:42] Yeah,
+[19:42] yeah.
+[19:43] ASAP might be a part of,
+[19:44] but we could do,
+[19:45] like,
+[19:45] Indiana or something.
+[19:46] Yeah,
+[19:47] it could be whatever.
+[19:47] Yeah,
+[19:47] we could definitely run it.
+[19:49] Should we find a good desk at the world time?
+[19:51] Yeah,
+[19:51] I like this,
+[19:52] actually.
+[19:52] It's just fun.
+[19:53] Yeah?
+[19:53] I might be able to small phone.
+[19:55] Let me see if I can find that.
+[19:56] Okay.
+[19:56] Okay.
+[19:57] Okay.

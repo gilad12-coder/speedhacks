@@ -668,10 +668,11 @@ def test_leads_track_outreach_and_can_be_removed():
         assert "Your credit balance is too low." in client.get("/calls").text
 
         # Calling from Leads comes back to Leads.
-        r = client.post(f"/searches/{sid}/listings/zillow:z-1001/call",
+        # (fb-42's last call failed, so a new one is allowed.)
+        r = client.post(f"/searches/{sid}/listings/facebook:fb-42/call",
                         data={"next": "/leads"}, follow_redirects=False)
         assert r.headers["location"] == "/leads"
-        r = client.post(f"/searches/{sid}/listings/zillow:z-1001/call",
+        r = client.post(f"/searches/{sid}/listings/facebook:fb-42/call",
                         data={"next": "https://evil.example"}, follow_redirects=False)
         assert r.headers["location"] == f"/searches/{sid}"
 
@@ -785,3 +786,43 @@ def test_inbound_without_pin_only_takes_messages():
     assert briefing.settings.briefing_pin is None   # not set in the test env
     text = briefing.inbound_instruction()
     assert "take a message" in text and "FACTS" not in text
+
+
+def test_household_handoff_from_onboarding(monkeypatch):
+    from fastapi.testclient import TestClient
+    from househunt import db, platform
+    from househunt.web.app import app
+
+    brief = {"householdId": "hh_1", "occupants": 2, "location": "San Francisco",
+             "maxTotalRentUsd": 5200, "moveInFrom": "2026-11-01", "moveInTo": "2026-12-01",
+             "commute": {"destination": "SoMa", "mode": "bike", "modes": ["bike"], "maxMinutes": 30},
+             "mustHaves": ["laundry"], "dealBreakers": [], "niceToHaves": [],
+             "householdIncomeBandUsd": {"min": 150000, "max": 200000}, "wishes": []}
+    published = []
+
+    class FakeClient:
+        def briefs(self):
+            return [brief]
+
+        def publish(self, household_id, search_id):
+            published.append((household_id, search_id))
+
+    monkeypatch.setattr(platform, "PlatformClient", FakeClient)
+    with TestClient(app) as client:
+        r = client.get("/households/hh_1", follow_redirects=False)
+        assert r.status_code == 303
+        sid = int(r.headers["location"].rsplit("/", 1)[-1])
+        crit, row = db.get_search(sid)
+        assert (crit.city, crit.max_price, crit.min_beds, crit.must_haves) == (
+            "San Francisco", 5200, 2, ["laundry"])
+        assert row["status"] == "pending"            # the worker runs it, not the handoff
+        assert published == [("hh_1", sid)] and platform.wake.is_set()
+
+        # Coming back goes to the same search; no duplicate is created.
+        r2 = client.get("/households/hh_1", follow_redirects=False)
+        assert r2.headers["location"] == f"/searches/{sid}"
+        assert db.household_search("hh_1") == sid
+
+        # A household whose brief isn't requested yet gets a waiting page.
+        r3 = client.get("/households/hh_unknown", follow_redirects=False)
+        assert r3.status_code == 202 and "Starting your search" in r3.text

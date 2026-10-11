@@ -1,0 +1,116 @@
+# lang=en p=0.99 dur=647s
+[00:00] um if i'm just like looking like on craigslist like it might not be 100%
+[00:04] so you want to call to verify so i want to call to so you want to call to verify and you call to get
+[00:09] to search listings for an area let me walk you through the whole workflow right yes so
+[00:15] i'm me i'm moving to sf for work blah blah blah whatever um first thing i do i think about if i
+[00:21] want roommates right if i want roommates that's a whole other situation then there's the whole
+[00:25] finding roommates right if i don't want roommates i'm living alone then we just start with all right
+[00:31] well what are the constraints yeah budget budget is a huge one for most of course of course and that's
+[00:37] like where the negotiation that's where the negotiation can kind of come in right because
+[00:40] sometimes it's a little flexible right yeah um i'm thinking about commute i work in south bay so it's
+[00:45] very important that i come close to the cal train like that also has like implications right because
+[00:51] you can like live two minutes away from the cal train or you can live like near like a muni
+[00:57] station and uni over to the cal train so there's that optimization um so budget commute maybe amenities
+[01:03] if you want to be close to a gym or close to nightlife or something taking account into your personality
+[01:08] um then i might start looking i'm like start searching right so facebook craigslist anything i can get my
+[01:14] hands on zillow um then i will basically just like monitor like it's a weird stage of like you also
+[01:22] have to come in at the right time like ss you have to come in like about a month before you're ready
+[01:26] to move in because if you come in too early nothing will be open if you come in too late everyone's going
+[01:31] to take your meal so you have to be kind of ready to like yeah i'd say like honestly 90 percent of it
+[01:37] is just like market time yeah it's just waiting it's just like kind of waiting around assessing the
+[01:42] situation yeah we try to move in we couldn't even find a place that was the first like problem
+[01:46] like we couldn't even find a place right right right exactly that's okay honestly okay like i would
+[01:50] like to hear what you guys yeah i don't know what angle like approach this from yeah i think the
+[01:56] first thing is to um what do you mean if you wanted to focus fully on housing yeah i don't know what
+[02:03] no let's focus fully on housing yeah uh we focus fully on housing we do one vertical um just because
+[02:09] we don't have the time um and also it might be the argument could always be like you can do this for
+[02:13] housing yeah so the first thing yeah yeah and the first thing would be um so for housing specifically
+[02:18] the workflow from what i understand you do a certain interview so like the agent interviews
+[02:22] or we do a certain intake form you tell us everything that's relevant then there is sourcing
+[02:27] so ideally we can use agents to source as well like web browser agents i'm putting the budget aside
+[02:31] now i'm just like what's the best absolute service i can make so i would make something that
+[02:36] scrapes ap apis or make an agent that looks browses thing uh just browses the web and then i would
+[02:43] use dial in order to call a bunch of uh real estate agents as well as personal people on their
+[02:50] marketplace that's what i do right and then the and then the first thing that you want to do is to
+[02:58] verify right so that's the first thing first you verify um that everything is like you you just check
+[03:04] out the information yeah that it's a real listing that by the way that's a massive one yeah with a
+[03:10] lot of dozen yeah yeah yeah interesting so that's like the first thing i would do um yes um that's
+[03:17] the first thing you dial to for for verification after that you verify details like not only like
+[03:23] the listing is legit and it's great because once you verify a place is fake if you're using our service
+[03:29] like we'll we'll just relate it already yeah yeah so you do that um yeah you erase that you now know
+[03:37] what listing is real you uh check out the boxes that are relevant to you and then the next thing
+[03:42] would be to tour the apartment right sure yeah so you schedule the tour to schedule the apartment for
+[03:48] you the tour for you of course um we can use dial to call to schedule a tour yeah i think it's part of
+[03:53] the same i think it's the time of the same call oh okay sure like you do it in the same call yeah um
+[03:59] and it's connected to your calendar so you're able to fit it in and like there's context there and it
+[04:03] knows uh when it can do that when it's not you you basically tell us when you're able to view
+[04:07] um and then you this is the part where dialing ends right or is there more dialing here
+[04:13] that needs to occur you can call to schedule a tour you go in person there might be some follow-up like
+[04:17] hey i'm actually interested in this place or like you know yeah so like close the place right yeah
+[04:23] but the closing is usually not on the phone am i right like maybe it's on the phone yeah that's true
+[04:32] yeah like signing a lease will probably be over email yeah but what i'm trying to say is that no but
+[04:37] what i'm trying to say is that where can we ideally negotiate um on the phone because i'm looking for
+[04:45] that negotiation uh uh have it read the lease and be like point out areas okay and then negotiate
+[04:52] and yeah exactly like oh i have it doesn't even have to be about price but it could just be like
+[04:56] oh no pets i have a for this for this event let's say we we didn't have the negotiation layer but it did
+[05:02] get you a finite list of people that are of like listings that are verified and that are legit the
+[05:10] person says like and it's according to your exact like description of what you wanted how much of a
+[05:15] time server is that a huge one humongous humongous okay let's do that then let's do that you do
+[05:21] agree with that okay so let's only focus on let's put the negotiation aside for now and let's only
+[05:26] focus on dialing to just like narrow down the information to yeah that would be like step one
+[05:31] and we can always build that's it yeah yeah but in the half of our right now we don't have a lot of time
+[05:35] we're cooking guys yeah okay so that's what we should do um okay i think we should separate the work
+[05:42] um to three steps first thing would be um the intake form uh so i think you either one of you because i
+[05:52] don't have like the exact details uh in my mind you you specify your budget you specify the amount of
+[06:00] oh that's nice okay yeah i feel like we're like cooking now the location yeah yeah this is actually
+[06:06] a very helpful chat yeah okay so you you guys sat you guys i think how ambitious are you being so okay
+[06:12] so you've now focused now let's 10x i mean we're just gonna be able to call dozens of like real estate
+[06:21] agents and all of that to be able to actually source the listings for you yeah what would be cool
+[06:26] i'm again sorry i'm such a like so pedantic with these yeah yeah i just can't help myself yeah it's
+[06:32] okay it's okay it's yeah it's the founder in me uh yeah yeah so what's the outcome how are we gonna be
+[06:37] like okay we have this story which is great and it's focused on that negotiation what's to resolve
+[06:43] what like what is like okay so we uh i think parcel story maybe put you see that you know it'll be me
+[06:50] it's gonna be me yeah and then like you know what uh and then as a result now we were able to call
+[06:57] x number of uh real estate agents yeah it could even be just literally my personal example i'll put
+[07:03] in like where i'm living right now how much my rent is which is great and then it'll be a test of
+[07:08] like can you find me an even better place in like six months when my lease ends right yeah and you
+[07:14] could take a percentage of that money right right exactly yeah but also it could be like oh like
+[07:20] it's already like so it's already started speaking to people it would be good if you guys
+[07:24] pretend that you guys are actually like uh you guys are going to go oh we're looking for a place
+[07:27] together yeah yeah yeah that would be fun yeah so you play it as that right and then you play
+[07:32] i'm looking for a hacker house together yeah that could be such a great use case everyone
+[07:36] you guys pretend you're doing that and then it meant that we can be hypothetical and then like oh this
+[07:42] meant that we i mean if they could actually call that would be cool yeah i think they probably
+[07:47] could if we integrate dial yeah yeah there's like a public number i think i think the calling is a
+[07:53] very important layer here um without this we have to make it through a full cycle of a phone call but
+[07:58] yeah i think we can't this is a big and i don't know what it's like in the uk uh us but emails are a
+[08:03] big part of this too sure sure yeah you first have to do a lot of emails and back and forth and
+[08:07] messaging just like that and then there's a layer of yeah also there is another layer that i personally
+[08:13] experienced which is that so when you so you have to apply to the housing before you even like sign
+[08:17] oh yeah and they're quite selective about so yeah they're selective so you know straight out of uh
+[08:23] grad you know they saw our income you know we're not making like five hundred thousand dollars a year
+[08:27] and we lost a few places like folks you know like a married couple and they're like 40s that are
+[08:32] right right so that's something that like yeah this can't do this right like
+[08:38] come in they come really yeah it should be able to fill it up wait it can it can also tell because
+[08:44] i mean i follow the third element but i didn't want to i want to focus for you guys but it's like
+[08:48] it doesn't just negotiate between the state agent and then you and your like housemates it negotiates
+[08:54] to you where it's like realistically you were telling me you wanted this but now you say right
+[08:58] exactly it can save you time in that way too like set expectations yeah i will because i i went
+[09:03] through the process and i had to like someone hire a real estate broker i'll say this what what
+[09:09] almost guarantees you getting in place a lot of the time it's you being the first person to like
+[09:14] exactly speed yep speed is a big thing which this can also help with right but i mean i i mean
+[09:19] listen in uk they have like oh um we we only like this is not for students or sure you can also just
+[09:27] like use this because it's like i think you're conceiving over to when you are human doing this
+[09:31] right and you can then use the calls with the stage to be like what is the kind of ideal occupant for
+[09:38] this place yeah yeah yeah and then as a result then they might say no sorry we want someone who's
+[09:42] earning 500 000 pounds yeah so then you're like okay you should then so then the agent comes back to
+[09:47] you and negotiates and says actually this one's not for you yeah that's the entire so this is like the
+[09:51] sourcing stage yeah for sure we do that okay yeah but i believe you guys do it this is great yes i did
+[09:59] did you guys manage to work with a life yet no yeah we just i just installed it yeah yeah
+[10:07] let me know uh if you guys have any problems with it uh i wait i i think this is a great idea so like i'm
+[10:13] very passive invested so i'd pay for this yeah i'd pay for this as well yeah yeah i know if it works well yeah
+[10:20] yeah i would totally use it so uh yeah i'd leave you to it let me know if you guys have any questions
+[10:26] yes this is ambitious i think oh i have a question uh where do you get the merch like the hats i want the hat
+[10:32] oh yeah i have no idea man i want to grab a hat yeah yeah i want to go i'll grab your hat as well
+[10:36] would you like the yellow the uh they have yellow or red no it's red and gray what do you want red yeah
+[10:42] i'll do the red yeah yeah thank you yeah let me close the map i'm here cool let me search

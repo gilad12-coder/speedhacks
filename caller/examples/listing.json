@@ -1,0 +1,16 @@
+{
+  "brief": {
+    "householdId": "demo-household", "occupants": 3, "maxTotalRentUsd": 5000,
+    "moveInFrom": "2026-11-01", "moveInTo": "2026-11-15",
+    "commute": { "destination": "San Francisco Caltrain", "mode": "transit", "maxMinutes": 30 },
+    "mustHaves": ["in-unit laundry"], "dealBreakers": ["pets prohibited"], "niceToHaves": [],
+    "householdIncomeBandUsd": { "min": 0, "max": 0 }
+  },
+  "listings": [{
+    "id": "demo-flat", "source": "curated", "sourceUrl": "https://example.com/fictional-rental",
+    "address": "123 Example Street, San Francisco (fictional test listing)", "neighborhood": "Mission Bay",
+    "rentUsd": 4500, "bedrooms": 2, "bathrooms": 1, "photoUrls": [],
+    "contact": { "name": "Test landlord", "role": "property_manager", "phone": "+14155550123" },
+    "commuteMinutes": 15, "status": "found"
+  }]
+}
