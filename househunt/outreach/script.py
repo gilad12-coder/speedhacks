@@ -5,7 +5,9 @@ from __future__ import annotations
 from househunt.models import Listing, SearchCriteria
 
 
-def build_instruction(listing: Listing, criteria: SearchCriteria, renter_name: str) -> str:
+def build_instruction(listing: Listing, criteria: SearchCriteria, renter_name: str,
+                      notes: list[str] | None = None) -> str:
+    """notes: the renter's running notes and concerns about this place (from chats or typed in)."""
     facts = [f"Listing: {listing.title}"]
     if listing.address:
         facts.append(f"Address: {listing.address}")
@@ -25,6 +27,14 @@ def build_instruction(listing: Listing, criteria: SearchCriteria, renter_name: s
     for m in criteria.must_haves:
         questions.append(f"Confirm: does it have / allow {m}?")
 
+    concerns = [
+        "The renter has these notes and concerns about this place. Ask about any open "
+        "questions or concerns naturally, after the questions above, and don't repeat things "
+        "the contact already answered:",
+        *[f"- {n}" for n in notes],
+        "",
+    ] if notes else []
+
     tour = (
         f"If it is available and fits, try to book an in-person viewing. The renter is free: "
         f"{'; '.join(criteria.tour_availability)}. Agree on one specific date and time, and "
@@ -43,6 +53,7 @@ def build_instruction(listing: Listing, criteria: SearchCriteria, renter_name: s
         "Ask these questions, conversationally and one at a time:",
         *[f"{i}. {q}" for i, q in enumerate(questions, 1)],
         "",
+        *concerns,
         tour,
         "",
         "Rules:",

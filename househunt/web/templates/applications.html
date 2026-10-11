@@ -6,7 +6,11 @@
 <style>
   /* journey */
   .journey { display:grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 0; overflow: hidden; }
-  .jstep { padding: 16px 18px 18px; position: relative; border-right: 1px solid var(--line); }
+  .jstep { padding: 16px 18px 18px; position: relative; border-right: 1px solid var(--line); color: inherit;
+    transition: background .12s; }
+  a.jstep:hover { background: var(--sunken); text-decoration: none; }
+  .jstep .go { color: var(--faint); opacity: 0; transition: opacity .12s; vertical-align: -2px; }
+  a.jstep:hover .go { opacity: 1; }
   .jstep:last-child { border-right: 0; }
   .jstep .num { width: 26px; height: 26px; border-radius: 99px; display:grid; place-items:center; font-size: 12px;
     font-weight: 600; border: 2px solid var(--line); color: var(--muted); margin-bottom: 10px; }
@@ -105,12 +109,13 @@
 <div class="card journey" aria-label="Search progress">
   {% for key, name in journey %}
     {% set i = loop.index0 %}
-    <div class="jstep {{ 'done' if i < step else ('now' if i == step else '') }}">
+    {% set href = {"search": "/", "calls": "/calls", "viewings": "/viewings", "apply": "#board", "lease": "#board"}[key] %}
+    <a class="jstep {{ 'done' if i < step else ('now' if i == step else '') }}" href="{{ href }}">
       <div class="num">{{ "✓" if i < step else loop.index }}</div>
-      <div class="name">{{ name }}</div>
+      <div class="name">{{ name }} <span class="go">{{ icon("arrow", 13) }}</span></div>
       <div class="sub">{{ subs[i] }}</div>
       {% if i == step %}<span class="here">You are here</span>{% endif %}
-    </div>
+    </a>
   {% endfor %}
 </div>
 
@@ -180,7 +185,7 @@
 </article>
 {% endmacro %}
 
-<h2>Board</h2>
+<h2 id="board">Board</h2>
 {% if apps %}
 <div class="board">
   {% for s in stages if not s.closed %}

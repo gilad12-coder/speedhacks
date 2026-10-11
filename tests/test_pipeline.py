@@ -274,3 +274,142 @@ def test_add_contact_and_listing_by_hand():
 
         assert client.post(f"/searches/{sid}/listings", data={"url": "not a link"},
                            follow_redirects=False).status_code == 400
+
+
+class _Block:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+    def to_dict(self):
+        return {k: v for k, v in self.__dict__.items()}
+
+
+class _FakeStream:
+    def __init__(self, final, chunks):
+        self.final, self.text_stream = final, iter(chunks)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def get_final_message(self):
+        return self.final
+
+
+class _FakeClaude:
+    """Turn 1: save a note via the tool. Turn 2 (after the tool result): reply in text."""
+
+    def __init__(self):
+        self.requests = []
+        self.beta = self
+        self.messages = self
+
+    def stream(self, **kw):
+        self.requests.append(kw)
+        if len(self.requests) == 1:
+            final = _Block(stop_reason="tool_use", content=[
+                _Block(type="text", text="Noted."),
+                _Block(type="tool_use", id="tu1", name="save_note",
+                       input={"note": "Ask whether street noise is a problem at night"})])
+            return _FakeStream(final, ["Noted."])
+        final = _Block(stop_reason="end_turn",
+                       content=[_Block(type="text", text="I'll raise it on the next call.")])
+        return _FakeStream(final, ["I'll raise it ", "on the next call."])
+
+
+def _events(resp):
+    import json
+    return [json.loads(line) for line in resp.text.splitlines() if line]
+
+
+def test_place_chat_saves_notes_that_calls_use(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from househunt import chat, db, llm, pipeline
+    from househunt.models import SearchCriteria
+    from househunt.outreach.script import build_instruction
+    from househunt.web.app import app
+
+    fake = _FakeClaude()
+    monkeypatch.setattr(llm, "has_credentials", lambda: True)
+    monkeypatch.setattr(llm, "client", lambda: fake)
+
+    with TestClient(app) as client:
+        sid = db.create_search(SearchCriteria(city="sf", max_price=3000, min_beds=1))
+        pipeline.run_search(sid)
+        key = "zillow:z-1001"
+        r = client.post(f"/searches/{sid}/listings/{key}/chat", follow_redirects=False)
+        chat_id = int(r.headers["location"].rsplit("/", 1)[-1])
+        # Same place, same chat.
+        r2 = client.post(f"/searches/{sid}/listings/{key}/chat", follow_redirects=False)
+        assert r2.headers["location"] == r.headers["location"]
+
+        events = _events(client.post(f"/chats/{chat_id}/messages",
+                                     data={"message": "I'm worried it's noisy at night"}))
+        assert {"t": "note", "v": "Ask whether street noise is a problem at night"}.items() <= \
+            next(e for e in events if e["t"] == "note").items()
+        assert events[-1] == {"t": "done"}
+        assert "on the next call." in "".join(e["v"] for e in events if e["t"] == "text")
+
+        # The first request carried the user's message followed by a fresh context snapshot.
+        first = fake.requests[0]["messages"]
+        assert [m["role"] for m in first] == ["user", "system"]
+        assert "Sunny 2BR near the park" in first[1]["content"]
+        # The second request echoed the tool call and its result.
+        second = fake.requests[1]["messages"]
+        assert second[-1]["content"][0]["type"] == "tool_result"
+
+        notes = db.place_notes(sid, key)
+        assert notes == ["Ask whether street noise is a problem at night"]
+        listing, (criteria, _) = db.get_listing(sid, key), db.get_search(sid)
+        assert "street noise" in build_instruction(listing, criteria, "Lucy", notes)
+
+        # Notes show on the card, the chat page, and can be edited.
+        assert "street noise" in client.get(f"/searches/{sid}").text
+        assert "street noise" in client.get(f"/chats/{chat_id}").text
+        r = client.post(f"/places/{sid}/{key}/notes/add", data={"note": "Parking included?"})
+        assert r.json()["added"] and len(r.json()["notes"]) == 2
+        client.post(f"/places/{sid}/{key}/notes", data={"notes": "Parking included?"},
+                    headers={"x-requested-with": "fetch"})
+        assert db.place_notes(sid, key) == ["Parking included?"]
+
+        # A second turn only re-sends context when it changed (the notes did).
+        client.post(f"/chats/{chat_id}/messages", data={"message": "thanks"})
+        roles = [m["role"] for m in fake.requests[-1]["messages"]]
+        assert roles.count("system") == 2 and roles[-1] == "system"
+
+
+def test_chat_without_key_keeps_history_valid(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from househunt import db, llm
+    from househunt.web.app import app
+
+    monkeypatch.setattr(llm, "has_credentials", lambda: False)
+    with TestClient(app) as client:
+        r = client.get("/chats/agent", follow_redirects=False)
+        chat_id = int(r.headers["location"].rsplit("/", 1)[-1])
+        events = _events(client.post(f"/chats/{chat_id}/messages", data={"message": "hi"}))
+        assert events[0]["t"] == "error" and "ANTHROPIC_API_KEY" in events[0]["v"]
+        assert [m["role"] for m in db.chat_messages(chat_id)] == ["user", "system", "assistant"]
+        assert client.get(f"/chats/{chat_id}").status_code == 200
+
+
+def test_calls_and_viewings_pages():
+    from fastapi.testclient import TestClient
+
+    from househunt import db, pipeline
+    from househunt.models import SearchCriteria
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        assert "No calls yet" in client.get("/calls").text
+        sid = db.create_search(SearchCriteria(city="sf", max_price=3000, min_beds=1))
+        pipeline.run_search(sid)
+        page = client.get("/calls").text
+        assert "Sunny 2BR near the park" in page and "Discuss" in page
+        assert client.get("/viewings").status_code == 200
+        apps = client.get("/applications").text
+        assert 'href="/calls"' in apps and 'href="/viewings"' in apps
