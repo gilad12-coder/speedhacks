@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
+  briefFingerprint,
   confirmBrief,
   createHousehold,
   findHouseholdByCode,
@@ -141,6 +142,22 @@ export async function startSearch(householdId: string) {
   // Onboarding is done: continue in the main KeyHunt app, which runs the search.
   const next = mainAppUrl(householdId);
   if (next) redirect(next);
+}
+
+// The interview's "Start search": a solo household has nothing left to agree on, so finishing the interview
+// confirms its brief. A group still confirms together on the household page, so it's sent there instead.
+export async function startSearchFromInterview(householdId: string): Promise<{ next: string }> {
+  await requireMember(householdId);
+  const state = await getHouseholdState(householdId);
+  const next = `/h/${householdId}`;
+  if (!state) return { next };
+  const { household } = state;
+  if (household.expectedSize === 1 && !household.confirmed) {
+    await confirmBrief(householdId, briefFingerprint(household));
+  }
+  if (household.housemates.length >= household.expectedSize) await requestSearch(householdId);
+  revalidatePath(next);
+  return { next };
 }
 
 export async function bookTour(householdId: string, listingId: string, start: string, end: string): Promise<FormState> {

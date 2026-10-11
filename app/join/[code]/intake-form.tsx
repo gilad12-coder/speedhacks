@@ -5,11 +5,9 @@ import { startTransition, useActionState, useEffect, useRef, useState } from "re
 import { submitIntake, type FormState } from "@/app/actions";
 import { DateField, todayIso } from "@/components/date-field";
 import { NumberStepper } from "@/components/number-stepper";
-import { SelectField } from "@/components/select-field";
 import { AddressField } from "@/components/address-field";
 import { CommuteModes } from "@/components/commute-modes";
 import { Button } from "@/components/shell";
-import { INCOME_BANDS } from "@/lib/features";
 import type { Housemate } from "@/lib/types";
 
 const inputClass =
@@ -95,9 +93,6 @@ export function IntakeForm({
   };
   const stepRefs = useRef<(HTMLDivElement | null)[]>([]);
   const firstRender = useRef(true);
-  const band = me
-    ? INCOME_BANDS.findIndex((b) => b.min === me.incomeBandUsd.min)
-    : -1;
 
   const steps: Step[] = [
     {
@@ -105,9 +100,9 @@ export function IntakeForm({
       icon: UserRound,
       title: "First, a little about you",
       hint: solo
-        ? "Landlords often ask about income. Keyhunt only shares the range, never more."
-        : "Housemates see your name. Income only counts toward the group total.",
-      fields: ["firstName", "lastName", "incomeBand"],
+        ? "Keyhunt gives this name when it calls landlords for you."
+        : "Housemates see it, and Keyhunt gives it when it calls landlords for you.",
+      fields: ["firstName"],
       body: (err) => (
         <div className="grid gap-6">
           <div className="grid grid-cols-2 gap-4">
@@ -122,29 +117,6 @@ export function IntakeForm({
                 maxLength={40}
                 aria-invalid={!!err.firstName}
                 className={inputClass}
-              />
-            </Field>
-            <Field label="Last name" htmlFor="q-last-name" error={err.lastName}>
-              <input
-                id="q-last-name"
-                name="lastName"
-                data-field="lastName"
-                data-required="Add your last name"
-                defaultValue={names.lastName}
-                autoComplete="family-name"
-                maxLength={60}
-                aria-invalid={!!err.lastName}
-                className={inputClass}
-              />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Yearly income, roughly" htmlFor="q-income" error={err.incomeBand}>
-              <SelectField
-                id="q-income"
-                name="incomeBand"
-                defaultValue={String(band >= 0 ? band : 1)}
-                options={INCOME_BANDS.map((b, i) => ({ value: String(i), label: b.label }))}
               />
             </Field>
           </div>

@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { detectConflicts } from "./brief";
 import { newId } from "./crypto";
 import { sql } from "./db";
-import { INCOME_BANDS } from "./features";
 import type { InterviewMessage, InterviewResult } from "./interview";
 import type { Intake } from "./schemas";
 import type { Account } from "./session";
@@ -32,8 +31,8 @@ interface HousemateRow {
   wishes: string[];
   move_in_from: string;
   move_in_to: string;
-  income_min: number;
-  income_max: number;
+  income_min: number | null;
+  income_max: number | null;
   calendar_connected: boolean;
 }
 
@@ -55,7 +54,7 @@ function toHousemate(r: HousemateRow): Housemate {
     wishes: r.wishes,
     moveInFrom: r.move_in_from,
     moveInTo: r.move_in_to,
-    incomeBandUsd: { min: r.income_min, max: r.income_max },
+    incomeBandUsd: r.income_min == null || r.income_max == null ? null : { min: r.income_min, max: r.income_max },
     calendarConnected: r.calendar_connected,
     intakeComplete: true,
   };
@@ -133,12 +132,10 @@ export async function upsertHousemate(
   intake: Intake,
   account: Account | null,
 ): Promise<string> {
-  const band = INCOME_BANDS[intake.incomeBand];
   const values = {
     // Conflicts and the dashboard address housemates by first name.
     name: intake.firstName,
     first_name: intake.firstName,
-    last_name: intake.lastName,
     ...(account && { google_sub: account.sub, email: account.email }),
     location: intake.location,
     max_budget_usd: intake.maxBudgetUsd,
@@ -148,8 +145,6 @@ export async function upsertHousemate(
     max_commute_minutes: intake.maxCommuteMinutes,
     move_in_from: intake.moveInFrom,
     move_in_to: intake.moveInTo,
-    income_min: band.min,
-    income_max: band.max,
   };
 
   return sql.begin(async (tx) => {

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
-  ArrowRight,
   Ban,
   Check,
   ChevronLeft,
@@ -12,23 +11,36 @@ import {
   Pencil,
   RefreshCw,
   RotateCcw,
+  Search,
   ShieldCheck,
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
-import { interviewTurn, type InterviewTurnOptions } from "@/app/actions";
+import { useRouter } from "next/navigation";
+import { interviewTurn, startSearchFromInterview, type InterviewTurnOptions } from "@/app/actions";
 import { AgentText, ThinkingIndicator, UserBubble } from "@/components/agent/bubbles";
 import { Composer } from "@/components/agent/composer";
 import { QuestionChoices } from "@/components/agent/question-choices";
 import { AgentThread } from "@/components/agent/thread";
+import { FEATURES } from "@/lib/features";
 import type { InterviewMessage, InterviewResult } from "@/lib/interview";
 
-const SUMMARY_ROWS: { key: keyof InterviewResult; label: string; hint: string; icon: LucideIcon; tone: string }[] = [
-  { key: "mustHaves", label: "Must have", hint: "Every place Keyhunt shows you will have these.", icon: ShieldCheck, tone: "bg-green-soft text-green-ink" },
-  { key: "niceToHaves", label: "Nice to have", hint: "Places with these rank higher.", icon: Sparkles, tone: "bg-amber-soft text-amber-ink" },
-  { key: "dealBreakers", label: "Rule out", hint: "Places like this never make the list.", icon: Ban, tone: "bg-red-soft text-red-ink" },
-  { key: "wishes", label: "Also looking for", hint: "In your own words, so Keyhunt can weigh them too.", icon: MessageSquareQuote, tone: "bg-sunk text-ink" },
+const SUMMARY_ROWS: {
+  key: keyof InterviewResult;
+  label: string;
+  hint: string;
+  icon: LucideIcon;
+  tone: string;
+  dot: string;
+  describe?: (does: string) => string;
+}[] = [
+  { key: "mustHaves", label: "Must have", hint: "Every place Keyhunt shows you will have these.", icon: ShieldCheck, tone: "bg-green-soft text-green-ink", dot: "bg-green", describe: (d) => `Keyhunt only shows places that ${d}.` },
+  { key: "niceToHaves", label: "Nice to have", hint: "Places with these rank higher.", icon: Sparkles, tone: "bg-amber-soft text-amber-ink", dot: "bg-amber-ink", describe: (d) => `Places that ${d} move up your list.` },
+  { key: "dealBreakers", label: "Rule out", hint: "Places like this never make the list.", icon: Ban, tone: "bg-red-soft text-red-ink", dot: "bg-red-ink", describe: (d) => `Places that ${d} are left out.` },
+  { key: "wishes", label: "Also looking for", hint: "In your own words, so Keyhunt can weigh them too.", icon: MessageSquareQuote, tone: "bg-sunk text-ink", dot: "bg-ink-3" },
 ];
+
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 // What the finish tool saved, shown once the agent ends the interview: one slide per kind of preference.
 function Summary({ result }: { result: InterviewResult }) {
@@ -118,16 +130,22 @@ function Summary({ result }: { result: InterviewResult }) {
                 </span>
                 <p className="text-sm text-ink-2">{r.hint}</p>
               </div>
-              <ul key={i === index ? "on" : "off"} className="mt-4 flex flex-wrap gap-2">
-                {result[r.key].map((item, n) => (
-                  <li
-                    key={item}
-                    className={`summary-chip rounded-full px-3.5 py-1.5 text-sm font-medium ${r.tone}`}
-                    style={{ animationDelay: `${120 + n * 50}ms` }}
-                  >
-                    {item}
-                  </li>
-                ))}
+              <ul key={i === index ? "on" : "off"} className="mt-4 flex flex-col gap-3">
+                {result[r.key].map((item, n) => {
+                  const does = FEATURES.find((f) => f.label === item)?.does;
+                  return (
+                    <li key={item} className="summary-item flex gap-3" style={{ animationDelay: `${120 + n * 60}ms` }}>
+                      <span aria-hidden className={`mt-2 size-1.5 shrink-0 rounded-full ${r.dot}`} />
+                      {r.describe && does ? (
+                        <p className="text-sm leading-relaxed text-ink-2">
+                          <span className="font-medium text-ink">{item}.</span> {r.describe(does)}
+                        </p>
+                      ) : (
+                        <p className="text-sm leading-relaxed text-ink">{capitalize(item)}</p>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           );
@@ -222,8 +240,16 @@ export function InterviewChat({
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
+  const [starting, startSearching] = useTransition();
+  const router = useRouter();
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const started = useRef(false);
+
+  const beginSearch = () =>
+    startSearching(async () => {
+      const { next } = await startSearchFromInterview(householdId);
+      router.push(next);
+    });
 
   const run = (answer: string | null, options: InterviewTurnOptions = {}) => {
     setError(null);
@@ -311,27 +337,37 @@ export function InterviewChat({
         )}
       </AgentThread>
 
-      {locked ? (
-        <p className="shrink-0 border-t border-line pt-4 text-ink-2">The search has started, so your answers are locked.</p>
-      ) : done ? (
+      {locked ? null : done ? (
         <div className="choices-in flex shrink-0 items-center gap-3 border-t border-line pt-4">
           <button
             type="button"
             aria-label="Start the interview over"
             title="Start the interview over"
             onClick={() => run(null, { restart: true })}
-            disabled={pending}
+            disabled={pending || starting}
             className="flex size-12 items-center justify-center rounded-lg text-ink-2 hover:bg-sunk hover:text-ink disabled:text-ink-3"
           >
             <RotateCcw aria-hidden className="size-5" />
           </button>
-          <a
-            href={`/h/${householdId}`}
-            className="ms-auto inline-flex h-12 items-center gap-2 rounded-lg bg-green px-5 font-medium text-on-green hover:bg-green-hover"
+          <button
+            type="button"
+            onClick={beginSearch}
+            disabled={pending || starting}
+            aria-busy={starting}
+            className="ms-auto inline-flex h-12 items-center gap-2 rounded-lg bg-green px-5 font-medium text-on-green hover:bg-green-hover disabled:opacity-90"
           >
-            See your household
-            <ArrowRight aria-hidden className="size-4" />
-          </a>
+            {starting ? (
+              <>
+                <span aria-hidden className="size-4 animate-spin rounded-full border-2 border-on-green/30 border-t-on-green" />
+                Starting your search…
+              </>
+            ) : (
+              <>
+                <Search aria-hidden className="size-4" />
+                Start search
+              </>
+            )}
+          </button>
         </div>
       ) : (
         <>

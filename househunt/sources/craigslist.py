@@ -38,7 +38,8 @@ SITE_ALIASES = {
 
 
 def site_for(city: str) -> tuple[str, str | None]:
-    c = city.lower().strip()
+    # Keyhunt's form sends "San Francisco, California"; Craigslist sites are named after the city alone.
+    c = city.split(",")[0].lower().strip()
     return SITE_ALIASES.get(c, (re.sub(r"[^a-z]", "", c), None))
 
 
