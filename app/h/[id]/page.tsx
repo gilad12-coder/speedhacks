@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { CalendarCheck, CalendarX, ChevronDown, CircleAlert, Users } from "lucide-react";
 import { confirmHouseholdBrief, startSearch } from "@/app/actions";
+import Link from "next/link";
 import { ProfileMenu } from "@/components/profile-menu";
 import { Button, Wordmark } from "@/components/shell";
 import { buildSearchBrief } from "@/lib/brief";
@@ -150,6 +151,9 @@ export default async function HouseholdPage({
                       : "This page updates on its own."
                     : `Every place Keyhunt found, and what happened to it.`}
                 </p>
+                <Link href={`/h/${id}/search`} className="shrink-0 text-sm font-semibold text-green-ink underline decoration-line-strong underline-offset-4 hover:text-green">
+                  Open your search →
+                </Link>
               </div>
               {searching && !run?.listings.length ? (
                 <div className="mt-6">

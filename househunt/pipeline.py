@@ -89,7 +89,24 @@ def calendar_availability() -> list[str]:
         return []
 
 
+_running_lock = threading.Lock()
+_running_searches: set[int] = set()
+
+
 def run_search(search_id: int, on_update=lambda: None) -> None:
+    """Run a search; a second request for a search that's already running is a no-op."""
+    with _running_lock:
+        if search_id in _running_searches:
+            return
+        _running_searches.add(search_id)
+    try:
+        _run_search(search_id, on_update)
+    finally:
+        with _running_lock:
+            _running_searches.discard(search_id)
+
+
+def _run_search(search_id: int, on_update=lambda: None) -> None:
     criteria, _ = db.get_search(search_id)
     def publish():
         try:

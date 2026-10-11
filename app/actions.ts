@@ -24,7 +24,7 @@ import { intakeSchema } from "@/lib/schemas";
 import { getAccount, getHousemateId, setHousemateSession } from "@/lib/session";
 import { acceptTour, TourError } from "@/lib/tours";
 import { GoogleError } from "@/lib/google";
-import { mainAppUrl, workerRequest } from "@/lib/agent-worker";
+import { workerRequest } from "@/lib/agent-worker";
 
 export interface FormState {
   error?: string;
@@ -139,9 +139,10 @@ export async function startSearch(householdId: string) {
   if (!state || state.household.housemates.length < state.household.expectedSize || !state.household.confirmed) return;
   await requestSearch(householdId);
   revalidatePath(`/h/${householdId}`);
-  // Onboarding is done: continue in the main KeyHunt app, which runs the search.
-  const next = mainAppUrl(householdId);
-  if (next) redirect(next);
+  // Nudge the search engine so sourcing starts now; its worker also polls, so a miss is fine.
+  await workerRequest(`/agent/households/${encodeURIComponent(householdId)}/start`, { method: "POST" }).catch(() => null);
+  // Onboarding is done: continue in the household's search workspace.
+  redirect(`/h/${householdId}/search`);
 }
 
 // The interview's "Start search": a solo household has nothing left to agree on, so finishing the interview
@@ -155,9 +156,15 @@ export async function startSearchFromInterview(householdId: string): Promise<{ n
   if (household.expectedSize === 1 && !household.confirmed) {
     await confirmBrief(householdId, briefFingerprint(household));
   }
-  if (household.housemates.length >= household.expectedSize) await requestSearch(householdId);
+  if (household.housemates.length < household.expectedSize || !(household.expectedSize === 1 || household.confirmed)) {
+    revalidatePath(next);
+    return { next };
+  }
+  await requestSearch(householdId);
   revalidatePath(next);
-  return { next };
+  // Same as startSearch: nudge the search engine, then continue in the search workspace.
+  await workerRequest(`/agent/households/${encodeURIComponent(householdId)}/start`, { method: "POST" }).catch(() => null);
+  return { next: `/h/${householdId}/search` };
 }
 
 export async function bookTour(householdId: string, listingId: string, start: string, end: string): Promise<FormState> {

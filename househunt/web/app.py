@@ -84,6 +84,10 @@ def household_voice_page(household_id: str):
         raise HTTPException(404, "Start your household search before setting up its voice")
     return RedirectResponse(f"/searches/{sid}/voice", status_code=303)
 
+from househunt.web.household_api import router as _household_api  # noqa: E402
+
+app.include_router(_household_api)
+
 # Sidebar tabs: (path, label, icon). A tab shows up once its route exists.
 NAV = [("/", "Searches", "list"), ("/leads", "Leads", "star"), ("/calls", "Calls", "phone"), ("/viewings", "Viewings", "calendar"),
        ("/applications", "Applications", "clipboard"), ("/chats/agent", "Ask your agent", "chat"),
