@@ -17,7 +17,7 @@ import {
   saveInterview,
   upsertHousemate,
 } from "@/lib/households";
-import { InterviewError, nextAgentStep, type InterviewMessage } from "@/lib/interview";
+import { InterviewError, nextAgentStep, type InterviewMessage, type InterviewResult } from "@/lib/interview";
 import { areaFromText } from "@/lib/places";
 import { intakeSchema } from "@/lib/schemas";
 import { getAccount, getHousemateId, setHousemateSession } from "@/lib/session";
@@ -71,32 +71,49 @@ export async function submitIntake(joinCode: string, _: FormState, form: FormDat
 export interface InterviewTurn {
   messages: InterviewMessage[];
   done: boolean;
+  // What the finish tool saved, once the interview is done.
+  result?: InterviewResult;
   error?: string;
 }
 
+export interface InterviewTurnOptions {
+  restart?: boolean;
+  // The person asked to stop: the agent must call finish now.
+  wrapUp?: boolean;
+  // Drop the transcript from this index on before answering: an edited answer, or a regenerated question.
+  rewindTo?: number;
+}
+
 // One turn of the interview: record the answer (if any), then get the agent's next question or its wrap-up.
-export async function interviewTurn(householdId: string, answer: string | null, restart = false): Promise<InterviewTurn> {
+export async function interviewTurn(householdId: string, answer: string | null, options: InterviewTurnOptions = {}): Promise<InterviewTurn> {
+  const { restart = false, wrapUp = false, rewindTo } = options;
   const housemateId = await getHousemateId(householdId);
   const state = await getHouseholdState(householdId);
   const me = state?.household.housemates.find((h) => h.id === housemateId);
   if (!state || !me || !housemateId) return { messages: [], done: false, error: "You're not part of this household." };
 
   const saved = await getInterview(housemateId);
-  let messages = restart ? [] : saved.messages;
+  if (saved.done && !restart) return { ...saved, error: "This interview is finished. Start it over to change your answers." };
+  let messages = restart ? [] : rewindTo === undefined ? saved.messages : saved.messages.slice(0, Math.max(0, rewindTo));
   const text = answer?.trim().slice(0, 1000);
   if (text) messages = [...messages, { role: "user", text }];
   // Nothing new to say and the agent already spoke last: just show where things stand.
-  else if (messages.at(-1)?.role === "agent") return { ...saved };
+  else if (messages.at(-1)?.role === "agent" && !wrapUp) return { ...saved };
 
   try {
-    const step = await nextAgentStep({ me, groupSize: state.household.expectedSize }, messages);
+    const step = await nextAgentStep({ me, groupSize: state.household.expectedSize }, messages, wrapUp);
     messages = [...messages, { role: "agent", text: step.text, ...(step.kind === "ask" && step.choices.length && { choices: step.choices }) }];
-    await saveInterview(householdId, housemateId, messages, step.kind === "finish" ? step : null);
-    return { messages, done: step.kind === "finish" };
+    if (step.kind === "finish") {
+      const { mustHaves, niceToHaves, dealBreakers, wishes } = step;
+      await saveInterview(householdId, housemateId, messages, step);
+      return { messages, done: true, result: { mustHaves, niceToHaves, dealBreakers, wishes } };
+    }
+    await saveInterview(householdId, housemateId, messages, null);
+    return { messages, done: false };
   } catch (error) {
     if (error instanceof InterviewError || error instanceof HouseholdError) {
       // Keep the answer so a retry picks up where it failed.
-      if (text) await saveInterview(householdId, housemateId, messages, null).catch(() => {});
+      if (text || rewindTo !== undefined) await saveInterview(householdId, housemateId, messages, null).catch(() => {});
       return { messages, done: false, error: error.message };
     }
     throw error;
