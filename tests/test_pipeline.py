@@ -215,3 +215,62 @@ def test_email_extracted_from_description():
     l = normalize(Listing(source=Source.CRAIGSLIST, source_id="1", url="u", title="t",
                           description="Email jo.agent+rent@realty.co for showings"))
     assert l.contact.email == "jo.agent+rent@realty.co"
+
+
+def test_normalize_phone_and_email():
+    import pytest as _pytest
+    from househunt.manual import InvalidInput, normalize_email, normalize_phone
+
+    assert normalize_phone("(415) 555-0199") == "+14155550199"
+    assert normalize_phone("1-415-555-0199") == "+14155550199"
+    assert normalize_phone("") is None
+    with _pytest.raises(InvalidInput):
+        normalize_phone("555-01")
+    assert normalize_email(" a@b.co ") == "a@b.co"
+    with _pytest.raises(InvalidInput):
+        normalize_email("not-an-email")
+
+
+def test_add_contact_and_listing_by_hand():
+    from fastapi.testclient import TestClient
+    from househunt import db
+    from househunt.models import ListingStatus, Source
+    from househunt.web.app import app
+
+    with TestClient(app) as client:
+        r = client.post("/searches", data={"city": "sf", "max_price": 3000, "min_beds": 1})
+        sid = int(r.url.path.rsplit("/", 1)[-1])
+
+        # Contact added to a listing that had none makes it callable/emailable.
+        fb = db.get_listing(sid, "facebook:fb-42")
+        assert not (fb.contact and fb.contact.phone)
+        r = client.post(f"/searches/{sid}/listings/facebook:fb-42/contact",
+                        data={"phone": "(415) 555-0123", "email": "seller@x.com"},
+                        follow_redirects=False)
+        assert r.status_code == 303
+        fb = db.get_listing(sid, "facebook:fb-42")
+        assert (fb.contact.phone, fb.contact.email) == ("+14155550123", "seller@x.com")
+        assert "Call" in client.get(f"/searches/{sid}").text
+
+        bad = client.post(f"/searches/{sid}/listings/facebook:fb-42/contact",
+                          data={"phone": "12"}, follow_redirects=False)
+        assert bad.status_code == 400
+
+        # Paste a Zillow link with details; it's kept even when outside the criteria.
+        url = "https://www.zillow.com/homedetails/9-Elm-St-San-Francisco-CA/777_zpid/"
+        r = client.post(f"/searches/{sid}/listings", data={
+            "url": url, "price": "$3,400", "beds": "2", "address": "9 Elm St, San Francisco, CA",
+            "phone": "415.555.0188"}, follow_redirects=False)
+        assert r.status_code == 303
+        z = db.get_listing(sid, "zillow:777")
+        assert z.source == Source.ZILLOW and z.price == 3400 and z.beds == 2
+        assert z.status == ListingStatus.CANDIDATE and z.contact.phone == "+14155550188"
+        assert any("outside your search" in n for n in z.notes)
+
+        # Pasting the same link again only updates the contact.
+        client.post(f"/searches/{sid}/listings", data={"url": url, "email": "agent@z.com"})
+        z = db.get_listing(sid, "zillow:777")
+        assert z.contact.email == "agent@z.com" and z.price == 3400
+
+        assert client.post(f"/searches/{sid}/listings", data={"url": "not a link"},
+                           follow_redirects=False).status_code == 400

@@ -415,3 +415,68 @@ def update_email(email_id: int, action: str = Form(...), to_addr: str = Form("")
     db.update_email(email_id, status="sent", sent_at=db.now(), error=None,
                     gmail_message_id=sent.get("id"), gmail_thread_id=sent.get("threadId"))
     return RedirectResponse(back, 303)
+
+
+# --- listings and contacts the renter adds by hand ----------------------------
+
+def _opt_int(s: str) -> int | None:
+    s = re.sub(r"[^\d]", "", s or "")
+    return int(s) if s else None
+
+
+def _opt_float(s: str) -> float | None:
+    try:
+        return float(s) if (s or "").strip() else None
+    except ValueError:
+        return None
+
+
+@app.post("/searches/{search_id}/listings")
+def add_listing(search_id: int, url: str = Form(...), title: str = Form(""),
+                price: str = Form(""), beds: str = Form(""), baths: str = Form(""),
+                address: str = Form(""), description: str = Form(""), phone: str = Form(""),
+                email: str = Form(""), contact_name: str = Form("")):
+    from househunt import geo
+    from househunt.manual import InvalidInput, identify, listing_from_url, set_contact
+
+    found = db.get_search(search_id)
+    if not found:
+        raise HTTPException(404)
+    criteria, _ = found
+    source, source_id = identify(url.strip())
+    existing = db.get_listing(search_id, f"{(source.value if source else 'other')}:{source_id}")
+    try:
+        if existing:  # already in this search: just add whatever contact was given
+            if phone or email or contact_name:
+                db.upsert_listing(search_id, set_contact(existing, phone, email, contact_name))
+            return RedirectResponse(f"/searches/{search_id}#{existing.key}", 303)
+        listing = listing_from_url(
+            url, criteria, title=title, price=_opt_int(price), beds=_opt_int(beds),
+            baths=_opt_float(baths), address=address, description=description,
+            phone=phone, email=email, contact_name=contact_name)
+    except InvalidInput as e:
+        raise HTTPException(400, str(e))
+    try:
+        geo.locate([listing], criteria)
+    except Exception:
+        logging.getLogger(__name__).exception("geocoding manual listing failed")
+    db.upsert_listing(search_id, listing)
+    return RedirectResponse(f"/searches/{search_id}#{listing.key}", 303)
+
+
+@app.post("/searches/{search_id}/listings/{key}/contact")
+def add_contact(search_id: int, key: str, phone: str = Form(""), email: str = Form(""),
+                name: str = Form("")):
+    from househunt.manual import InvalidInput, set_contact
+
+    listing = db.get_listing(search_id, key)
+    if not listing:
+        raise HTTPException(404)
+    try:
+        set_contact(listing, phone, email, name)
+    except InvalidInput as e:
+        raise HTTPException(400, str(e))
+    if listing.status == ListingStatus.FILTERED_OUT:
+        listing.notes.append("contact added by you")
+    db.upsert_listing(search_id, listing)
+    return RedirectResponse(f"/searches/{search_id}#{key}", 303)

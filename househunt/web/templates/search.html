@@ -98,6 +98,16 @@
     .stats { gap: 6px; }
     .stat { padding: 8px 10px; } .stat b { font-size: 18px; } .stat span { font-size: 11px; }
   }
+  .add-contact { width: 100%; }
+  .add-contact summary { display: inline-flex; list-style: none; }
+  .add-contact summary::-webkit-details-marker { display: none; }
+  .add-contact form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+  .add-contact form p { grid-column: 1 / -1; margin: 0; }
+  .add-listing { margin: 0 0 16px; }
+  .add-listing summary { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: inherit; font-size: 14px; }
+  .add-listing form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 12px; }
+  .add-listing .wide { grid-column: 1 / -1; }
+  .listing .contact { display: flex; gap: 6px; align-items: center; }
 </style>
 {% endblock %}
 {% block content %}
@@ -149,11 +159,30 @@
 <script type="application/json" id="center">{{ center | tojson }}</script>
 </div>
 
+<details class="card add-listing" data-id="add-listing">
+  <summary>{{ icon("plus", 16) }}<b>Add a listing you found</b>
+    <span class="muted small">Zillow, Facebook Marketplace, Craigslist, anywhere. Paste the link and the contact if you have it.</span></summary>
+  <form method="post" action="/searches/{{ search.id }}/listings">
+    <input class="wide" name="url" type="url" required placeholder="https://www.zillow.com/homedetails/…">
+    <input name="price" inputmode="numeric" placeholder="Rent $/mo">
+    <input name="beds" inputmode="numeric" placeholder="Beds">
+    <input name="baths" inputmode="decimal" placeholder="Baths">
+    <input class="wide" name="address" placeholder="Address">
+    <input name="phone" type="tel" placeholder="Contact phone">
+    <input name="email" type="email" placeholder="Contact email">
+    <input name="contact_name" placeholder="Contact name">
+    <input class="wide" name="title" placeholder="Title (optional)">
+    <textarea class="wide" name="description" rows="2" placeholder="Notes or description (optional)"></textarea>
+    <div class="wide"><button type="submit">{{ icon("plus", 14) }}Add listing</button>
+      <span class="muted small">Craigslist links fill in automatically; for other sites, add what you can see.</span></div>
+  </form>
+</details>
+
 <div class="split">
   <div id="listings">
     {% macro listing_card(l) %}
     {% set call = calls.get(l.key) %}{% set o = outcomes.get(l.key) %}{% set tour = tours.get(l.key) %}{% set email = emails.get(l.key) %}
-    <article class="card listing" data-key="{{ l.key }}">
+    <article class="card listing" id="{{ l.key }}" data-key="{{ l.key }}">
       <div class="row1">
         <div>
           <span class="price">{% if l.price %}${{ "{:,}".format(l.price) }}{% else %}—{% endif %}</span>
@@ -167,6 +196,10 @@
         {% if l.address or l.neighborhood %}· {{ l.address or l.neighborhood }}{% endif %}
         {% if l.address and l.neighborhood %} · {{ l.neighborhood }}{% endif %}
       </div>
+      {% if l.contact and (l.contact.phone or l.contact.email) %}
+        <div class="contact small muted">{{ icon("phone", 12) }}
+          {{ [l.contact.name, l.contact.phone, l.contact.email] | select | join(" · ") }}</div>
+      {% endif %}
       {% if tour %}
         <div class="tour">{{ icon("calendar", 16) }} Viewing <strong>{{ tour.start.replace("T", " ")[:16] }}</strong>
           <a href="/tours/{{ tour.id }}.ics">Add to calendar</a></div>
@@ -186,8 +219,19 @@
           <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/call">
             <button type="submit" class="{{ 'secondary' if call }}" title="{{ l.contact.phone }}">{{ icon("phone", 14) }}{{ "Call again" if call else "Call" }}</button>
           </form>
-        {% elif not (l.contact and l.contact.phone) and l.status.value == "candidate" %}
-          <span class="muted small">No phone number in listing</span>
+        {% endif %}
+        {% if l.status.value != "filtered" or l.contact %}
+          {% set missing = not (l.contact and l.contact.phone and l.contact.email) %}
+          <details class="add-contact" data-id="c-{{ l.key }}">
+            <summary class="btn secondary">{{ icon("plus", 14) }}{{ "Add contact" if not l.contact else ("Add phone/email" if missing else "Edit contact") }}</summary>
+            <form method="post" action="/searches/{{ search.id }}/listings/{{ l.key }}/contact">
+              <p class="small muted">{% if l.source.value == "craigslist" %}On the listing, click <b>reply</b> or <b>show contact info</b>, then paste it here.{% else %}Copy the agent's details from the listing page.{% endif %}</p>
+              <input name="phone" type="tel" placeholder="Phone, e.g. (415) 555-0199" value="{{ l.contact.phone if l.contact and l.contact.phone else '' }}">
+              <input name="email" type="email" placeholder="Email" value="{{ l.contact.email if l.contact and l.contact.email else '' }}">
+              <input name="name" placeholder="Name (optional)" value="{{ l.contact.name if l.contact and l.contact.name else '' }}">
+              <button type="submit">Save contact</button>
+            </form>
+          </details>
         {% endif %}
         {% if email and email.status == "sent" %}
           <a class="pill viable" href="/emails/{{ email.id }}">{{ icon("mail", 12) }}Email sent</a>
@@ -314,6 +358,10 @@
   // header, listings and pins, keeping the map and any open transcripts as they are.
   async function poll() {
     if (!document.getElementById("live").dataset.refresh) return;
+    // Don't swap the listings out from under a half-filled form.
+    const typing = document.activeElement?.closest("#listings form") ||
+      [...document.querySelectorAll("#listings form input")].some(i => i.value !== i.defaultValue);
+    if (typing) { setTimeout(poll, 3000); return; }
     try {
       const res = await fetch(location.href, { headers: { "Accept": "text/html" } });
       const doc = new DOMParser().parseFromString(await res.text(), "text/html");
