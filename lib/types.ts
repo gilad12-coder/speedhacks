@@ -64,6 +64,8 @@ export interface TranscriptLine {
 }
 
 export interface Call {
+  direction?: "inbound" | "outbound";
+  voicemailLeft?: boolean;
   listingVerified?: boolean | null; // exact unit/core advertised details confirmed by contact
   id: string;
   listingId: string;
@@ -114,6 +116,7 @@ export interface OfferedWindow {
 }
 
 export interface AgentRun {
+  outreach?: Outreach[];
   bookedTours?: ConfirmedTour[]; // mutually confirmed on the call; distinct from offers
   householdId: string;
   startedAt: string;
@@ -124,6 +127,17 @@ export interface AgentRun {
   offeredWindows: OfferedWindow[];
   progress?: string[];
   warnings?: string[];
+}
+
+export interface Outreach {
+  listingId: string;
+  state: "checking_hours" | "scheduled" | "calling" | "complete" | "waiting_callback" | "needs_attention" | "blocked";
+  scheduledAt: string | null;
+  reason: string;
+  hoursSource: string | null;
+  hoursQuote: string | null;
+  timezone: string | null;
+  attempts: number;
 }
 
 export interface ConfirmedTour {

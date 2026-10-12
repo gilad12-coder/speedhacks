@@ -117,7 +117,9 @@ def test_private_and_credential_urls_cannot_be_fetched(monkeypatch):
 
 
 def test_renter_identity_is_used_but_not_sent_to_web_search():
+    from househunt import db
     from househunt.outreach.script import build_instruction
+    db.init()  # the call script reads the callback number from app state
     from househunt.research.provider import public_criteria
     criteria = SearchCriteria(city='SF',max_price=4000,renter_name='Reed',tour_availability=['private calendar detail'])
     prompt = build_instruction(target(),criteria,'Someone Else')

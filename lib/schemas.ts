@@ -54,6 +54,8 @@ const listingSchema = z.object({
 const evidenceSchema = z.object({ callId: z.string(), t: z.number().nonnegative(), quote: z.string().min(1) });
 
 const callSchema = z.object({
+  direction: z.enum(["inbound", "outbound"]).optional(),
+  voicemailLeft: z.boolean().optional(),
   listingVerified: z.boolean().nullable().optional(),
   id: z.string().min(1),
   listingId: z.string().min(1),
@@ -101,6 +103,11 @@ export const agentRunSchema = z
     calls: z.array(callSchema),
     checks: z.array(checkSchema),
     offeredWindows: z.array(z.object({ listingId: z.string(), start: isoDateTime, end: isoDateTime })),
+    outreach: z.array(z.object({
+      listingId: z.string(), state: z.enum(["checking_hours", "scheduled", "calling", "complete", "waiting_callback", "needs_attention", "blocked"]),
+      scheduledAt: isoDateTime.nullable(), reason: z.string(), hoursSource: z.string().nullable(),
+      hoursQuote: z.string().nullable(), timezone: z.string().nullable(), attempts: z.number().int().nonnegative(),
+    })).optional(),
     bookedTours: z.array(z.object({
       listingId: z.string(), callId: z.string(), start: isoDateTime, end: isoDateTime, meetingAddress: z.string().min(1),
       contactEvidence: z.object({ callId: z.string(), t: z.number().nonnegative(), quote: z.string().min(1) }),

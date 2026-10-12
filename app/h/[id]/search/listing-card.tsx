@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition } from "react";
 import { ArrowRight, CalendarCheck, CheckCircle2, ExternalLink, Mail, Phone, Star } from "lucide-react";
 import { callRental } from "@/app/actions";
 import { Button } from "@/components/shell";
+import { OutreachStatus } from "@/components/outreach-status";
 import type { WorkspaceListing } from "@/lib/workspace";
 import { draftEmail, logViewing, markInterested, retryCalendarSync, saveContact, updateEmail, type ActionState } from "./actions";
 
@@ -31,7 +32,7 @@ export function ListingCard({ householdId, listing, callingEnabled }: { househol
   const [message, setMessage] = useState("");
   const status = STATUS[listing.status] ?? STATUS.candidate;
   const phone = listing.contact?.phone ?? null;
-  const callRunning = listing.call && ["queued", "in_progress", "extracting"].includes(listing.call.status);
+  const callRunning = (listing.call && ["queued", "in_progress", "extracting"].includes(listing.call.status)) || ["scheduled", "checking_hours", "calling"].includes(listing.outreach?.state ?? "");
   const canCall = Boolean(phone) && (!listing.call || ["attention", "failed"].includes(listing.call.status)) && !["filtered", "tour_scheduled"].includes(listing.status);
   const needsContact = !phone && !listing.contact?.email && listing.status !== "filtered";
 
@@ -45,6 +46,7 @@ export function ListingCard({ householdId, listing, callingEnabled }: { househol
 
   return (
     <li id={listing.id} className="rounded-2xl border border-line bg-surface p-5">
+      <OutreachStatus job={listing.outreach} />
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="text-lg font-semibold tabular-nums">
@@ -122,11 +124,11 @@ export function ListingCard({ householdId, listing, callingEnabled }: { househol
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {canCall && callingEnabled && (
           <Button variant={listing.call ? "secondary" : "primary"} disabled={pending}
-                  onClick={() => run(() => callRental(householdId, listing.id), "Calling now. Results show up here when the call ends.")}>
+                  onClick={() => run(() => callRental(householdId, listing.id), "Call requested. The agent will call during office hours.")}>
             <Phone aria-hidden className="size-4" />{listing.call ? "Resume saved call" : "Verify & arrange tour"}
           </Button>
         )}
-        {callRunning && <span className="text-sm text-ink-2">Call in progress…</span>}
+        {callRunning && <span className="text-sm text-ink-2">{listing.outreach?.state === "scheduled" ? "Call queued" : "Call in progress…"}</span>}
         {!listing.email && listing.status !== "filtered" && (
           <Button variant="secondary" disabled={pending} onClick={() => run(() => draftEmail(householdId, listing.id))}>
             <Mail aria-hidden className="size-4" />Draft email
@@ -170,7 +172,7 @@ function NextStep({ householdId, listing, canCall, run, pending }: {
       <p className="mt-0.5 text-sm text-ink-2">{step.why}</p>
       <div className="mt-3 flex flex-wrap items-start gap-2">
         {step.action === "call" && canCall && (
-          <Button disabled={pending} onClick={() => run(() => callRental(householdId, listing.id), "Calling now.")}>
+          <Button disabled={pending} onClick={() => run(() => callRental(householdId, listing.id), "Call requested for office hours.")}>
             <Phone aria-hidden className="size-4" />Call now
           </Button>
         )}

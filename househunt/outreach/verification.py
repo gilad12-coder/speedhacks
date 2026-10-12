@@ -58,6 +58,8 @@ class Assessment(StrictModel):
     details: list[Detail]
     tour_offers: list[Window]
     confirmed_tour: Booking | None = None
+    voicemail_message: Ref | None = None
+    callback_request: Ref | None = None
 
 
 class Evidence(StrictModel):

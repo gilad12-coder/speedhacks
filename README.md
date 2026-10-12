@@ -102,3 +102,5 @@ househunt/
   db.py              SQLite
   web/               FastAPI app + Jinja templates
 ```
+
+Autonomous outreach now uses a durable office-hours queue, evidence-backed voicemail handling, and inbound callback capture. Enable the worker flags and connect both app/worker URLs as described in [the outreach deployment contract](docs/agent-integration.md#autonomous-outreach-and-callbacks). Scheduled times and their hours sources appear in both dashboards. Live calls retain the exact search/listing context and only verify facts supported by contact quotes.

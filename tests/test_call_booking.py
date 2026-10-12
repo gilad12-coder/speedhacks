@@ -140,7 +140,7 @@ def test_calendar_failure_preserves_contact_booking(caller,monkeypatch):
     pipeline.apply_outcome(sid,listing,summary,call_id=1)
     tour = db.tours_for_search(sid)[listing.key]
     assert tour['calendar_status'] == 'pending' and 'booked' in tour['calendar_error']
-    assert listing.status.value == 'tour_scheduled'
+    assert db.get_listing(sid, listing.key).status.value == 'tour_scheduled'
     assert booking.record(sid,listing,summary,1) == tour['id']
     summary.confirmed_tour['end'] = '2026-10-15T19:00:00-07:00'
     with pytest.raises(RuntimeError,match='differs'): booking.record(sid,listing,summary,1)

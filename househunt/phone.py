@@ -18,7 +18,7 @@ from househunt.config import settings
 
 log = logging.getLogger(__name__)
 
-REFRESH_SECONDS = 180
+REFRESH_SECONDS = 30
 
 
 def configured() -> bool:
@@ -64,13 +64,16 @@ def disable() -> None:
     db.set_state("phone_briefing", None)
     db.set_state("inbound_original", None)
     db.set_state("inbound_hash", None)
+    if settings.callback_enabled:
+        ensure_callbacks()
 
 
 def sync(force: bool = False) -> bool:
     """Push the latest briefing to the number if it changed. Returns True if it pushed."""
-    if not (enabled() and configured()):
+    if not ((enabled() or settings.callback_enabled) and configured()):
         return False
-    instruction = briefing.inbound_instruction()
+    from househunt.outreach.callbacks import instruction as callback_instruction
+    instruction = briefing.inbound_instruction() if enabled() else callback_instruction()
     digest = hashlib.sha256(_facts_without_clock(instruction).encode()).hexdigest()
     if not force and digest == db.get_state("inbound_hash"):
         return False
@@ -80,6 +83,21 @@ def sync(force: bool = False) -> bool:
     return True
 
 
+def ensure_callbacks() -> None:
+    """Install once, preserve the former greeting, and resolve the actual return number."""
+    if not settings.callback_enabled or not configured():
+        return
+    if not db.get_state('phone_number_id') or not db.get_state('phone_number'):
+        number = _client().own_number()
+        if db.get_state('inbound_original') is None:
+            db.set_state('inbound_original', number.get('inboundInstruction') or '')
+        db.set_state('phone_number_id', number['id'])
+        db.set_state('phone_number', number.get('number') or '')
+    if not db.get_state('inbound_since'):
+        db.set_state('inbound_since', datetime.now().astimezone().isoformat(timespec='seconds'))
+    sync()
+
+
 def _facts_without_clock(instruction: str) -> str:
     # The first facts line is a timestamp; don't re-push just because the minute changed.
     return "\n".join(l for l in instruction.splitlines() if not l.startswith("Status as of"))
@@ -87,12 +105,34 @@ def _facts_without_clock(instruction: str) -> str:
 
 def poll_inbound() -> int:
     """Pull new inbound calls; classify the renter's own calls vs landlord callbacks."""
-    if not (enabled() and configured()):
+    if not ((enabled() or settings.callback_enabled) and configured()):
         return 0
     since = db.get_state("inbound_since")
     calls = _client().inbound_calls(db.get_state("phone_number_id"), since)
     new = 0
     for c in calls:
+        if settings.callback_enabled:
+            from househunt.outreach import callbacks
+            from househunt.outreach.dial import _parse_call
+            if not _parse_call(c).ended:
+                continue
+            with db.conn() as conn:
+                done = conn.execute('SELECT handled FROM inbound_calls WHERE id=?', (c['id'],)).fetchone()
+            if done and done['handled']:
+                continue
+            attempts = int(db.get_state(f'inbound_processing:{c["id"]}', '0'))
+            if attempts >= 3:
+                continue
+            # List responses may omit timed turns; hydrate the completed call.
+            raw = _client().get_call(c['id']).raw
+            from househunt.voice import store as voice_store
+            if voice_store.read('sessions', c['id']):
+                from househunt.voice.evidence import enrich
+                raw = enrich(raw) or raw
+            if raw.get('transcriptTurns'):
+                db.set_state(f'inbound_processing:{c["id"]}', str(attempts + 1))
+                new += callbacks.process(raw)
+            continue
         caller = c.get("from")
         transcript = c.get("transcript")
         mine = bool(caller and settings.notify_number and
@@ -109,14 +149,22 @@ def _digits(s: str) -> str:
     return "".join(ch for ch in s if ch.isdigit())[-10:]
 
 
+def refresh() -> None:
+    try:
+        if settings.callback_enabled:
+            ensure_callbacks()
+            poll_inbound()
+        elif enabled():
+            sync()
+            poll_inbound()
+    except Exception:
+        log.warning("phone callback refresh needs attention")
+
+
 def _loop(stop: threading.Event) -> None:
-    while not stop.wait(REFRESH_SECONDS):
-        try:
-            if enabled():
-                sync()
-                poll_inbound()
-        except Exception:
-            log.exception("phone briefing refresh failed")
+    while not stop.is_set():
+        refresh()
+        stop.wait(REFRESH_SECONDS)
 
 
 def start_background() -> threading.Event:

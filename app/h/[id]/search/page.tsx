@@ -62,7 +62,7 @@ export default async function SearchPage({ params, searchParams }: {
 
   const { search, listings, callingEnabled } = result.workspace;
   const running = SEARCH_RUNNING.has(search.status);
-  const callsRunning = listings.some((l) => l.call && ["queued", "in_progress", "extracting"].includes(l.call.status));
+  const callsRunning = listings.some((l) => (l.call && ["queued", "in_progress", "extracting"].includes(l.call.status)) || ["scheduled", "calling", "checking_hours"].includes(l.outreach?.state ?? ""));
   const active = listings.filter((l) => !["filtered", "not_viable"].includes(l.status) || l.interested).sort((a, b) => rank(a) - rank(b));
   const ruledOut = listings.filter((l) => ["filtered", "not_viable"].includes(l.status) && !l.interested);
   const starred = listings.filter((l) => l.interested).length;
@@ -87,6 +87,7 @@ export default async function SearchPage({ params, searchParams }: {
           </p>
         </div>
         {search.error && <p className="mt-4 rounded-xl bg-amber-soft p-3 text-sm text-amber-ink">{search.error}</p>}
+        {result.workspace.autonomousCalling && <p className="mt-4 rounded-xl bg-green-soft p-3 text-sm text-green-ink">Your AI assistant handles calls to corroborated contacts during office hours, leaves a callback message when possible, and retries unanswered calls. {result.workspace.callbackReady ? "The callback number is ready to take messages at any hour." : "The callback number is being prepared."}</p>}
         {!callingEnabled && (
           <p className="mt-4 rounded-xl bg-sunk p-3 text-sm text-ink-2">Calls are in practice mode on this deployment: no real phone calls are placed.</p>
         )}

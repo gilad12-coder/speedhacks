@@ -32,7 +32,11 @@ for name in ("httpx", "httpcore", "websockets", "elevenlabs"):
     logging.getLogger(name).setLevel(logging.CRITICAL)
 
 
-def initiation(row: dict, enrollment: dict) -> dict:
+def initiation(row: dict, enrollment: dict | None) -> dict:
+    if row.get('direction') == 'inbound':
+        return {'type': 'conversation_initiation_client_data', 'conversation_config_override': {
+            'agent': {'first_message': f"Hi, you've reached KeyHunt's AI assistant. Which property are you calling about?",
+                'prompt': {'prompt': row['instruction']}}}}
     name = enrollment["speaker_name"]
     return {"type": "conversation_initiation_client_data", "conversation_config_override": {
         "agent": {"first_message": f"Hi, I'm {name}'s AI assistant with KeyHunt. I'm calling about your rental. Is now a good time?",
@@ -201,20 +205,29 @@ async def audio_socket(ws: WebSocket, call_id: str):
     session = None
     try:
         first = parse_dial_audio_message(await asyncio.wait_for(ws.receive_text(), 5))
-        if (first.type != "call_connected" or first.call_id != call_id or first.direction != "outbound"
+        if (first.type != "call_connected" or first.call_id != call_id or first.direction not in ('inbound', 'outbound')
                 or first.formats.inbound != "l16_16000" or first.formats.outbound != "l16_16000"):
             raise RuntimeError("Unexpected Dial session or audio format")
-        # The callback can race the REST call response that persists its provider ID.
-        row = store.call_context(call_id)
-        for _ in range(20):
-            if row:
-                break
-            await asyncio.sleep(.1)
+        if first.direction == 'inbound':
+            from househunt.outreach.callbacks import instruction as callback_instruction
+            if not settings.callback_enabled or first.to != db.get_state('phone_number'):
+                raise RuntimeError('Inbound callback number is not configured')
+            row = {'id': None, 'dial_call_id': call_id, 'direction': 'inbound', 'instruction': callback_instruction()}
+            enrollment = None  # Use the shared agent voice without looking up any household's profile.
+        else:
+            # The audio socket can race the REST response that persists its provider ID.
             row = store.call_context(call_id)
-        if (not row or row["phone"] != first.to
-                or not row["instruction"] or db.contact_blocked(first.to)):
-            raise RuntimeError("No authorized KeyHunt call matches this session")
-        enrollment = store.preflight(row["search_id"])
+            for _ in range(20):
+                if row:
+                    break
+                await asyncio.sleep(.1)
+                row = store.call_context(call_id)
+            from househunt.outreach.scheduler import permitted
+            listing = db.get_listing(row['search_id'], row['listing_key']) if row else None
+            if (not row or row["phone"] != first.to or not listing or not permitted(listing, settings)
+                    or not row["instruction"] or db.contact_blocked(first.to)):
+                raise RuntimeError("No authorized KeyHunt call matches this session")
+            enrollment = store.preflight(row["search_id"])
         session = sessions.get(call_id)
         if session is None:
             if store.read("sessions", call_id):
