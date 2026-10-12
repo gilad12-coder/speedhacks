@@ -217,7 +217,16 @@
   <div id="listings">
     {% macro listing_card(l) %}
     {% set call = calls.get(l.key) %}{% set o = outcomes.get(l.key) %}{% set tour = tours.get(l.key) %}{% set email = emails.get(l.key) %}
+    {% set job = outreach.get(l.key) %}
     <article class="card listing" id="{{ l.key }}" data-key="{{ l.key }}">
+      {% if job and job.state != 'complete' %}
+      <div class="notice" style="margin-bottom:12px">
+        <strong>{{ 'Call scheduled' if job.state == 'scheduled' else job.state.replace('_', ' ') | capitalize }}</strong>
+        {% if job.scheduled_at %}<div>{{ job.display_at }}</div>{% endif %}
+        <div class="small">{{ job.reason }}</div>
+        {% if job.hours.quote %}<div class="small muted">{{ job.hours.quote }}</div>{% endif %}
+      </div>
+      {% endif %}
       <div class="row1">
         <div>
           <span class="price">{% if l.price %}${{ "{:,}".format(l.price) }}{% else %}—{% endif %}</span>

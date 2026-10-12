@@ -146,13 +146,12 @@ export default async function HouseholdPage({
                   Open your search →
                 </Link>
               </div>
-              {searching && !run?.listings.length ? (
+              {searching && (
                 <div className="mt-6">
                   <SearchingScene status={run?.progress?.at(-1)} />
                 </div>
-              ) : (
-                run && <Pipeline run={run} />
               )}
+              {run && run.listings.length > 0 && <Pipeline run={run} />}
               {run?.progress?.length && run.listings.length ? (
                 <ActivityLog steps={run.progress} live={searching} />
               ) : null}
@@ -508,7 +507,7 @@ function Pipeline({
               i === stages.length - 1 && n > 0 ? "bg-green-soft" : ""
             }`}
           >
-            <p className="tabular font-display text-3xl font-semibold tracking-tight text-ink">
+            <p key={n} className="count-tick tabular font-display text-3xl font-semibold tracking-tight text-ink">
               {n}
             </p>
             <p className="mt-0.5 text-sm text-ink-2">{label}</p>

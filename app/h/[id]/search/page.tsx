@@ -7,6 +7,7 @@ import { getHousemateId } from "@/lib/session";
 import { getWorkspace, SEARCH_RUNNING, type WorkspaceListing } from "@/lib/workspace";
 import { AutoRefresh } from "../auto-refresh";
 import { ListingCard } from "./listing-card";
+import { SearchingScene } from "../searching-scene";
 import { MapView } from "./map-view";
 import { AddListing, RefineSearch } from "./panels";
 
@@ -62,7 +63,7 @@ export default async function SearchPage({ params, searchParams }: {
 
   const { search, listings, callingEnabled } = result.workspace;
   const running = SEARCH_RUNNING.has(search.status);
-  const callsRunning = listings.some((l) => l.call && ["queued", "in_progress", "extracting"].includes(l.call.status));
+  const callsRunning = listings.some((l) => (l.call && ["queued", "in_progress", "extracting"].includes(l.call.status)) || ["scheduled", "calling", "checking_hours"].includes(l.outreach?.state ?? ""));
   const active = listings.filter((l) => !["filtered", "not_viable"].includes(l.status) || l.interested).sort((a, b) => rank(a) - rank(b));
   const ruledOut = listings.filter((l) => ["filtered", "not_viable"].includes(l.status) && !l.interested);
   const starred = listings.filter((l) => l.interested).length;
@@ -86,7 +87,9 @@ export default async function SearchPage({ params, searchParams }: {
             {running ? "Searching…" : `${active.length} to look at · ${starred} starred · ${ruledOut.length} ruled out`}
           </p>
         </div>
+        {running && <div className="mt-6"><SearchingScene /></div>}
         {search.error && <p className="mt-4 rounded-xl bg-amber-soft p-3 text-sm text-amber-ink">{search.error}</p>}
+        {result.workspace.autonomousCalling && <p className="mt-4 rounded-xl bg-green-soft p-3 text-sm text-green-ink">Your AI assistant handles calls to corroborated contacts during office hours, leaves a callback message when possible, and retries unanswered calls. {result.workspace.callbackReady ? "The callback number is ready to take messages at any hour." : "The callback number is being prepared."}</p>}
         {!callingEnabled && (
           <p className="mt-4 rounded-xl bg-sunk p-3 text-sm text-ink-2">Calls are in practice mode on this deployment: no real phone calls are placed.</p>
         )}
@@ -109,7 +112,7 @@ export default async function SearchPage({ params, searchParams }: {
           <div className="mt-4"><MapView listings={listings} budget={c.max_price} /></div>
         ) : (<>
         <ol className="mt-4 space-y-4">
-          {active.map((l) => <ListingCard key={l.id} householdId={id} listing={l} callingEnabled={callingEnabled} />)}
+          {active.map((l, i) => <ListingCard key={l.id} index={i} householdId={id} listing={l} callingEnabled={callingEnabled} />)}
           {!active.length && (
             <li className="rounded-2xl border border-line bg-surface p-8 text-center text-ink-2">
               {running ? "Looking for listings…" : "Nothing matches yet. Try refining the search or add a listing you found."}
@@ -121,7 +124,7 @@ export default async function SearchPage({ params, searchParams }: {
           <details className="mt-8">
             <summary className="cursor-pointer text-sm font-medium text-ink-2">{ruledOut.length} ruled out</summary>
             <ol className="mt-4 space-y-4">
-              {ruledOut.map((l) => <ListingCard key={l.id} householdId={id} listing={l} callingEnabled={callingEnabled} />)}
+              {ruledOut.map((l, i) => <ListingCard key={l.id} index={i} householdId={id} listing={l} callingEnabled={callingEnabled} />)}
             </ol>
           </details>
         )}

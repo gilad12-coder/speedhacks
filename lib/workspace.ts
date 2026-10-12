@@ -1,5 +1,6 @@
 import "server-only";
 import { workerRequest } from "./agent-worker";
+import type { Outreach } from "./types";
 
 // The household's search workspace, served by the Python engine (househunt/web/household_api.py).
 // Server-to-server only: the agent secret never reaches the browser.
@@ -8,6 +9,7 @@ export type NextAction =
   | "call" | "email" | "reveal" | "book_online" | "message" | "log_viewing" | "prepare" | "wait" | "move_on";
 
 export interface WorkspaceListing {
+  outreach?: Omit<Outreach, "listingId"> | null;
   id: string;
   title: string;
   url: string;
@@ -36,6 +38,8 @@ export interface WorkspaceListing {
 }
 
 export interface Workspace {
+  autonomousCalling?: boolean;
+  callbackReady?: boolean;
   search: {
     id: number;
     status: string;

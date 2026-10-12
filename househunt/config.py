@@ -41,6 +41,10 @@ class Settings:
     search_max_listings: int
     screen_top_n: int
     firecrawl_api_key: str | None    # optional: parse pasted links from unsupported sites
+    call_verified_contacts: bool
+    outreach_worker: bool
+    callback_enabled: bool
+    max_contact_attempts: int
 
 
 def load() -> Settings:
@@ -49,7 +53,7 @@ def load() -> Settings:
     return Settings(
         db_path=env("DB_PATH", "data/househunt.db"),
         call_mode=CallMode(env("CALL_MODE", "dry_run")),
-        max_auto_calls=int(env("MAX_AUTO_CALLS", "3")),
+        max_auto_calls=max(1, min(30, int(env("MAX_AUTO_CALLS", "15")))),
         mock_sources=env("MOCK_SOURCES", "1") == "1",
         dial_api_url=env("DIAL_API_URL", "https://api.getdial.ai"),
         dial_api_key=env("DIAL_API_KEY"),
@@ -73,6 +77,10 @@ def load() -> Settings:
         search_max_listings=max(1, min(15, int(env("SEARCH_MAX_LISTINGS", "10")))),
         screen_top_n=max(1, min(10, int(env("SCREEN_TOP_N", "5")))),
         firecrawl_api_key=env("FIRECRAWL_API_KEY"),
+        call_verified_contacts=env("DIAL_CALL_VERIFIED_CONTACTS", "0") == "1",
+        outreach_worker=env("RUN_OUTREACH_WORKER", "0") == "1",
+        callback_enabled=env("INBOUND_CALLBACKS", "0") == "1",
+        max_contact_attempts=max(1, min(3, int(env("MAX_CONTACT_ATTEMPTS", "2")))),
     )
 
 

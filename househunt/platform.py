@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import threading
+import time
 from datetime import datetime, timedelta
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
@@ -30,7 +31,8 @@ def criteria_from_brief(brief: dict) -> SearchCriteria:
         must_haves=list(brief.get('mustHaves', [])), deal_breakers=list(brief.get('dealBreakers', [])),
         nice_to_haves=list(brief.get('niceToHaves', [])), move_in_from=brief.get('moveInFrom'),
         move_in_by=brief.get('moveInTo'), commute=brief.get('commute', {}),
-        wishes=[str(w)[:200] for w in brief.get('wishes', [])][:12])
+        wishes=[str(w)[:200] for w in brief.get('wishes', [])][:12],
+        household_income_band=brief.get('householdIncomeBandUsd'))
 
 
 def call_answers(criteria: SearchCriteria, outcome: dict, call_id: str) -> list[dict]:
@@ -58,10 +60,11 @@ def iso(value: str) -> str:
 
 
 def export_run(household_id: str, search_id: int, app_url: str = '') -> dict:
+    from househunt.outreach.scheduler import jobs
     criteria, row = db.get_search(search_id)
     listings, calls, checks, windows, bookings = [], [], [], [], []
     call_rows = db.calls_for_search(search_id)
-    in_flight = row['status'] not in ('done', 'error') or any(c['status'] in ('queued','in_progress','extracting') for c in call_rows.values())
+    in_flight = row['status'] not in ('done', 'error') or any(c['status'] in ('queued','in_progress','extracting') for c in call_rows.values()) or any(j['state'] in ('checking_hours','calling','scheduled') for j in jobs(search_id))
     for listing in db.list_listings(search_id):
         c = call_rows.get(listing.key)
         outcome = json.loads(c['outcome']) if c and c['outcome'] else {}
@@ -103,7 +106,8 @@ def export_run(household_id: str, search_id: int, app_url: str = '') -> dict:
                  if app_url and outcome.get('audio_url') else None)
         calls.append({'id':call_id,'listingId':listing.key,'dialCallId':c['dial_call_id'],
             'startedAt':iso(raw.get('createdAt') or c['created_at']), 'durationSec':float(raw.get('duration') or 0),
-            'outcome':'answered' if outcome.get('reached_person') else 'failed' if c['status'] in ('failed','attention') else 'no_answer',
+            'outcome':'voicemail' if outcome.get('voicemail') else 'answered' if outcome.get('reached_person') else 'failed' if c['status'] in ('failed','attention') else 'no_answer',
+            'direction':c['direction'], 'voicemailLeft':outcome.get('voicemail_left', False),
             'audioUrl':audio,'transcript':outcome.get('transcript_turns',[]),
             'listingVerified': outcome.get('listing_verified') if outcome.get('mode') != 'dry_run' else None,
             'statedRentUsd':outcome.get('monthly_rent'),'deposit':outcome.get('deposit'),'leaseTerms':outcome.get('lease_terms'),
@@ -137,6 +141,9 @@ def export_run(household_id: str, search_id: int, app_url: str = '') -> dict:
     return {'householdId':household_id,'startedAt':iso(row['created_at']),
         'finishedAt':None if in_flight else iso(finished),
         'listings':listings,'calls':calls,'checks':checks,'offeredWindows':windows,'bookedTours':bookings,
+        'outreach':[{'listingId':j['listing_key'], 'state':j['state'], 'scheduledAt':j['scheduled_at'],
+            'reason':j['reason'], 'hoursSource':j['hours'].get('source'), 'hoursQuote':j['hours'].get('quote'),
+            'timezone':j['hours'].get('timezone'), 'attempts':j['attempts']} for j in jobs(search_id)],
         'progress':[e['message'] for e in events], 'warnings':warnings}
 
 
@@ -237,7 +244,13 @@ def tick(lease_seconds: int = 800) -> bool:
         # A pass that hit the function time limit leaves its calls mid-flight; one untouched
         # for 20 minutes is treated like a restart and waits for an explicit resume.
         db.recover_calls(older_than=(datetime.now() - timedelta(minutes=20)).isoformat(timespec='seconds'))
+        started = time.monotonic()
         run_once(PlatformClient())
+        from househunt import phone
+        from househunt.outreach import scheduler
+        phone.refresh()
+        # Leave room under the 800s function limit for a call that starts near the deadline.
+        scheduler.tick(deadline=started + 420)
     finally:
         db.release_lease('platform-worker')
     return True
@@ -264,6 +277,11 @@ def main():
     parser.add_argument('--once', action='store_true')
     args = parser.parse_args()
     db.init()
+    db.recover_calls()
+    from househunt.outreach import scheduler
+    from househunt import phone
+    scheduler.start_background()
+    phone.start_background()
     client = PlatformClient()
     while True:
         try:

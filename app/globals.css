@@ -415,8 +415,12 @@ h3 {
 /* A result that arrives while the page refreshes rises in; ones already shown keep their place. */
 .result-in { animation: rise 520ms var(--ease-out-expo) both; animation-delay: calc(min(var(--i, 0), 6) * 70ms); }
 
+/* A pipeline count that changes on refresh rolls up into place; keyed by value so only changes animate. */
+@keyframes count-tick { from { opacity: 0; transform: translateY(40%); } }
+.count-tick { animation: count-tick 420ms var(--ease-out-expo) both; }
+
 @media (prefers-reduced-motion: reduce) {
-  .searching, .searching-lens, .searching-pulse, .result-in { animation: none; }
+  .searching, .searching-lens, .searching-pulse, .result-in, .count-tick { animation: none; }
   .searching-lens { transform: translateX(340px); }
   .searching-lit { animation: none; opacity: 0.6; }
 }
