@@ -317,7 +317,7 @@ def _call_listing(search_id: int, key: str, follow_up_after: int | None = None) 
                         from househunt import phone as callback_phone
                         callback_phone.ensure_callbacks()
                 call_criteria = replace(criteria, renter_name=voice_profile["speaker_name"]) if voice_profile else criteria
-                instruction = row["instruction"] or build_instruction(listing, call_criteria, settings.renter_name,
+                instruction = row["instruction"] or build_instruction(listing, call_criteria, call_criteria.renter_name,
                     db.place_notes(search_id,key), booking_context=booking_context)
                 db.update_call(call_id, instruction=instruction, booking_context=booking_context,
                     search_context={'criteria': asdict(call_criteria), 'listing': listing.to_dict()})

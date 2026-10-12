@@ -4,8 +4,12 @@ import { getAccount } from "@/lib/session";
 import { SignInScreen } from "./sign-in-screen";
 import { StartForm } from "./start-form";
 import { StepsCarousel } from "./steps-carousel";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { personalMode } from "@/lib/personal-mode";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ signin?: string }> }) {
+  if (personalMode((await headers()).get("host"))) redirect("/personal");
   if (!(await getAccount())) {
     const { signin } = await searchParams;
     return <SignInScreen status={signin} />;

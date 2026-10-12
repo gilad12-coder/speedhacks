@@ -50,7 +50,8 @@ async def lifespan(_: FastAPI):
     from househunt import phone
 
     db.init()
-    db.recover_calls()
+    if not os.environ.get("VERCEL"):  # serverless instances overlap; platform.tick() recovers there
+        db.recover_calls()
     from househunt.voice.enrollment import recover_pending
     recover_pending()
     from househunt import platform
@@ -76,7 +77,7 @@ def voice_page(request: Request, search_id: int):
     if not found:
         raise HTTPException(404, "Search not found")
     return templates.TemplateResponse(request, "voice.html", {"search_id": search_id,
-        "speaker_name": found[0].renter_name or settings.renter_name, "script": SCRIPT},
+        "speaker_name": found[0].renter_name or "my client", "script": SCRIPT},
         headers={"Cache-Control": "private, no-store", "Permissions-Policy": "microphone=(self)"})
 
 
@@ -86,6 +87,28 @@ def household_voice_page(household_id: str):
     if sid is None:
         raise HTTPException(404, "Start your household search before setting up its voice")
     return RedirectResponse(f"/searches/{sid}/voice", status_code=303)
+
+
+@app.get('/agent/households/{household_id}/voice/page', response_class=HTMLResponse)
+def platform_voice_page(request: Request, household_id: str):
+    from househunt.voice.enrollment import SCRIPT
+    from urllib.parse import quote
+    sid = db.household_search(household_id)
+    if sid is None:
+        raise HTTPException(404, 'Start your search first')
+    api = f'/api/h/{quote(household_id, safe="")}/voice'
+    return templates.TemplateResponse(request, 'voice.html', {'search_id': sid, 'embedded': True,
+        'speaker_name': db.get_search(sid)[0].renter_name, 'script': SCRIPT, 'api_url': api,
+        'back_url': f'/h/{quote(household_id, safe="")}/search',
+        'recorder_url': api + '/recorder.js', 'capture_url': api + '/voice-capture.js'},
+        headers={'Cache-Control': 'private, no-store'})
+
+
+@app.get('/agent/households/{household_id}/voice/{asset}')
+def platform_voice_asset(household_id: str, asset: str):
+    if asset not in ('recorder.js', 'voice-capture.js') or db.household_search(household_id) is None:
+        raise HTTPException(404)
+    return FileResponse(Path(__file__).parent / 'static' / asset, media_type='text/javascript')
 
 from househunt.web.household_api import router as _household_api  # noqa: E402
 
@@ -204,7 +227,7 @@ def create_search(
         must_haves=_split(must_haves), move_in_by=move_in_by or None,
         tour_availability=_split(tour_availability),
         occupants=occupants,
-        renter_name=renter_name.strip() or settings.renter_name,
+        renter_name=renter_name.strip(),
     )
     search_id = db.create_search(criteria)
     background.add_task(pipeline.run_search, search_id)
@@ -292,6 +315,13 @@ def call_recording(call_id: int):
         raise HTTPException(404, "Recording not imported")
     return FileResponse(path, media_type="audio/mpeg" if path.suffix == ".mp3" else "audio/wav",
                         headers={"Cache-Control": "private, no-store"})
+
+
+@app.get('/agent/tick')
+def worker_tick():
+    """Vercel Cron's entry point; it authenticates with CRON_SECRET set to AGENT_API_KEY."""
+    from househunt import platform
+    return {'ran': platform.tick()}
 
 
 @app.post('/agent/households/{household_id}/listings/{key}/call')
@@ -750,7 +780,7 @@ def draft_listing_email(search_id: int, key: str):
     listing = db.get_listing(search_id, key)
     if not listing:
         raise HTTPException(404)
-    draft = draft_email(listing, criteria, settings.renter_name)
+    draft = draft_email(listing, criteria, criteria.renter_name)
     to = (listing.contact.email if listing.contact else None) or ""
     email_id = db.create_email(search_id, key, to, draft.subject, draft.body)
     return RedirectResponse(f"/emails/{email_id}", status_code=303)

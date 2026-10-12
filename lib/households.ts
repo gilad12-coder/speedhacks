@@ -20,6 +20,8 @@ interface HousemateRow {
   id: string;
   name: string;
   location: string | null;
+  min_bedrooms: number | null;
+  neighborhoods: string[];
   max_budget_usd: number;
   commute_destination: string;
   commute_mode: CommuteMode;
@@ -41,6 +43,8 @@ function toHousemate(r: HousemateRow): Housemate {
     id: r.id,
     name: r.name,
     location: r.location ?? "",
+    minBedrooms: r.min_bedrooms ?? undefined,
+    neighborhoods: r.neighborhoods ?? [],
     maxBudgetUsd: r.max_budget_usd,
     commute: {
       destination: r.commute_destination,
@@ -52,8 +56,8 @@ function toHousemate(r: HousemateRow): Housemate {
     dealBreakers: r.deal_breakers,
     niceToHaves: r.nice_to_haves,
     wishes: r.wishes,
-    moveInFrom: r.move_in_from,
-    moveInTo: r.move_in_to,
+    moveInFrom: r.move_in_from ?? "",
+    moveInTo: r.move_in_to ?? "",
     incomeBandUsd: r.income_min == null || r.income_max == null ? null : { min: r.income_min, max: r.income_max },
     calendarConnected: r.calendar_connected,
     intakeComplete: true,
@@ -83,7 +87,7 @@ export async function findHouseholdByCode(joinCode: string) {
 
 async function housemateRows(householdId: string) {
   return sql<HousemateRow[]>`
-    select id, name, location, max_budget_usd, commute_destination, commute_mode, commute_modes, max_commute_minutes,
+    select id, name, location, min_bedrooms, neighborhoods, max_budget_usd, commute_destination, commute_mode, commute_modes, max_commute_minutes,
       must_haves, deal_breakers, nice_to_haves, wishes,
       to_char(move_in_from, 'YYYY-MM-DD') as move_in_from, to_char(move_in_to, 'YYYY-MM-DD') as move_in_to,
       income_min, income_max, google_refresh_token is not null as calendar_connected

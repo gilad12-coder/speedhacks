@@ -21,7 +21,7 @@ in production it's behind `APP_PASSWORD`. Sharing the Next.js session is a follo
 
 Set the frontend's Postgres, Google OAuth and session settings from `.env.example`. Set `APP_URL` to its reachable URL and generate a strong random `AGENT_API_KEY`, shared only between the two servers. Set `AGENT_WORKER_URL` in Next.js to the Python server's reachable HTTPS URL. Local HTTP is accepted only for localhost. No frontend public environment variables contain provider keys.
 
-For the worker's private `.env`, set `APP_URL`, `AGENT_API_KEY`, `OPENAI_API_KEY`, `DIAL_API_KEY`, `DIAL_FROM_NUMBER`, `DIAL_ALLOWED_NUMBERS`, `APP_PASSWORD`, `MOCK_SOURCES=0`, and `CALL_MODE=approve`. Use a persistent `DB_PATH` and a single worker process. `RENTER_NAME` is the local fallback; each household brief supplies its own first name. Keep `.env` owner-readable only.
+For the worker's private `.env`, set `APP_URL`, `AGENT_API_KEY`, `OPENAI_API_KEY`, `DIAL_API_KEY`, `DIAL_FROM_NUMBER`, `APP_PASSWORD`, `MOCK_SOURCES=0`, and `CALL_MODE=approve`. Use a persistent `DB_PATH` and a single worker process. `RENTER_NAME` is the local fallback; each household brief supplies its own first name. Keep `.env` owner-readable only.
 
 ```sh
 # Terminal 1: household app (its own .env.local)

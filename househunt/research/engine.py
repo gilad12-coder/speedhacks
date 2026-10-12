@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from statistics import median
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field
 
@@ -88,6 +89,9 @@ def evidence(field: str, quote: str, page: Page) -> dict:
 def parse_rental(rental: Rental, page: Page, criteria: SearchCriteria) -> Listing | None:
     if not rental.is_specific_rental or rental.in_requested_city is False:
         return None
+    path = urlsplit(page.url).path.lower()
+    if re.search(r'/(?:search|map-search)(?:/|$)|/page-\d+(?:/|$)|-neighborhood(?:/|$)', path):
+        return None  # A model's label cannot promote a known inventory/search page.
     source, source_id = identify(page.url)
     listing = Listing(source=source or Source.OTHER, source_id=source_id, url=page.url,
                       title=page.title, provenance=[page.url], photo_urls=page.images)
@@ -97,6 +101,10 @@ def parse_rental(rental: Rental, page: Page, criteria: SearchCriteria) -> Listin
             continue
         value = fact.value.strip()
         if fact.key in ("rent", "beds", "baths", "sqft"):
+            if fact.key == 'rent' and re.search(r'\$[\d,]+\s*(?:-|–|—|to)\s*\$?[\d,]+|\b(?:starting (?:at|from)|from)\s*\$|depending on income', fact.quote, re.I):
+                accepted.append(evidence('rent_range', fact.quote, page))
+                listing.notes.append('Advertised price is a range or conditional amount; exact unit rent needs confirmation: ' + fact.quote)
+                continue
             try:
                 value_n = float(value.replace(",", "").replace("$", ""))
             except ValueError:
@@ -125,6 +133,8 @@ def parse_rental(rental: Rental, page: Page, criteria: SearchCriteria) -> Listin
             else:
                 setattr(listing, fact.key, value)
         accepted.append(evidence(fact.key, fact.quote, page))
+    if not any(f['field'] in ('address', 'rent', 'rent_range', 'beds') for f in accepted):
+        return None  # No grounded property facts means this is not an actionable rental.
     matches = []
     for requirement in [*criteria.must_haves, *[f"Must not have: {d}" for d in criteria.deal_breakers]]:
         m = next((m for m in rental.requirements if m.requirement == requirement), None)

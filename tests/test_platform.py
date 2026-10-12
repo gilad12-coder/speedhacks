@@ -57,6 +57,22 @@ def test_polling_never_repeats_completed_search(platform,monkeypatch):
     assert len(searches)==1 and db.household_search('h1')==searches[0]
 
 
+def test_personal_bedrooms_are_independent_of_occupants_and_unknown_dates(platform):
+    c = platform[1].criteria_from_brief({'location':'San Francisco, CA','maxTotalRentUsd':5500,
+        'occupants':1,'renterName':'Reed','minBedrooms':2,'neighborhoods':['Civic Center'],
+        'moveInFrom':'','moveInTo':'','commute':{'destination':'','maxMinutes':0}})
+    assert c.min_beds == 2 and c.occupants == 1 and c.neighborhoods == ['Civic Center']
+    assert c.move_in_from is None and c.move_in_by is None and c.commute == {}
+
+
+def test_cron_lease_can_be_reacquired_after_release(platform):
+    db, _ = platform
+    assert db.claim_lease('test-worker', 60)
+    assert not db.claim_lease('test-worker', 60)
+    db.release_lease('test-worker')
+    assert db.claim_lease('test-worker', 60)
+
+
 def test_worker_api_requires_secret_and_household_owns_recording(platform):
     from fastapi.testclient import TestClient
     from househunt.web.app import app

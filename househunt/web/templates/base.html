@@ -132,7 +132,8 @@
 </head>
 <body>
 {% set path = request.url.path %}
-<div class="shell">
+<div class="shell" {% if embedded %}style="display:block"{% endif %}>
+  {% if not embedded %}
   <aside class="sidebar" id="sidebar">
     <a class="brand" href="/"><span class="logo">{{ icon("key", 18) }}</span>KeyHunt</a>
     <a class="new-search {{ 'active' if path == '/searches/new' }}" href="/searches/new">{{ icon("plus", 16) }}New search</a>
@@ -164,11 +165,14 @@
       <div>Listings: <strong>{{ "mock data" if settings.mock_sources else "live" }}</strong></div>
     </div>
   </aside>
+  {% endif %}
   <div>
+    {% if not embedded %}
     <div class="topbar">
       <button type="button" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')">{{ icon("menu", 22) }}</button>
       <a href="/">KeyHunt</a>
     </div>
+    {% endif %}
     <main class="page {% block page_class %}{% endblock %}">
       {% block content %}{% endblock %}
     </main>

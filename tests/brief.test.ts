@@ -21,6 +21,13 @@ const mate = (over: Partial<Housemate>): Housemate => ({
 });
 
 describe("brief", () => {
+  it("keeps an explicit solo bedroom preference and leaves unspecified dates and commute flexible", () => {
+    const brief = buildSearchBrief("personal", [mate({name:"Reed", minBedrooms:2, neighborhoods:["Civic Center"],
+      moveInFrom:"", moveInTo:"", commute:{destination:"", mode:"walk", modes:[], maxMinutes:0}})]);
+    expect(brief.occupants).toBe(1); expect(brief.minBedrooms).toBe(2);
+    expect(brief.neighborhoods).toEqual(["Civic Center"]);
+    expect(brief.moveInFrom).toBe(""); expect(brief.moveInTo).toBe(""); expect(brief.commute.destination).toBe("");
+  });
   const group = [
     mate({ name: "Gilad", mustHaves: ["Pets allowed", "In-unit laundry"] }),
     mate({ name: "Lucy", maxBudgetUsd: 1800, dealBreakers: ["Pets allowed"], commute: { destination: "mountain view  caltrain", mode: "bus", modes: ["bus", "bike"], maxMinutes: 50 } }),

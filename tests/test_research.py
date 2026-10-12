@@ -49,6 +49,19 @@ def test_cross_search_does_not_promote_unsupported_or_wrong_unit_claims():
     assert validate_review(review,[],target())['status'] == 'unconfirmed'
 
 
+def test_catalog_pages_and_conditional_prices_are_not_specific_unit_rents():
+    criteria = SearchCriteria(city='SF', max_price=5500)
+    page = Page('https://rent.com/california/san-francisco-apartments/civic-center-neighborhood/page-6', 'Rentals', '2 beds $5,000')
+    rental = Rental(url=page.url, is_specific_rental=True, in_requested_city=True,
+        availability='unknown', availability_quote='', requirements=[], facts=[])
+    assert parse_rental(rental, page, criteria) is None
+    page = Page('https://rentals.example/unit', '850 Turk Street', '2 bedroom apartments range from $1,167 - $2,585 DEPENDING ON INCOME')
+    rental.url = page.url
+    rental.facts = [__import__('househunt.research.engine', fromlist=['Fact']).Fact(key='rent', value='2585', quote=page.text)]
+    listing = parse_rental(rental, page, criteria)
+    assert listing.price is None and listing.research['evidence'][0]['field'] == 'rent_range'
+
+
 def test_price_outlier_needs_three_distinct_grounded_comparables():
     listing = target()
     pages, comps = [], []
@@ -116,7 +129,11 @@ def test_private_and_credential_urls_cannot_be_fetched(monkeypatch):
     assert fetch_page('https://public.example.com') is None
 
 
-def test_renter_identity_is_used_but_not_sent_to_web_search():
+def test_renter_identity_is_used_but_not_sent_to_web_search(tmp_path, monkeypatch):
+    from househunt import db
+    from dataclasses import replace
+    monkeypatch.setattr(db, 'settings', replace(db.settings, db_path=str(tmp_path / 'research.db')))
+    db.init()
     from househunt.outreach.script import build_instruction
     from househunt.research.provider import public_criteria
     criteria = SearchCriteria(city='SF',max_price=4000,renter_name='Reed',tour_availability=['private calendar detail'])

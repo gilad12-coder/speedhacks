@@ -433,15 +433,15 @@ function BriefList({ brief, columns }: { brief: Brief; columns: 1 | 3 }) {
       </BriefItem>
       <BriefItem label="Move in">
         <span className="font-mono tabular">
-          {fmtDay(brief.moveInFrom)} – {fmtDay(brief.moveInTo)}
+          {brief.moveInFrom || brief.moveInTo ? `${brief.moveInFrom ? fmtDay(brief.moveInFrom) : "Flexible"} – ${brief.moveInTo ? fmtDay(brief.moveInTo) : "Flexible"}` : "Flexible"}
         </span>
       </BriefItem>
       <BriefItem label="Commute">
-        {brief.commute.destination}, {brief.commute.maxMinutes} min by {modes}
+        {brief.commute.destination ? `${brief.commute.destination}, ${brief.commute.maxMinutes} min by ${modes}` : "No commute requirement"}
       </BriefItem>
       {/* Folded into one item so the three-column grid stays even. */}
       <BriefItem label="Where">
-        {brief.location || "Anywhere"}, at least {brief.occupants} bedrooms
+        {[...(brief.neighborhoods ?? []), brief.location].filter(Boolean).join(", ") || "Anywhere"}, at least {brief.minBedrooms ?? (brief.occupants > 1 ? brief.occupants : 0)} bedrooms
       </BriefItem>
       <BriefItem label="Must have">
         {brief.mustHaves.join(", ") || "Nothing specific"}

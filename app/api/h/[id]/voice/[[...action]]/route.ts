@@ -10,7 +10,7 @@ async function handle(request: Request, { params }: Context) {
   if (!(await isMember(id, await getHousemateId(id)))) return new Response(null, { status: 401 });
   const suffix = action.join("/");
   const method = request.method;
-  if (!({ GET: ["", "preview"], POST: ["", "approve", "preview"], DELETE: [""] }[method]?.includes(suffix))) {
+  if (!({ GET: ["", "preview", "recorder.js", "voice-capture.js"], POST: ["", "approve", "preview"], DELETE: [""] }[method]?.includes(suffix))) {
     return new Response(null, { status: 404 });
   }
   const headers: Record<string, string> = { "X-KeyHunt-Voice": "1" };

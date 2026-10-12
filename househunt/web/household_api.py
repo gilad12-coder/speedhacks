@@ -195,7 +195,7 @@ def draft_email(household_id: str, key: str):
     existing = db.emails_for_search(search_id).get(key)
     if existing:
         return {"id": existing["id"]}
-    d = draft(listing, criteria, criteria.renter_name or settings.renter_name)
+    d = draft(listing, criteria, criteria.renter_name)
     to = (listing.contact.email if listing.contact else None) or ""
     return {"id": db.create_email(search_id, key, to, d.subject, d.body)}
 

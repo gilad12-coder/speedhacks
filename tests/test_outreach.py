@@ -75,7 +75,8 @@ def test_auto_search_queues_then_calls_with_full_context(outreach, monkeypatch):
     assert row['status'] == 'ended' and json.loads(row['search_context'])['criteria']['wishes'] == ['Quiet street']
     job = scheduler.jobs(sid)[0]
     assert job['state'] == 'scheduled' and job['attempts'] == 1
-    assert datetime.fromisoformat(job['scheduled_at']).date() > datetime.now(timezone.utc).date()
+    local = hours.ZoneInfo(job['hours']['timezone'])
+    assert datetime.fromisoformat(job['scheduled_at']).astimezone(local).date() > datetime.now(local).date()
     scheduler.run_due()
     assert len(sent) == 1  # No same-day redial.
 

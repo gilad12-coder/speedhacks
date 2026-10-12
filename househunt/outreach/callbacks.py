@@ -53,15 +53,15 @@ def process(raw: dict) -> bool:
         return False  # An unmatched callback stays in the inbox for review.
     sid = old['search_id']
     with db.conn() as c:
-        c.execute('BEGIN IMMEDIATE')
+        db.lock(c, "outreach-jobs")
         row = c.execute("SELECT * FROM calls WHERE dial_call_id=? AND direction='inbound'", (raw['id'],)).fetchone()
         if row and row['status'] == 'ended':
             return False
         if row:
             call_id = row['id']
         else:
-            call_id = c.execute("INSERT INTO calls(search_id,listing_key,status,created_at,updated_at,phone,mode,direction,dial_call_id) VALUES (?,?,'extracting',?,?,?,'live','inbound',?)",
-                (sid, listing.key, raw.get('createdAt') or db.now(), db.now(), raw.get('from'), raw['id'])).lastrowid
+            call_id = c.execute("INSERT INTO calls(search_id,listing_key,status,created_at,updated_at,phone,mode,direction,dial_call_id) VALUES (?,?,'extracting',?,?,?,'live','inbound',?) RETURNING id",
+                (sid, listing.key, raw.get('createdAt') or db.now(), db.now(), raw.get('from'), raw['id'])).fetchone()['id']
         # Any real callback cancels the unattended outbound retry before model processing.
         c.execute("UPDATE outreach_jobs SET state='complete',scheduled_at=NULL,reason='Callback received; processing details',updated_at=? WHERE search_id=? AND listing_key=?", (db.now(), sid, listing.key))
     raw = {**raw, 'booking_context': {'enabled': False, 'windows': []}}

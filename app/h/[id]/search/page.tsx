@@ -93,6 +93,7 @@ export default async function SearchPage({ params, searchParams }: {
         )}
 
         <div className="mt-6 grid gap-3">
+          <a href={`/h/${id}/settings`} className="text-sm font-semibold text-green-ink underline">Voice & calendar settings</a>
           <RefineSearch householdId={id} criteria={c} running={running} />
           <AddListing householdId={id} />
         </div>

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import threading
 from datetime import datetime, timezone
@@ -46,7 +47,7 @@ def enqueue(sid: int, key: str) -> None:
     if not listing or listing.status.value in ('filtered', 'not_viable', 'tour_scheduled'):
         return
     with db.conn() as c:
-        c.execute('BEGIN IMMEDIATE')
+        db.lock(c, "outreach-jobs")
         row = c.execute('SELECT * FROM outreach_jobs WHERE search_id=? AND listing_key=?', (sid, key)).fetchone()
         if row and row['state'] not in ('needs_attention', 'blocked'):
             return
@@ -105,7 +106,7 @@ def run_due(sid: int | None = None, key: str | None = None) -> None:
     # Re-read and claim after acquiring the same lock as manual calls.
     with pipeline._call_lock:
         with db.conn() as c:
-            c.execute('BEGIN IMMEDIATE')
+            db.lock(c, "outreach-jobs")
             query = "SELECT * FROM outreach_jobs WHERE state='scheduled' AND scheduled_at<=?"
             args = [datetime.now(timezone.utc).isoformat()]
             if sid is not None:
@@ -148,7 +149,7 @@ def run_due(sid: int | None = None, key: str | None = None) -> None:
 
 def start_background() -> threading.Event:
     stop = threading.Event()
-    if not settings.outreach_worker:
+    if not settings.outreach_worker or os.environ.get('VERCEL'):
         return stop
     # The single-process deployment restarts interrupted jobs with their saved call id/key.
     with db.conn() as c:

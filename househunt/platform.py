@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -25,11 +25,12 @@ def criteria_from_brief(brief: dict) -> SearchCriteria:
     if budget <= 0 or not 1 <= occupants <= 6:
         raise ValueError('Invalid household budget or size')
     # One bedroom per housemate; someone searching alone can take a studio.
-    return SearchCriteria(city=location, max_price=budget, min_beds=occupants if occupants > 1 else 0,
-        occupants=occupants, renter_name=str(brief.get('renterName') or settings.renter_name or 'my client')[:80],
+    return SearchCriteria(city=location, max_price=budget, min_beds=max(0, int(brief.get('minBedrooms', occupants if occupants > 1 else 0))),
+        neighborhoods=list(brief.get('neighborhoods', [])),
+        occupants=occupants, renter_name=str(brief.get('renterName') or 'my client')[:80],
         must_haves=list(brief.get('mustHaves', [])), deal_breakers=list(brief.get('dealBreakers', [])),
-        nice_to_haves=list(brief.get('niceToHaves', [])), move_in_from=brief.get('moveInFrom'),
-        move_in_by=brief.get('moveInTo'), commute=brief.get('commute', {}),
+        nice_to_haves=list(brief.get('niceToHaves', [])), move_in_from=brief.get('moveInFrom') or None,
+        move_in_by=brief.get('moveInTo') or None, commute=brief.get('commute', {}) if (brief.get('commute') or {}).get('destination') else {},
         wishes=[str(w)[:200] for w in brief.get('wishes', [])][:12],
         household_income_band=brief.get('householdIncomeBandUsd'))
 
@@ -216,7 +217,7 @@ wake = threading.Event()
 def start_background_worker(interval: float = 15) -> threading.Thread | None:
     """Run the worker loop inside the web app (single-process deploys and local dev).
     Enabled with RUN_PLATFORM_WORKER=1; otherwise run `python -m househunt.platform`."""
-    if os.environ.get('RUN_PLATFORM_WORKER') != '1':
+    if os.environ.get('RUN_PLATFORM_WORKER') != '1' or os.environ.get('VERCEL'):
         return None
     client = PlatformClient()
 
@@ -232,6 +233,33 @@ def start_background_worker(interval: float = 15) -> threading.Thread | None:
     t = threading.Thread(target=loop, name='platform-worker', daemon=True)
     t.start()
     return t
+
+
+def tick(lease_seconds: int = 800) -> bool:
+    """One worker pass for serverless hosts (Vercel Cron runs it every minute) in place of
+    the background loop. Returns False when another pass is still running."""
+    if not db.claim_lease('platform-worker', lease_seconds):
+        return False
+    try:
+        # A pass that hit the function time limit leaves its calls mid-flight; one untouched
+        # for 20 minutes is treated like a restart and waits for an explicit resume.
+        db.recover_calls(older_than=(datetime.now() - timedelta(minutes=20)).isoformat(timespec='seconds'))
+        from househunt import phone
+        from househunt.outreach import scheduler
+        if settings.callback_enabled:
+            phone.ensure_callbacks()
+            phone.poll_inbound()
+        run_once(PlatformClient())
+        if settings.outreach_worker:
+            scheduler.run_due()
+            with db.conn() as c:
+                jobs = c.execute('SELECT household_id, search_id FROM household_jobs').fetchall()
+            client = PlatformClient()
+            for job in jobs:
+                client.publish(job['household_id'], job['search_id'])
+    finally:
+        db.release_lease('platform-worker')
+    return True
 
 
 def run_once(client: PlatformClient) -> None:

@@ -4,7 +4,6 @@ import { ProfileMenu } from "@/components/profile-menu";
 import { Wordmark } from "@/components/shell";
 import { getHouseholdState, isMember } from "@/lib/households";
 import { getAccount, getHousemateId } from "@/lib/session";
-import { mainAppUrl } from "@/lib/agent-worker";
 
 const CALENDAR_NOTICES: Record<string, { tone: "green" | "amber"; text: string }> = {
   connected: { tone: "green", text: "Google Calendar is connected." },
@@ -33,7 +32,8 @@ export default async function SettingsPage({
   const account = await getAccount();
   const name = account?.firstName ? `${account.firstName} ${account.lastName}`.trim() : me.name;
   const notice = calendar ? CALENDAR_NOTICES[calendar] : undefined;
-  const voiceUrl = state.searchRequestedAt ? mainAppUrl(id) : null;
+  const voiceUrl = state.searchRequestedAt ? `/h/${id}/voice` : null;
+  const calendarConfigured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
   return (
     <div className="min-h-dvh">
@@ -92,7 +92,7 @@ export default async function SettingsPage({
           <div className="mt-3 rounded-2xl border border-line bg-surface px-6 py-5">
             <p className="font-medium">Let your AI assistant sound like you</p>
             <p className="mt-2 text-sm leading-relaxed text-ink-3">Record two minutes so calls use your voice. It always says it’s an AI.</p>
-            {voiceUrl ? <a href={`${voiceUrl}/voice`} className="mt-4 inline-block text-sm font-semibold text-green-ink underline">Record my voice in KeyHunt</a>
+            {voiceUrl ? <a href={voiceUrl} className="mt-4 inline-block text-sm font-semibold text-green-ink underline">Record my voice in KeyHunt</a>
               : <p className="mt-3 text-sm text-ink-3">Start your household search to set up its voice.</p>}
           </div>
         </section>
@@ -116,7 +116,7 @@ export default async function SettingsPage({
                 Reads only when you&apos;re busy, never event details.
               </p>
             </div>
-            <a
+            {calendarConfigured ? <a
               href={`/api/auth/google/start?household=${encodeURIComponent(id)}`}
               className={`inline-flex h-10 shrink-0 items-center justify-center rounded-md px-4 text-sm font-medium transition-colors duration-150 ${
                 me.calendarConnected
@@ -125,7 +125,7 @@ export default async function SettingsPage({
               }`}
             >
               {me.calendarConnected ? "Reconnect" : "Connect"}
-            </a>
+            </a> : <span className="max-w-48 text-sm text-ink-3">Calendar connection is not configured on this installation. Calls can still collect tour offers.</span>}
           </div>
         </section>
       </main>

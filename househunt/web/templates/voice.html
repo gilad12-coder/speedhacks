@@ -14,9 +14,9 @@
 </style>
 {% endblock %}
 {% block content %}
-<a href="/searches/{{ search_id }}" class="small">← Back to your search</a>
+<a href="{{ back_url or '/searches/' ~ search_id }}" class="small">← Back to your search</a>
 <div class="page-head" style="margin-top:14px"><div><h1>Your voice. Your AI assistant.</h1><p class="muted">Two minutes of natural speech give your assistant a voice that sounds like you.</p></div></div>
-<div id="voice-enrollment" class="voice-layout" data-api="/api/searches/{{ search_id }}/voice">
+<div id="voice-enrollment" class="voice-layout" data-api="{{ api_url or '/api/searches/' ~ search_id ~ '/voice' }}" data-capture="{{ capture_url or '/voice-assets/voice-capture.js' }}">
   <section class="card voice-controls" aria-label="Voice recording">
     <span class="voice-step">1 · Record &nbsp; 2 · Listen &nbsp; 3 · Approve</span>
     <p id="voice-status" role="status" aria-live="polite">Loading your voice settings…</p>
@@ -45,4 +45,4 @@
   </section>
 </div>
 {% endblock %}
-{% block scripts %}<script type="module" src="/voice-assets/recorder.js"></script>{% endblock %}
+{% block scripts %}<script type="module" src="{{ recorder_url or '/voice-assets/recorder.js' }}"></script>{% endblock %}
