@@ -57,6 +57,42 @@ def test_polling_never_repeats_completed_search(platform,monkeypatch):
     assert len(searches)==1 and db.household_search('h1')==searches[0]
 
 
+def test_personal_bedrooms_are_independent_of_occupants_and_unknown_dates(platform):
+    c = platform[1].criteria_from_brief({'location':'San Francisco, CA','maxTotalRentUsd':5500,
+        'occupants':1,'renterName':'Reed','minBedrooms':2,'neighborhoods':['Civic Center'],
+        'moveInFrom':'','moveInTo':'','commute':{'destination':'','maxMinutes':0}})
+    assert c.min_beds == 2 and c.occupants == 1 and c.neighborhoods == ['Civic Center']
+    assert c.move_in_from is None and c.move_in_by is None and c.commute == {}
+
+
+def test_cron_lease_can_be_reacquired_after_release(platform):
+    db, _ = platform
+    assert db.claim_lease('test-worker', 60)
+    assert not db.claim_lease('test-worker', 60)
+    db.release_lease('test-worker')
+    assert db.claim_lease('test-worker', 60)
+
+
+def test_embedded_voice_ui_is_household_scoped_without_operator_navigation(platform):
+    from fastapi.testclient import TestClient
+    from househunt.web.app import app
+    from househunt.models import SearchCriteria
+    db, _ = platform
+    sid = db.create_search(SearchCriteria(city='SF', max_price=5500, renter_name='Reed'))
+    with db.conn() as c:
+        c.execute('INSERT INTO household_jobs(household_id,search_id) VALUES (?,?)', ('voice-ui', sid))
+    with TestClient(app) as client:
+        path = '/agent/households/voice-ui/voice/page'
+        assert client.get(path).status_code == 401
+        headers = {'Authorization':'Bearer test-worker-secret'}
+        page = client.get(path, headers=headers)
+        assert page.status_code == 200
+        assert 'data-api="/api/h/voice-ui/voice"' in page.text
+        assert '/api/h/voice-ui/voice/voice-capture.js' in page.text
+        assert 'id="sidebar"' not in page.text and 'Recent searches' not in page.text
+        assert client.get('/agent/households/voice-ui/voice/recorder.js', headers=headers).status_code == 200
+
+
 def test_worker_api_requires_secret_and_household_owns_recording(platform):
     from fastapi.testclient import TestClient
     from househunt.web.app import app

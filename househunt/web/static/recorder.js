@@ -105,7 +105,7 @@ el('start').addEventListener('click', async () => {
     if (unloaded) { cleanupMic(); return; }
     context = new AudioContext({ sampleRate: 16000 });
     await context.resume();
-    await context.audioWorklet.addModule('/voice-assets/voice-capture.js');
+    await context.audioWorklet.addModule(root.dataset.capture || '/voice-assets/voice-capture.js');
     const rate = context.sampleRate;
     source = context.createMediaStreamSource(stream);
     capture = new AudioWorkletNode(context, 'keyhunt-voice-capture');

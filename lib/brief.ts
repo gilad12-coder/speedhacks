@@ -29,7 +29,7 @@ export function detectConflicts(housemates: Housemate[]): Conflict[] {
   if (housemates.length > 1) {
     const latestFrom = housemates.reduce((a, h) => (h.moveInFrom > a.moveInFrom ? h : a));
     const earliestTo = housemates.reduce((a, h) => (h.moveInTo < a.moveInTo ? h : a));
-    if (latestFrom.moveInFrom > earliestTo.moveInTo) {
+    if (latestFrom.moveInFrom && earliestTo.moveInTo && latestFrom.moveInFrom > earliestTo.moveInTo) {
       conflicts.push({
         field: "moveInFrom",
         housemateIds: [latestFrom.id, earliestTo.id],
@@ -84,6 +84,7 @@ function preferredLocation(housemates: Housemate[]) {
 function commuteDestination(housemates: Housemate[]) {
   const groups = new Map<string, Housemate[]>();
   for (const h of housemates) {
+    if (!h.commute.destination.trim()) continue;
     const key = normalize(h.commute.destination);
     groups.set(key, [...(groups.get(key) ?? []), h]);
   }
@@ -99,7 +100,7 @@ function commuteDestination(housemates: Housemate[]) {
       maxMinutes: Math.min(...group.map((h) => h.commute.maxMinutes)),
     };
   };
-  return { main: pick(ranked[0]), others: ranked.slice(1).map(pick) };
+  return { main: ranked.length ? pick(ranked[0]) : { destination: "", mode: "walk" as CommuteMode, modes: [], maxMinutes: 0 }, others: ranked.slice(1).map(pick) };
 }
 
 export function buildSearchBrief(householdId: string, housemates: Housemate[], occupants = housemates.length): SearchBrief {
@@ -112,19 +113,21 @@ export function buildSearchBrief(householdId: string, housemates: Housemate[], o
   const mustHaves = union((h) => h.mustHaves).filter((f) => !conflicted.has(f));
   const dealBreakers = union((h) => h.dealBreakers).filter((f) => !conflicted.has(f));
   const niceToHaves = union((h) => h.niceToHaves).filter((f) => !mustHaves.includes(f) && !dealBreakers.includes(f));
-  const moveInFrom = housemates.map((h) => h.moveInFrom).sort().at(-1)!;
-  const moveInTo = housemates.map((h) => h.moveInTo).sort()[0];
+  const moveInFrom = housemates.map((h) => h.moveInFrom).filter(Boolean).sort().at(-1) ?? "";
+  const moveInTo = housemates.map((h) => h.moveInTo).filter(Boolean).sort()[0] ?? "";
   const { main } = commuteDestination(housemates);
 
   return {
     householdId,
     renterName: housemates[0]?.name.split(" ")[0] || undefined,
     occupants,
+    ...(housemates.some((h) => h.minBedrooms !== undefined) && { minBedrooms: Math.max(...housemates.map((h) => h.minBedrooms ?? 0)) }),
+    neighborhoods: union((h) => h.neighborhoods ?? []),
     location: preferredLocation(housemates).main,
     maxTotalRentUsd: housemates.reduce((sum, h) => sum + h.maxBudgetUsd, 0),
     // Disjoint windows are reported as a conflict; the agent still gets a usable range.
     moveInFrom,
-    moveInTo: moveInTo < moveInFrom ? moveInFrom : moveInTo,
+    moveInTo: moveInTo && moveInTo < moveInFrom ? moveInFrom : moveInTo,
     commute: main,
     mustHaves,
     dealBreakers,

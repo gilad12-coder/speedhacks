@@ -35,6 +35,70 @@ def test_closed_evenings_weekends_closures_and_dst(outreach):
     assert hours.next_open(hours.fallback(), datetime.fromisoformat('2026-10-09T23:59:00+00:00')).day == 12
 
 
+def test_manual_call_authorizes_exact_contact_and_reaches_dial_with_full_context(outreach, monkeypatch):
+    from fastapi.testclient import TestClient
+    from househunt.outreach.dial import _parse_call
+    caller, _, scheduler, _, _ = outreach
+    db, pipeline, sid, listing, _ = caller
+    web = importlib.import_module('househunt.web.app')
+    for module in (scheduler, pipeline, web):
+        monkeypatch.setattr(module, 'settings', replace(module.settings, call_verified_contacts=True))
+    monkeypatch.setenv('AGENT_API_KEY', 'manual-test-key')
+    with db.conn() as c:
+        c.execute('INSERT INTO household_jobs(household_id,search_id) VALUES (?,?)', ('manual-household', sid))
+    scheduler.enqueue(sid, listing.key)
+    assert scheduler.jobs(sid)[0]['state'] == 'blocked'
+    placed = []
+    raw = {'id':'manual-test-call', 'status':'no-answer', 'transcriptTurns':[]}
+    class Dial:
+        def place_call(self, phone, instruction, **kwargs):
+            placed.append((phone, instruction))
+            return _parse_call(raw)
+        def wait_for_call(self, *_): return _parse_call(raw)
+    monkeypatch.setattr(pipeline, 'dial_client', Dial)
+    path = f'/agent/households/manual-household/listings/{listing.key}/call'
+    with TestClient(web.app) as client:
+        assert client.post(path).status_code == 401
+        response = client.post(path, headers={'Authorization':'Bearer manual-test-key'})
+        assert response.status_code == 200, response.text
+        assert len(placed) == 1 and placed[0][0] == listing.contact.phone
+        assert '900 Pine Street' in placed[0][1] and 'Sunny upper floor' in placed[0][1]
+        assert client.post(path, headers={'Authorization':'Bearer manual-test-key'}).status_code == 409
+    assert len(placed) == 1
+    assert scheduler.permitted(listing, search_id=sid)
+    assert not scheduler.permitted(listing, search_id=sid + 1)
+    listing.contact.phone = '+12025553333'
+    assert not scheduler.permitted(listing, search_id=sid)
+
+
+def test_manual_authorization_respects_opt_outs_and_closed_hours(outreach, monkeypatch):
+    caller, hours, scheduler, _, _ = outreach
+    db, _, sid, listing, _ = caller
+    monkeypatch.setattr(scheduler, 'settings', replace(scheduler.settings, call_verified_contacts=True))
+    monday = datetime.fromisoformat('2026-10-12T16:00:00+00:00')
+    monkeypatch.setattr(hours, 'next_open', lambda *_: monday)
+    scheduler.approve_manual(sid, listing)
+    scheduler.enqueue(sid, listing.key)
+    assert scheduler.jobs(sid)[0]['scheduled_at'] == monday.isoformat()
+    assert not db.calls_for_search(sid)
+    db.block_contact(listing.contact.phone)
+    with pytest.raises(ValueError, match='not to be called'):
+        scheduler.approve_manual(sid, listing)
+
+
+def test_saved_contact_replaces_stale_missing_phone_message(outreach, monkeypatch):
+    from househunt.web.household_api import ContactIn, save_contact
+    caller, _, scheduler, _, _ = outreach
+    db, _, sid, listing, _ = caller
+    listing.contact = None
+    db.upsert_listing(sid, listing)
+    with db.conn() as c:
+        c.execute('INSERT INTO household_jobs(household_id,search_id) VALUES (?,?)', ('edited-phone', sid))
+    scheduler.enqueue(sid, listing.key)
+    save_contact('edited-phone', listing.key, ContactIn(phone='+12025552222'))
+    assert scheduler.jobs(sid)[0]['reason'].startswith('Phone number saved.')
+
+
 def test_published_weekend_hours_and_quote_validation(outreach, monkeypatch):
     _, hours, _, _, _ = outreach
     importlib.reload(hours)  # Use real parser; replace its external model boundary.

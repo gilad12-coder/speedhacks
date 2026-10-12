@@ -303,7 +303,7 @@ def _call_listing(search_id: int, key: str, follow_up_after: int | None = None) 
                     if not re.fullmatch(r"\+1[2-9]\d{9}", phone) or re.fullmatch(r"\+1\d{3}55501\d{2}", phone):
                         raise RuntimeError("A real US E.164 contact number is required")
                     from househunt.outreach.scheduler import permitted
-                    if not permitted(listing, settings):
+                    if not permitted(listing, settings, search_id=search_id):
                         raise RuntimeError("Contact is not approved or independently corroborated for automatic calling")
                     if db.contact_blocked(phone):
                         raise RuntimeError("Contact requested no further calls")

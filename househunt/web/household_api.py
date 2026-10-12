@@ -131,6 +131,10 @@ def save_contact(household_id: str, key: str, body: ContactIn):
     except InvalidInput as e:
         raise HTTPException(400, str(e))
     db.upsert_listing(search_id, listing)
+    from househunt.outreach.scheduler import jobs, update
+    job = next((j for j in jobs(search_id) if j['listing_key'] == key), None)
+    if job and job['state'] in ('blocked', 'needs_attention') and listing.contact and listing.contact.phone:
+        update(search_id, key, reason='Phone number saved. Choose Verify & arrange tour to request this call.')
     return {"ok": True}
 
 

@@ -91,6 +91,28 @@ def household_voice_page(household_id: str):
         raise HTTPException(404, "Start your household search before setting up its voice")
     return RedirectResponse(f"/searches/{sid}/voice", status_code=303)
 
+
+@app.get('/agent/households/{household_id}/voice/page', response_class=HTMLResponse)
+def platform_voice_page(request: Request, household_id: str):
+    from househunt.voice.enrollment import SCRIPT
+    from urllib.parse import quote
+    sid = db.household_search(household_id)
+    if sid is None:
+        raise HTTPException(404, 'Start your search first')
+    api = f'/api/h/{quote(household_id, safe="")}/voice'
+    return templates.TemplateResponse(request, 'voice.html', {'search_id': sid, 'embedded': True,
+        'speaker_name': db.get_search(sid)[0].renter_name, 'script': SCRIPT, 'api_url': api,
+        'back_url': f'/h/{quote(household_id, safe="")}/search',
+        'recorder_url': api + '/recorder.js', 'capture_url': api + '/voice-capture.js'},
+        headers={'Cache-Control': 'private, no-store'})
+
+
+@app.get('/agent/households/{household_id}/voice/{asset}')
+def platform_voice_asset(household_id: str, asset: str):
+    if asset not in ('recorder.js', 'voice-capture.js') or db.household_search(household_id) is None:
+        raise HTTPException(404)
+    return FileResponse(Path(__file__).parent / 'static' / asset, media_type='text/javascript')
+
 from househunt.web.household_api import router as _household_api  # noqa: E402
 
 app.include_router(_household_api)
@@ -269,6 +291,12 @@ def call_listing(background: BackgroundTasks, search_id: int, key: str, next: st
     existing = db.calls_for_search(search_id).get(key)
     if existing and existing["status"] not in ("attention", "failed"):
         raise HTTPException(409, "Call already exists; no replacement call was started")
+    if not settings.mock_sources and settings.call_mode.value != 'dry_run':
+        from househunt.outreach.scheduler import approve_manual
+        try:
+            approve_manual(search_id, listing)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from None
     background.add_task(pipeline.request_call, search_id, key)
     # Only same-site paths, so the form can't bounce anyone to another site.
     back = next if next.startswith("/") and not next.startswith("//") else f"/searches/{search_id}"
@@ -313,10 +341,7 @@ def household_call(background: BackgroundTasks, household_id: str, key: str):
     listing = db.get_listing(search_id, key)
     if not listing or not listing.contact or not listing.contact.phone:
         raise HTTPException(400, 'A listing contact phone is required')
-    from househunt.outreach.scheduler import permitted
-    if not settings.mock_sources and settings.call_mode.value != 'dry_run' and not permitted(listing, settings):
-        raise HTTPException(400, 'This contact has not been enabled for calling by the operator')
-    call_listing(background, search_id, key)
+    call_listing(background, search_id, key, next='')
     return {'ok':True}
 
 

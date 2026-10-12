@@ -123,7 +123,7 @@ export function ListingCard({ householdId, listing, callingEnabled, index = 0 }:
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {canCall && callingEnabled && (
-          <Button variant={listing.call ? "secondary" : "primary"} disabled={pending}
+          <Button variant={listing.call ? "secondary" : "primary"} disabled={pending || Boolean(callRunning)}
                   onClick={() => run(() => callRental(householdId, listing.id), "Call requested. The agent will call during office hours.")}>
             <Phone aria-hidden className="size-4" />{listing.call ? "Resume saved call" : "Verify & arrange tour"}
           </Button>

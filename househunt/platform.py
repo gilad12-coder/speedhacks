@@ -26,11 +26,12 @@ def criteria_from_brief(brief: dict) -> SearchCriteria:
     if budget <= 0 or not 1 <= occupants <= 6:
         raise ValueError('Invalid household budget or size')
     # One bedroom per housemate; someone searching alone can take a studio.
-    return SearchCriteria(city=location, max_price=budget, min_beds=occupants if occupants > 1 else 0,
+    return SearchCriteria(city=location, max_price=budget, min_beds=max(0, int(brief.get('minBedrooms', occupants if occupants > 1 else 0))),
+        neighborhoods=list(brief.get('neighborhoods', [])),
         occupants=occupants, renter_name=str(brief.get('renterName') or 'my client')[:80],
         must_haves=list(brief.get('mustHaves', [])), deal_breakers=list(brief.get('dealBreakers', [])),
-        nice_to_haves=list(brief.get('niceToHaves', [])), move_in_from=brief.get('moveInFrom'),
-        move_in_by=brief.get('moveInTo'), commute=brief.get('commute', {}),
+        nice_to_haves=list(brief.get('niceToHaves', [])), move_in_from=brief.get('moveInFrom') or None,
+        move_in_by=brief.get('moveInTo') or None, commute=brief.get('commute', {}) if (brief.get('commute') or {}).get('destination') else {},
         wishes=[str(w)[:200] for w in brief.get('wishes', [])][:12],
         household_income_band=brief.get('householdIncomeBandUsd'))
 
@@ -217,7 +218,7 @@ wake = threading.Event()
 def start_background_worker(interval: float = 15) -> threading.Thread | None:
     """Run the worker loop inside the web app (single-process deploys and local dev).
     Enabled with RUN_PLATFORM_WORKER=1; otherwise run `python -m househunt.platform`."""
-    if os.environ.get('RUN_PLATFORM_WORKER') != '1':
+    if os.environ.get('RUN_PLATFORM_WORKER') != '1' or os.environ.get('VERCEL'):
         return None
     client = PlatformClient()
 
@@ -251,6 +252,11 @@ def tick(lease_seconds: int = 800) -> bool:
         phone.refresh()
         # Leave room under the 800s function limit for a call that starts near the deadline.
         scheduler.tick(deadline=started + 420)
+        with db.conn() as c:
+            jobs = c.execute("SELECT household_id, search_id FROM household_jobs").fetchall()
+        client = PlatformClient()
+        for job in jobs:
+            client.publish(job["household_id"], job["search_id"])
     finally:
         db.release_lease('platform-worker')
     return True

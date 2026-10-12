@@ -22,6 +22,8 @@ class Settings:
     dial_api_url: str
     dial_api_key: str | None
     dial_from_number: str | None     # E.164 or pn_… id
+    renter_name: str
+    dial_allowed_numbers: tuple[str, ...]
     notify_number: str | None        # where to text the renter results
     app_password: str | None         # HTTP basic auth for the deployed app
     claude_model: str
@@ -59,6 +61,8 @@ def load() -> Settings:
         dial_api_key=env("DIAL_API_KEY"),
         dial_from_number=env("DIAL_FROM_NUMBER"),
         notify_number=env("NOTIFY_NUMBER"),
+        renter_name=env("RENTER_NAME", "my client"),
+        dial_allowed_numbers=tuple(n.strip() for n in env("DIAL_ALLOWED_NUMBERS", "").split(",") if n.strip()),
         app_password=env("APP_PASSWORD"),
         claude_model=env("CLAUDE_MODEL", "anthropic/claude-opus-5.5" if openrouter else "claude-opus-5-5"),
         briefing_pin=(env("BRIEFING_PIN") or "").strip() or None,

@@ -11,6 +11,8 @@ export interface SearchBrief {
   householdId: string;
   renterName?: string; // spoken by the AI assistant; optional for older workers
   occupants: number; // 1–6
+  minBedrooms?: number; // explicit preference, independent of household size
+  neighborhoods?: string[];
   location: string; // city or area to search, free text
   maxTotalRentUsd: number; // sum of personal budgets
   moveInFrom: string; // ISO date
@@ -156,6 +158,8 @@ export interface Housemate {
   id: string;
   name: string;
   location: string;
+  minBedrooms?: number;
+  neighborhoods?: string[];
   maxBudgetUsd: number;
   commute: { destination: string; mode: CommuteMode; modes: CommuteMode[]; maxMinutes: number }; // mode = first of modes
   mustHaves: string[];

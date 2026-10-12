@@ -169,5 +169,8 @@ def _loop(stop: threading.Event) -> None:
 
 def start_background() -> threading.Event:
     stop = threading.Event()
+    import os
+    if os.environ.get('VERCEL'):
+        return stop
     threading.Thread(target=_loop, args=(stop,), daemon=True, name="phone-briefing").start()
     return stop

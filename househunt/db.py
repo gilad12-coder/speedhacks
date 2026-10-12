@@ -687,7 +687,7 @@ def claim_lease(name: str, seconds: int) -> bool:
     with conn() as c:
         return c.execute(
             "INSERT INTO app_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE "
-            "SET value=excluded.value WHERE app_state.value < ? RETURNING key",
+            "SET value=excluded.value WHERE app_state.value IS NULL OR app_state.value < ? RETURNING key",
             (f"lease:{name}", until, current.isoformat(timespec="seconds"))).fetchone() is not None
 
 

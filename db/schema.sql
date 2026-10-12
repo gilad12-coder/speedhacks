@@ -66,3 +66,8 @@ alter table housemates add column if not exists wishes text[] not null default '
 -- The form no longer asks for income or a last name; older rows keep theirs.
 alter table housemates alter column income_min drop not null;
 alter table housemates alter column income_max drop not null;
+-- Optional personal preferences; unknown dates are not an invented deadline.
+alter table housemates add column if not exists min_bedrooms int;
+alter table housemates add column if not exists neighborhoods text[] not null default '{}';
+alter table housemates alter column move_in_from drop not null;
+alter table housemates alter column move_in_to drop not null;
