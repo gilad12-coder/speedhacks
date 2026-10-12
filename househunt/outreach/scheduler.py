@@ -6,7 +6,8 @@ import logging
 import os
 import re
 import threading
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 
 from househunt import db
 from househunt.config import settings
@@ -18,9 +19,11 @@ log = logging.getLogger(__name__)
 def permitted(listing, config=None) -> bool:
     config = config or settings
     phone = listing.contact.phone if listing.contact else None
-    if phone in config.dial_allowed_numbers:
-        return True
-    if not phone or not config.call_verified_contacts or listing.screening.get('status') != 'cross_referenced':
+    if not phone:
+        return False
+    if not config.call_verified_contacts:
+        return True  # Any listing contact may be called; DIAL_CALL_VERIFIED_CONTACTS=1 requires corroboration.
+    if listing.screening.get('status') != 'cross_referenced':
         return False
     # An edited contact must not inherit the previous number's clearance.
     from househunt.collect import extract_phone
@@ -47,7 +50,7 @@ def enqueue(sid: int, key: str) -> None:
     if not listing or listing.status.value in ('filtered', 'not_viable', 'tour_scheduled'):
         return
     with db.conn() as c:
-        db.lock(c, "outreach-jobs")
+        db.lock(c, 'outreach')
         row = c.execute('SELECT * FROM outreach_jobs WHERE search_id=? AND listing_key=?', (sid, key)).fetchone()
         if row and row['state'] not in ('needs_attention', 'blocked'):
             return
@@ -106,7 +109,7 @@ def run_due(sid: int | None = None, key: str | None = None) -> None:
     # Re-read and claim after acquiring the same lock as manual calls.
     with pipeline._call_lock:
         with db.conn() as c:
-            db.lock(c, "outreach-jobs")
+            db.lock(c, 'outreach')
             query = "SELECT * FROM outreach_jobs WHERE state='scheduled' AND scheduled_at<=?"
             args = [datetime.now(timezone.utc).isoformat()]
             if sid is not None:
@@ -145,6 +148,23 @@ def run_due(sid: int | None = None, key: str | None = None) -> None:
         except Exception as error:
             log.warning('Outreach %s needs attention (%s)', sid, type(error).__name__)
             update(sid, key, state='needs_attention', reason='Saved call needs attention; retry safely', scheduled_at=None)
+
+
+def tick(deadline: float) -> None:
+    """Serverless stand-in for the worker loop: run due calls until `deadline` (time.monotonic)."""
+    if not settings.outreach_worker:
+        return
+    # A pass that hit the function time limit leaves its job mid-call; resume it like a restart.
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+    with db.conn() as c:
+        c.execute("UPDATE outreach_jobs SET state='scheduled', scheduled_at=?, reason='Resuming saved call' WHERE state='calling' AND updated_at<?", (datetime.now(timezone.utc).isoformat(), stale))
+    while time.monotonic() < deadline:
+        with db.conn() as c:
+            due = c.execute("SELECT 1 FROM outreach_jobs WHERE state='scheduled' AND scheduled_at<=? LIMIT 1", (datetime.now(timezone.utc).isoformat(),)).fetchone()
+        if not due:
+            return
+        run_due()
+    db.set_state('outreach_heartbeat', datetime.now(timezone.utc).isoformat())
 
 
 def start_background() -> threading.Event:

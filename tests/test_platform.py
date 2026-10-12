@@ -73,6 +73,26 @@ def test_cron_lease_can_be_reacquired_after_release(platform):
     assert db.claim_lease('test-worker', 60)
 
 
+def test_embedded_voice_ui_is_household_scoped_without_operator_navigation(platform):
+    from fastapi.testclient import TestClient
+    from househunt.web.app import app
+    from househunt.models import SearchCriteria
+    db, _ = platform
+    sid = db.create_search(SearchCriteria(city='SF', max_price=5500, renter_name='Reed'))
+    with db.conn() as c:
+        c.execute('INSERT INTO household_jobs(household_id,search_id) VALUES (?,?)', ('voice-ui', sid))
+    with TestClient(app) as client:
+        path = '/agent/households/voice-ui/voice/page'
+        assert client.get(path).status_code == 401
+        headers = {'Authorization':'Bearer test-worker-secret'}
+        page = client.get(path, headers=headers)
+        assert page.status_code == 200
+        assert 'data-api="/api/h/voice-ui/voice"' in page.text
+        assert '/api/h/voice-ui/voice/voice-capture.js' in page.text
+        assert 'id="sidebar"' not in page.text and 'Recent searches' not in page.text
+        assert client.get('/agent/households/voice-ui/voice/recorder.js', headers=headers).status_code == 200
+
+
 def test_worker_api_requires_secret_and_household_owns_recording(platform):
     from fastapi.testclient import TestClient
     from househunt.web.app import app

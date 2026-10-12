@@ -27,7 +27,7 @@ function gmailCompose(to: string, subject: string, body: string) {
   return `https://mail.google.com/mail/?${q}`;
 }
 
-export function ListingCard({ householdId, listing, callingEnabled }: { householdId: string; listing: WorkspaceListing; callingEnabled: boolean }) {
+export function ListingCard({ householdId, listing, callingEnabled, index = 0 }: { householdId: string; listing: WorkspaceListing; callingEnabled: boolean; index?: number }) {
   const [pending, start] = useTransition();
   const [message, setMessage] = useState("");
   const status = STATUS[listing.status] ?? STATUS.candidate;
@@ -45,7 +45,7 @@ export function ListingCard({ householdId, listing, callingEnabled }: { househol
   }
 
   return (
-    <li id={listing.id} className="rounded-2xl border border-line bg-surface p-5">
+    <li id={listing.id} className="result-in rounded-2xl border border-line bg-surface p-5" style={{ "--i": Math.min(index, 12) } as React.CSSProperties}>
       <OutreachStatus job={listing.outreach} />
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">

@@ -146,13 +146,12 @@ export default async function HouseholdPage({
                   Open your search →
                 </Link>
               </div>
-              {searching && !run?.listings.length ? (
+              {searching && (
                 <div className="mt-6">
                   <SearchingScene status={run?.progress?.at(-1)} />
                 </div>
-              ) : (
-                run && <Pipeline run={run} />
               )}
+              {run && run.listings.length > 0 && <Pipeline run={run} />}
               {run?.progress?.length && run.listings.length ? (
                 <ActivityLog steps={run.progress} live={searching} />
               ) : null}
@@ -175,7 +174,7 @@ export default async function HouseholdPage({
                 </h2>
               </div>
               {run.finishedAt && list.length < 3 && (
-                <ThinResults count={list.length} household={household} />
+                <ThinResults count={list.length} />
               )}
               {!run.finishedAt && list.length === 0 && (
                 <p className="mt-6 rounded-2xl border border-dashed border-line-strong px-6 py-16 text-center text-ink-2">
@@ -508,7 +507,7 @@ function Pipeline({
               i === stages.length - 1 && n > 0 ? "bg-green-soft" : ""
             }`}
           >
-            <p className="tabular font-display text-3xl font-semibold tracking-tight text-ink">
+            <p key={n} className="count-tick tabular font-display text-3xl font-semibold tracking-tight text-ink">
               {n}
             </p>
             <p className="mt-0.5 text-sm text-ink-2">{label}</p>
@@ -519,28 +518,9 @@ function Pipeline({
   );
 }
 
-function ThinResults({
-  count,
-  household,
-}: {
-  count: number;
-  household: Household;
-}) {
-  const brief = buildSearchBrief(
-    household.id,
-    household.housemates,
-    household.expectedSize,
-  );
-  const loosen = brief.mustHaves.length
-    ? `dropping “${brief.mustHaves[0]}” to a nice-to-have`
-    : `allowing a commute longer than ${brief.commute.maxMinutes} minutes`;
-  return (
-    <Callout tone="amber">
-      {count === 0
-        ? "No place passed every call."
-        : `Only ${count} ${count === 1 ? "place" : "places"} passed every call.`}{" "}
-      The market is tight for this brief. The change most likely to help is{" "}
-      {loosen}.
-    </Callout>
-  );
+function ThinResults({ count }: { count: number }) {
+  return <Callout tone="amber">
+    {count === 0 ? "No places are fully verified yet." : `${count} ${count === 1 ? "place is" : "places are"} fully verified so far.`}{" "}
+    Review the source findings and call status for each listing. Unconfirmed details still need a conversation with the contact.
+  </Callout>;
 }

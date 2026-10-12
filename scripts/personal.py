@@ -47,6 +47,9 @@ def setup():
 def main():
     os.chdir(ROOT)
     os.umask(0o077)
+    def stop(*_):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, stop)
     app_env, worker_env = setup()
     name = 'keyhunt-personal-postgres'
     found = subprocess.run(['docker', 'container', 'inspect', name], capture_output=True)

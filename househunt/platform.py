@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import threading
+import time
 from datetime import datetime, timedelta
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
@@ -244,19 +245,18 @@ def tick(lease_seconds: int = 800) -> bool:
         # A pass that hit the function time limit leaves its calls mid-flight; one untouched
         # for 20 minutes is treated like a restart and waits for an explicit resume.
         db.recover_calls(older_than=(datetime.now() - timedelta(minutes=20)).isoformat(timespec='seconds'))
+        started = time.monotonic()
+        run_once(PlatformClient())
         from househunt import phone
         from househunt.outreach import scheduler
-        if settings.callback_enabled:
-            phone.ensure_callbacks()
-            phone.poll_inbound()
-        run_once(PlatformClient())
-        if settings.outreach_worker:
-            scheduler.run_due()
-            with db.conn() as c:
-                jobs = c.execute('SELECT household_id, search_id FROM household_jobs').fetchall()
-            client = PlatformClient()
-            for job in jobs:
-                client.publish(job['household_id'], job['search_id'])
+        phone.refresh()
+        # Leave room under the 800s function limit for a call that starts near the deadline.
+        scheduler.tick(deadline=started + 420)
+        with db.conn() as c:
+            jobs = c.execute("SELECT household_id, search_id FROM household_jobs").fetchall()
+        client = PlatformClient()
+        for job in jobs:
+            client.publish(job["household_id"], job["search_id"])
     finally:
         db.release_lease('platform-worker')
     return True

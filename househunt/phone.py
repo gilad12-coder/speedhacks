@@ -149,17 +149,21 @@ def _digits(s: str) -> str:
     return "".join(ch for ch in s if ch.isdigit())[-10:]
 
 
+def refresh() -> None:
+    try:
+        if settings.callback_enabled:
+            ensure_callbacks()
+            poll_inbound()
+        elif enabled():
+            sync()
+            poll_inbound()
+    except Exception:
+        log.warning("phone callback refresh needs attention")
+
+
 def _loop(stop: threading.Event) -> None:
     while not stop.is_set():
-        try:
-            if settings.callback_enabled:
-                ensure_callbacks()
-                poll_inbound()
-            elif enabled():
-                sync()
-                poll_inbound()
-        except Exception:
-            log.warning("phone callback refresh needs attention")
+        refresh()
         stop.wait(REFRESH_SECONDS)
 
 

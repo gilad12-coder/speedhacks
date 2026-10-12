@@ -35,7 +35,7 @@ for name in ("httpx", "httpcore", "websockets", "elevenlabs"):
 def initiation(row: dict, enrollment: dict | None) -> dict:
     if row.get('direction') == 'inbound':
         return {'type': 'conversation_initiation_client_data', 'conversation_config_override': {
-            'agent': {'first_message': f"Hi, you've reached {settings.renter_name}'s AI assistant with KeyHunt. Which property are you calling about?",
+            'agent': {'first_message': f"Hi, you've reached KeyHunt's AI assistant. Which property are you calling about?",
                 'prompt': {'prompt': row['instruction']}}}}
     name = enrollment["speaker_name"]
     return {"type": "conversation_initiation_client_data", "conversation_config_override": {

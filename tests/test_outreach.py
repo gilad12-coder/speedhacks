@@ -2,6 +2,7 @@ import importlib
 import json
 from dataclasses import replace
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from test_caller import caller
@@ -75,8 +76,8 @@ def test_auto_search_queues_then_calls_with_full_context(outreach, monkeypatch):
     assert row['status'] == 'ended' and json.loads(row['search_context'])['criteria']['wishes'] == ['Quiet street']
     job = scheduler.jobs(sid)[0]
     assert job['state'] == 'scheduled' and job['attempts'] == 1
-    local = hours.ZoneInfo(job['hours']['timezone'])
-    assert datetime.fromisoformat(job['scheduled_at']).astimezone(local).date() > datetime.now(local).date()
+    zone = ZoneInfo(job['hours']['timezone'])  # 'next business day' is local, not UTC
+    assert datetime.fromisoformat(job['scheduled_at']).astimezone(zone).date() > datetime.now(zone).date()
     scheduler.run_due()
     assert len(sent) == 1  # No same-day redial.
 
@@ -97,7 +98,7 @@ def test_followup_claim_is_bounded_and_unique(outreach):
 def test_edited_phone_loses_research_clearance(outreach, monkeypatch):
     caller, _, scheduler, _, _ = outreach
     listing = caller[3]
-    monkeypatch.setattr(scheduler, 'settings', replace(scheduler.settings, dial_allowed_numbers=(), call_verified_contacts=True))
+    monkeypatch.setattr(scheduler, 'settings', replace(scheduler.settings, call_verified_contacts=True))
     listing.screening = {'status': 'cross_referenced', 'findings': [{'kind': 'contact_corroborated', 'quote': 'Office phone: (202) 555-2222'}]}
     assert scheduler.permitted(listing)
     listing.contact.phone = '+12025552223'

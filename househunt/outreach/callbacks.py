@@ -11,8 +11,8 @@ from househunt.outreach.verification import address_matches, timed_turns
 
 
 def instruction() -> str:
-    return (f"You are {settings.renter_name}'s AI assistant with KeyHunt, answering rental callbacks. "
-        f"Start: Hi, you've reached {settings.renter_name}'s AI assistant with KeyHunt. Which property are you calling about? "
+    return (f"You are KeyHunt's AI assistant, answering rental callbacks. "
+        f"Start: Hi, you've reached KeyHunt's AI assistant. Which property are you calling about? "
         "You are an AI; never claim to be the renter. Ask for the full street address AND unit number in the caller's own words, "
         "their name, role and authority to rent the property. Confirm availability, exact monthly rent, required fees, beds and baths, "
         "move-in date, pet/occupancy policies and any rental requirements. Ask for concrete tour offers with full date, start, end/duration, "
@@ -53,7 +53,7 @@ def process(raw: dict) -> bool:
         return False  # An unmatched callback stays in the inbox for review.
     sid = old['search_id']
     with db.conn() as c:
-        db.lock(c, "outreach-jobs")
+        db.lock(c, 'outreach')
         row = c.execute("SELECT * FROM calls WHERE dial_call_id=? AND direction='inbound'", (raw['id'],)).fetchone()
         if row and row['status'] == 'ended':
             return False
@@ -61,7 +61,7 @@ def process(raw: dict) -> bool:
             call_id = row['id']
         else:
             call_id = c.execute("INSERT INTO calls(search_id,listing_key,status,created_at,updated_at,phone,mode,direction,dial_call_id) VALUES (?,?,'extracting',?,?,?,'live','inbound',?) RETURNING id",
-                (sid, listing.key, raw.get('createdAt') or db.now(), db.now(), raw.get('from'), raw['id'])).fetchone()['id']
+                (sid, listing.key, raw.get('createdAt') or db.now(), db.now(), raw.get('from'), raw['id'])).fetchone()[0]
         # Any real callback cancels the unattended outbound retry before model processing.
         c.execute("UPDATE outreach_jobs SET state='complete',scheduled_at=NULL,reason='Callback received; processing details',updated_at=? WHERE search_id=? AND listing_key=?", (db.now(), sid, listing.key))
     raw = {**raw, 'booking_context': {'enabled': False, 'windows': []}}

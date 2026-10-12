@@ -56,6 +56,9 @@ async def lifespan(_: FastAPI):
     recover_pending()
     from househunt import platform
     platform.start_background_worker()
+    if os.environ.get("VERCEL"):  # threads don't outlive a request there; platform.tick() runs both
+        yield
+        return
     stop = phone.start_background()   # keeps the call-in briefing fresh, when switched on
     from househunt.outreach import scheduler
     outreach_stop = scheduler.start_background()

@@ -38,5 +38,5 @@ export async function POST(request: NextRequest) {
   await setAccount({ sub, email: "", firstName: "Reed", lastName: "" });
   await setHousemateSession(householdId, memberId);
   await workerRequest(`/agent/households/${encodeURIComponent(householdId)}/start`, { method: "POST" }).catch(() => null);
-  return NextResponse.redirect(new URL(`/h/${householdId}`, process.env.APP_URL!), 303);
+  return NextResponse.redirect(new URL(`/h/${householdId}/search`, process.env.APP_URL!), 303);
 }

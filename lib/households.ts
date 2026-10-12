@@ -187,7 +187,7 @@ export async function confirmBrief(householdId: string, seenFingerprint: string)
 
 export function briefFingerprint(household: Household): string {
   const answers = household.housemates.map((h) => [
-    h.id, h.location, h.maxBudgetUsd, h.commute, h.mustHaves, h.dealBreakers, h.niceToHaves, h.wishes, h.moveInFrom, h.moveInTo, h.incomeBandUsd,
+    h.id, h.location, h.minBedrooms, h.neighborhoods, h.maxBudgetUsd, h.commute, h.mustHaves, h.dealBreakers, h.niceToHaves, h.wishes, h.moveInFrom, h.moveInTo, h.incomeBandUsd,
   ]);
   return createHash("sha256").update(JSON.stringify([household.expectedSize, answers])).digest("base64url").slice(0, 16);
 }
