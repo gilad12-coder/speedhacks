@@ -224,7 +224,7 @@ async def audio_socket(ws: WebSocket, call_id: str):
                 row = store.call_context(call_id)
             from househunt.outreach.scheduler import permitted
             listing = db.get_listing(row['search_id'], row['listing_key']) if row else None
-            if (not row or row["phone"] != first.to or not listing or not permitted(listing, settings)
+            if (not row or row["phone"] != first.to or not listing or not permitted(listing, settings, search_id=row['search_id'])
                     or not row["instruction"] or db.contact_blocked(first.to)):
                 raise RuntimeError("No authorized KeyHunt call matches this session")
             enrollment = store.preflight(row["search_id"])

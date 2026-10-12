@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import os
 import re
@@ -16,11 +17,38 @@ from househunt.outreach import hours
 log = logging.getLogger(__name__)
 
 
-def permitted(listing, config=None) -> bool:
+def _approval_key(search_id: int, listing) -> str:
+    return 'manual_call:' + hashlib.sha256(f'{search_id}:{listing.key}'.encode()).hexdigest()
+
+
+def _contact_identity(listing) -> dict:
+    return {'phone': listing.contact.phone if listing.contact else None,
+            'address': listing.address, 'url': listing.url}
+
+
+def approve_manual(search_id: int, listing) -> None:
+    """A signed-in user's call click authorizes this exact contact, not unrelated calls."""
+    phone = listing.contact.phone if listing.contact else None
+    if not phone or not re.fullmatch(r'\+1[2-9]\d{9}', phone) or re.fullmatch(r'\+1\d{3}55501\d{2}', phone):
+        raise ValueError('Add a valid US phone number before requesting a call')
+    if db.contact_blocked(phone):
+        raise ValueError('This contact asked not to be called again')
+    db.set_state(_approval_key(search_id, listing), json.dumps({
+        'contact': _contact_identity(listing), 'requested_at': db.now()}))
+
+
+def permitted(listing, config=None, search_id: int | None = None) -> bool:
     config = config or settings
     phone = listing.contact.phone if listing.contact else None
     if not phone:
         return False
+    if search_id is not None:
+        try:
+            approval = json.loads(db.get_state(_approval_key(search_id, listing)) or '{}')
+            if approval.get('contact') == _contact_identity(listing):
+                return True
+        except (ValueError, TypeError):
+            pass
     if not config.call_verified_contacts:
         return True  # Any listing contact may be called; DIAL_CALL_VERIFIED_CONTACTS=1 requires corroboration.
     if listing.screening.get('status') != 'cross_referenced':
@@ -57,10 +85,13 @@ def enqueue(sid: int, key: str) -> None:
         c.execute("INSERT INTO outreach_jobs(search_id,listing_key,state,reason,updated_at) VALUES (?,?,'checking_hours','Checking office hours',?) ON CONFLICT(search_id,listing_key) DO UPDATE SET state='checking_hours',reason='Checking office hours',updated_at=excluded.updated_at", (sid, key, db.now()))
     try:
         if not listing.contact or not listing.contact.phone:
-            update(sid, key, state='blocked', reason='A verified phone number is needed', scheduled_at=None)
+            update(sid, key, state='blocked', reason='Add the listing contact’s phone number to request a call', scheduled_at=None)
             return
-        if not permitted(listing) or db.contact_blocked(listing.contact.phone):
-            update(sid, key, state='blocked', reason='Contact needs review or has opted out', scheduled_at=None)
+        if db.contact_blocked(listing.contact.phone):
+            update(sid, key, state='blocked', reason='This contact asked not to be called again', scheduled_at=None)
+            return
+        if not permitted(listing, search_id=sid):
+            update(sid, key, state='blocked', reason='Phone not independently corroborated. Choose Verify & arrange tour to request this call.', scheduled_at=None)
             return
         policy = hours.discover(listing)
         due = hours.next_open(policy)
@@ -136,7 +167,7 @@ def run_due(sid: int | None = None, key: str | None = None) -> None:
                 update(sid, key, state='scheduled', scheduled_at=due.isoformat(), reason='Office is closed; next open window')
                 return
             listing = db.get_listing(sid, key)
-            if not listing or listing.status.value in ('filtered','not_viable','tour_scheduled') or not listing.contact or not permitted(listing) or db.contact_blocked(listing.contact.phone):
+            if not listing or listing.status.value in ('filtered','not_viable','tour_scheduled') or not listing.contact or not permitted(listing, search_id=sid) or db.contact_blocked(listing.contact.phone):
                 update(sid, key, state='blocked', reason='Listing or contact changed; review needed', scheduled_at=None)
                 return
             if db.contact_called_today(listing.contact.phone, saved['id'] if saved and saved['status'] in ('attention','failed') else -1):

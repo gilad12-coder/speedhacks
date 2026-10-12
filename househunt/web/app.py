@@ -291,6 +291,12 @@ def call_listing(background: BackgroundTasks, search_id: int, key: str, next: st
     existing = db.calls_for_search(search_id).get(key)
     if existing and existing["status"] not in ("attention", "failed"):
         raise HTTPException(409, "Call already exists; no replacement call was started")
+    if not settings.mock_sources and settings.call_mode.value != 'dry_run':
+        from househunt.outreach.scheduler import approve_manual
+        try:
+            approve_manual(search_id, listing)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from None
     background.add_task(pipeline.request_call, search_id, key)
     # Only same-site paths, so the form can't bounce anyone to another site.
     back = next if next.startswith("/") and not next.startswith("//") else f"/searches/{search_id}"
@@ -335,10 +341,7 @@ def household_call(background: BackgroundTasks, household_id: str, key: str):
     listing = db.get_listing(search_id, key)
     if not listing or not listing.contact or not listing.contact.phone:
         raise HTTPException(400, 'A listing contact phone is required')
-    from househunt.outreach.scheduler import permitted
-    if not settings.mock_sources and settings.call_mode.value != 'dry_run' and not permitted(listing, settings):
-        raise HTTPException(400, 'This contact has not been enabled for calling by the operator')
-    call_listing(background, search_id, key)
+    call_listing(background, search_id, key, next='')
     return {'ok':True}
 
 

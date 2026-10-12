@@ -188,7 +188,7 @@ export async function callRental(householdId: string, listingId: string): Promis
   try {
     await requireMember(householdId);
     // The workspace can contain a newly added contact before the next AgentRun snapshot.
-    // The worker validates the current listing, phone, allowlist and saved call attempt.
+    // This member's click authorizes the current listing contact; the worker enforces hours and call limits.
     const response = await workerRequest(`/agent/households/${encodeURIComponent(householdId)}/listings/${encodeURIComponent(listingId)}/call`, { method: "POST" });
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
